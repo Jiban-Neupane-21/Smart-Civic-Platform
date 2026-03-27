@@ -1,0 +1,3 @@
+cd Smart_Civic_Platform_Backend
+
+cd Smart_Civic_Platform_Frontend

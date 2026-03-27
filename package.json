@@ -1,0 +1,10 @@
+{
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  },
+  "scripts": {
+    "backend": "cd Smart_Civic_Platform_Backend && yarn run dev",
+    "frontend": "cd Smart_Civic_Platform_Frontend && yarn dev",
+    "dev": "concurrently \"yarn run backend\" \"yarn run frontend\""
+  }
+}
