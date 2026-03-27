@@ -5,6 +5,7 @@
   "scripts": {
     "backend": "cd Smart_Civic_Platform_Backend && yarn run dev",
     "frontend": "cd Smart_Civic_Platform_Frontend && yarn dev",
-    "dev": "concurrently \"yarn run backend\" \"yarn run frontend\""
+    "dev": "concurrently \"yarn run backend\" \"yarn run frontend\"",
+    "install:all": "concurrently \"yarn install:root\" \"yarn install:backend\" \"yarn install:frontend\""
   }
 }

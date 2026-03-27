@@ -36,7 +36,7 @@ You need to install dependencies in three locations:
 From the project root, run:
 
 ```bash
-yarn install
+yarn install:all
 ```
 
 ### 2. Backend Dependencies
