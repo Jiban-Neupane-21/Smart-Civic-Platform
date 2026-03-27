@@ -11,9 +11,6 @@ Before you begin, ensure you have the following installed:
 
 ## Getting Started
 
-- [Node.js](https://nodejs.org/) (Recommended: Latest LTS)
-- [Yarn](https://yarnpkg.com/) or NPM (This guide uses Yarn based on project scripts)
-
 ### Cloning the Repository
 
 First, clone the repository from GitHub and navigate into the project directory:
