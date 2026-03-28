@@ -1,15 +1,15 @@
 // src/routes/auth.routes.ts
-import { Router } from 'express';
-import { authenticate } from '../middleware/auth.middleware';
-import { requireRole } from '../middleware/role.middleware';
-import * as Controller from '../controller/register.controller';
+import { Router } from "express";
+import { authenticate } from "../middleware/auth.middleware";
+import { requireRole } from "../middleware/role.middleware";
+import * as Controller from "../controller/register.controller";
 import {
   validateMunicipalityRegister,
   validateDepartmentRegister,
   validateStaffRegister,
   validateCitizenRegister,
-  validateLogin
-} from '../validators/register.validators';
+  validateLogin,
+} from "../validators/register.validators";
 
 const router = Router();
 
@@ -31,7 +31,7 @@ const router = Router();
  *       401:
  *         description: Invalid credentials
  */
-router.post('/login', validateLogin, Controller.login);
+router.post("/login", validateLogin, Controller.login);
 
 /**
  * @swagger
@@ -60,11 +60,11 @@ router.post('/login', validateLogin, Controller.login);
  *         description: Email already registered
  */
 router.post(
-  '/register/municipality',
+  "/register/municipality",
   authenticate,
-  requireRole('superadmin'),
+  requireRole("superadmin"),
   validateMunicipalityRegister,
-  Controller.registerMunicipality
+  Controller.registerMunicipality,
 );
 
 /**
@@ -90,11 +90,11 @@ router.post(
  *         description: Email already registered
  */
 router.post(
-  '/register/department',
+  "/register/department",
   authenticate,
-  requireRole('municipality_head'),
+  requireRole("municipality_head"),
   validateDepartmentRegister,
-  Controller.registerDepartment
+  Controller.registerDepartment,
 );
 
 /**
@@ -120,11 +120,11 @@ router.post(
  *         description: Email already registered
  */
 router.post(
-  '/register/staff',
+  "/register/staff",
   authenticate,
-  requireRole('municipality_head', 'department_head'),
+  requireRole("municipality_head", "department_head"),
   validateStaffRegister,
-  Controller.registerStaff
+  Controller.registerStaff,
 );
 
 /**
@@ -145,6 +145,10 @@ router.post(
  *       409:
  *         description: Email already registered
  */
-router.post('/register/citizen', validateCitizenRegister, Controller.registerCitizen);
+router.post(
+  "/register/citizen",
+  validateCitizenRegister,
+  Controller.registerCitizen,
+);
 
 export default router;
