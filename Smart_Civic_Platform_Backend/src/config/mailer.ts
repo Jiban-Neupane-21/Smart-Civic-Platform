@@ -1,0 +1,130 @@
+// ===============================
+// 📧 MAILER CONFIG (Nodemailer)
+// ===============================
+
+import nodemailer from "nodemailer";
+import SMTPTransport from "nodemailer/lib/smtp-transport";
+
+import { env } from "./env";
+
+// ===============================
+// 🚀 CREATE TRANSPORTER
+// ===============================
+
+const transporter = nodemailer.createTransport({
+  host: env.SMTP.HOST,
+  port: env.SMTP.PORT,
+  secure: false, // true for 465, false for 587
+  auth: env.SMTP.USER
+    ? {
+        user: env.SMTP.USER,
+        pass: env.SMTP.PASS,
+      }
+    : undefined,
+});
+
+// ===============================
+//  VERIFY CONNECTION (DEV ONLY)
+// ===============================
+
+if (env.NODE_ENV === "development") {
+  transporter.verify((error: Error | null) => {
+    if (error) {
+      console.error(" Mailer connection failed:", error);
+    } else {
+      console.log("Mailer is ready to send emails");
+    }
+  });
+}
+
+// ===============================
+// 📤 GENERIC SEND FUNCTION
+// ===============================
+
+type SendMailOptions = {
+  to: string;
+  subject: string;
+  html: string;
+  text?: string;
+};
+
+export const sendMail = async ({
+  to,
+  subject,
+  html,
+  text,
+}: SendMailOptions) => {
+  try {
+    const info = await transporter.sendMail({
+      from: `"Smart Civic Platform" <${env.SMTP.USER}>`,
+      to,
+      subject,
+      text,
+      html,
+    });
+
+    if (env.NODE_ENV === "development") {
+      console.log("Email sent:", info.messageId);
+    }
+
+    return info;
+  } catch (error) {
+    console.error("Error sending email:", error);
+    throw new Error("Email sending failed");
+  }
+};
+
+// ===============================
+//  PREBUILT EMAIL HELPERS
+// ===============================
+
+// 1️ Staff Invite Email
+export const sendInviteEmail = async (email: string, token: string) => {
+  const link = `${env.CLIENT_URL}/accept-invite?token=${token}`;
+
+  const html = `
+    <h2>You're invited to join Smart Civic Platform</h2>
+    <p>Click the link below to accept your invitation:</p>
+    <a href="${link}">Accept Invitation</a>
+    <p>This link will expire in 72 hours.</p>
+  `;
+
+  return sendMail({
+    to: email,
+    subject: "Invitation to Smart Civic Platform",
+    html,
+  });
+};
+
+// 2️ Password Reset Email
+export const sendPasswordResetEmail = async (email: string, token: string) => {
+  const link = `${env.CLIENT_URL}/reset-password?token=${token}`;
+
+  const html = `
+    <h2>Password Reset</h2>
+    <p>Click below to reset your password:</p>
+    <a href="${link}">Reset Password</a>
+    <p>This link expires in 1 hour.</p>
+  `;
+
+  return sendMail({
+    to: email,
+    subject: "Reset Your Password",
+    html,
+  });
+};
+
+// 3 Welcome Email (Citizen)
+export const sendWelcomeEmail = async (email: string, name?: string) => {
+  const html = `
+    <h2>Welcome to Smart Civic Platform </h2>
+    <p>Hello ${name || "User"},</p>
+    <p>Your account has been successfully created.</p>
+  `;
+
+  return sendMail({
+    to: email,
+    subject: "Welcome to Smart Civic Platform",
+    html,
+  });
+};
