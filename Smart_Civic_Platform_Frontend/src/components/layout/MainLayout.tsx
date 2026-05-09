@@ -1,6 +1,5 @@
 import { Outlet } from "react-router-dom";
 import { Navbar } from "../Navbar";
-import Footer from "./Footer";
 
 function MainLayout() {
   return (
@@ -11,7 +10,6 @@ function MainLayout() {
       <main style={{ padding: "5px", margin: "5px" }}>
         <Outlet />
       </main>
-      <Footer />
     </>
   );
 }
