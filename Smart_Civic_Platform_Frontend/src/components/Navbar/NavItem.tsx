@@ -1,4 +1,3 @@
-import React from "react";
 import type { DesktopNavItem, MobileNavItem } from "../../types/navbar.types";
 import { Button, alpha, useTheme, Box, Typography } from "@mui/material";
 
