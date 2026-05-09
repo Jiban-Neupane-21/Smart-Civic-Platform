@@ -13,6 +13,7 @@ export function DesktopNavItemComponent({
   item,
   isActive,
   onClick,
+  
 }: DesktopNavItemProps) {
   const theme = useTheme();
 

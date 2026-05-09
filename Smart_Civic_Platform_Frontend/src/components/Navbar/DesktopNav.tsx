@@ -11,11 +11,13 @@ import {
 } from "@mui/material";
 import type { DesktopNavItem } from "../../types/navbar.types";
 import { DesktopNavItemComponent } from "./NavItem";
+import type { UserRole } from "../../types/userRole.type";
 
 interface DesktopNavProps {
   items: DesktopNavItem[];
   activePath: string;
   onNavigate: (href: string) => void;
+  role?: UserRole;
   brandName?: string;
 }
 
@@ -23,6 +25,7 @@ export function DesktopNav({
   items,
   activePath,
   onNavigate,
+  role,
   brandName = "CivicDesk",
 }: DesktopNavProps) {
   const theme = useTheme();
@@ -107,12 +110,12 @@ export function DesktopNav({
                 variant="caption"
                 sx={{
                   color: "text.secondary",
-                  fontSize: "0.65rem",
+                  fontSize: "1rem",
                   letterSpacing: "0.3px",
                   display: "block",
                 }}
               >
-                Smart Governance
+                {role} - Smart Governance
               </Typography>
             </Box>
           </Box>
