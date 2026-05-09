@@ -27,6 +27,7 @@ export function Navbar({ role }: NavbarProps) {
           items={config.desktop}
           activePath={activePath}
           onNavigate={navigate}
+          role={role}
         />
       </Box>
 
@@ -43,6 +44,7 @@ export function Navbar({ role }: NavbarProps) {
           items={config.mobile}
           activePath={activePath}
           onNavigate={navigate}
+          role={role}
         />
       </Box>
     </>

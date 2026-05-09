@@ -1,4 +1,3 @@
-import React from "react";
 import type { DesktopNavItem, MobileNavItem } from "../../types/navbar.types";
 import { Button, alpha, useTheme, Box, Typography } from "@mui/material";
 
@@ -35,7 +34,7 @@ export function DesktopNavItemComponent({
         whiteSpace: "nowrap",
         minWidth: "unset",
         position: "relative",
-        color: isActive ? "primary.main" : "text.secondary",
+        color: isActive ? "text.primary" : "text.secondary",
         bgcolor: isActive
           ? alpha(theme.palette.primary.main, 0.1)
           : "transparent",
@@ -52,9 +51,8 @@ export function DesktopNavItemComponent({
 
         // Hover effects
         "&:hover": {
-          bgcolor: isActive
-            ? alpha(theme.palette.primary.main, 0.15)
-            : alpha(theme.palette.action.hover, 0.8),
+          bgcolor: isActive ? "#bcc0c4" : "#f5f5f5",
+
           color: isActive ? "primary.main" : "text.primary",
           transform: "translateY(-1px)",
         },
@@ -115,7 +113,7 @@ export function MobileNavItemComponent({
         px: 1,
         borderRadius: 2,
         textTransform: "none",
-        color: isActive ? "primary.main" : "text.secondary",
+        color: isActive ? "text.primary" : "text.secondary",
         bgcolor: isActive
           ? alpha(theme.palette.primary.main, 0.1)
           : "transparent",
