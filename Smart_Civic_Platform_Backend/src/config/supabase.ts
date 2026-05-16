@@ -14,7 +14,7 @@
  */
 
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
-import { Database } from "../types/database.type";
+import type { Database } from "../types/database.type";
 
 // ─── Validate env vars at module load time ────────────────────────────────────
 
@@ -25,18 +25,18 @@ const SUPABASE_SERVICE_ROLE_KEY: string =
 
 if (!SUPABASE_URL) {
   throw new Error(
-    "[supabase] SUPABASE_URL is missing. Add it to your .env file."
+    "[supabase] SUPABASE_URL is missing. Add it to your .env file.",
   );
 }
 if (!SUPABASE_ANON_KEY) {
   throw new Error(
-    "[supabase] SUPABASE_ANON_KEY is missing. Add it to your .env file."
+    "[supabase] SUPABASE_ANON_KEY is missing. Add it to your .env file.",
   );
 }
 if (!SUPABASE_SERVICE_ROLE_KEY) {
   throw new Error(
     "[supabase] SUPABASE_SERVICE_ROLE_KEY is missing. Add it to your .env file. " +
-      "Never expose this key to the client."
+      "Never expose this key to the client.",
   );
 }
 
@@ -69,7 +69,7 @@ const sharedOptions = {
 export const supabase: SupabaseClient<Database> = createClient<Database>(
   SUPABASE_URL,
   SUPABASE_ANON_KEY,
-  sharedOptions
+  sharedOptions,
 );
 
 // ─── Admin client (bypasses RLS) ──────────────────────────────────────────────
@@ -90,7 +90,7 @@ export const supabase: SupabaseClient<Database> = createClient<Database>(
 export const supabaseAdmin: SupabaseClient<Database> = createClient<Database>(
   SUPABASE_URL,
   SUPABASE_SERVICE_ROLE_KEY,
-  sharedOptions
+  sharedOptions,
 );
 
 // ─── Per-request user client factory ─────────────────────────────────────────
@@ -107,7 +107,9 @@ export const supabaseAdmin: SupabaseClient<Database> = createClient<Database>(
  *
  * @param accessToken  The Bearer JWT from the Authorization header
  */
-export function createUserClient(accessToken: string): SupabaseClient<Database> {
+export function createUserClient(
+  accessToken: string,
+): SupabaseClient<Database> {
   return createClient<Database>(SUPABASE_URL, SUPABASE_ANON_KEY, {
     ...sharedOptions,
     global: {

@@ -1,0 +1,53 @@
+import { Request, Response, NextFunction } from 'express';
+import { createUserClient } from '../config/supabase.js';
+import { supabaseAdmin } from '../config/supabase.js';
+import { sendError } from '../utils/response.js';
+
+export interface AuthUser {
+  id: string;
+  email: string;
+  role: string;
+  municipality_id: string | null;
+  department_id: string | null;
+  full_name: string;
+}
+
+declare global {
+  namespace Express {
+    interface Request {
+      user?: AuthUser;
+      accessToken?: string;
+    }
+  }
+}
+
+export const authenticate = async (req: Request, res: Response, next: NextFunction) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader?.startsWith('Bearer ')) {
+    return sendError(res, 'Missing or invalid authorization header', 401);
+  }
+
+  const token = authHeader.split(' ')[1];
+
+  try {
+    const client = createUserClient(token);
+    const { data: { user }, error } = await client.auth.getUser();
+
+    if (error || !user) return sendError(res, 'Invalid or expired token', 401);
+
+    const { data: profile, error: profileError } = await supabaseAdmin
+      .from('profiles')
+      .select('id, email, role, municipality_id, department_id, full_name, account_status')
+      .eq('id', user.id)
+      .single();
+
+    if (profileError || !profile) return sendError(res, 'Profile not found', 401);
+    if ((profile as string).account_status === 'suspended') return sendError(res, 'Account suspended', 403);
+
+    req.user = profile as AuthUser;
+    req.accessToken = token;
+    next();
+  } catch {
+    return sendError(res, 'Authentication failed', 401);
+  }
+};
