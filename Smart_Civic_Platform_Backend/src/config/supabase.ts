@@ -66,11 +66,11 @@ const sharedOptions = {
  * Or pass the user's JWT in Supabase's Authorization header by constructing
  * a per-request client using createClient with the user's token.
  */
-export const supabase: SupabaseClient<Database> = createClient<Database>(
+export const supabase = createClient(
   SUPABASE_URL,
   SUPABASE_ANON_KEY,
   sharedOptions,
-);
+) as SupabaseClient<Database>;
 
 // ─── Admin client (bypasses RLS) ──────────────────────────────────────────────
 
@@ -87,7 +87,8 @@ export const supabase: SupabaseClient<Database> = createClient<Database>(
  * Never use this client in a route handler that receives arbitrary user input
  * without validating the caller's role and scope first in middleware.
  */
-export const supabaseAdmin: SupabaseClient<Database> = createClient<Database>(
+/** Untyped client avoids strict generic inference issues with hand-maintained Database types */
+export const supabaseAdmin = createClient(
   SUPABASE_URL,
   SUPABASE_SERVICE_ROLE_KEY,
   sharedOptions,
@@ -109,8 +110,8 @@ export const supabaseAdmin: SupabaseClient<Database> = createClient<Database>(
  */
 export function createUserClient(
   accessToken: string,
-): SupabaseClient<Database> {
-  return createClient<Database>(SUPABASE_URL, SUPABASE_ANON_KEY, {
+) {
+  return createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
     ...sharedOptions,
     global: {
       headers: {

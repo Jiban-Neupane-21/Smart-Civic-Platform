@@ -6,12 +6,12 @@ import rateLimit from "express-rate-limit";
 import swaggerUi from "swagger-ui-express";
 
 import { getSwaggerSpec } from "./config/swagger";
-import authRoutes from "./routes/auth.routes";
-import superadminRoutes from "./routes/superadmin.routes";
-import municipalityRoutes from "./routes/municipality.routes";
-import departmentRoutes from "./routes/department.route";
-import staffRoutes from "./routes/staff.routes";
-import citizenRoutes from "./routes/citizen.routes";
+import authRoutes from "./modules/auth/routes/auth.routes";
+import superadminRoutes from "./modules/superadmin/routes/superadmin.routes";
+import municipalityRoutes from "./modules/municipality/routes/municipality.routes";
+import departmentRoutes from "./modules/department/routes/department.route";
+import staffRoutes from "./modules/staff/routes/staff.routes";
+import citizenRoutes from "./modules/citizen/routes/citizen.routes";
 import healthRoutes from "./routes/health.routes";
 
 const app = express();

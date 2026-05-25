@@ -46,7 +46,7 @@ const swaggerDefinition: swaggerJsdoc.Options["definition"] = {
     title: "Smart Civic Platform API",
     version: "1.0.0",
     description:
-      "Citizen complaint portal — superadmin → municipality → department → staff → citizen",
+      "Citizen complaint portal By Jiban Neupane — superadmin → municipality → department → staff → citizen",
   },
   servers: [
     {

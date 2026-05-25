@@ -5,10 +5,13 @@ import { sendError } from '../utils/response.js';
 
 export interface AuthUser {
   id: string;
+  userId: string;
   email: string;
   role: string;
   municipality_id: string | null;
+  municipalityId: string | null;
   department_id: string | null;
+  departmentId: string | null;
   full_name: string;
 }
 
@@ -42,9 +45,14 @@ export const authenticate = async (req: Request, res: Response, next: NextFuncti
       .single();
 
     if (profileError || !profile) return sendError(res, 'Profile not found', 401);
-    if ((profile as string).account_status === 'suspended') return sendError(res, 'Account suspended', 403);
+    if (profile.account_status === 'suspended') return sendError(res, 'Account suspended', 403);
 
-    req.user = profile as AuthUser;
+    req.user = {
+      ...profile,
+      userId: profile.id,
+      municipalityId: profile.municipality_id,
+      departmentId: profile.department_id,
+    } as AuthUser;
     req.accessToken = token;
     next();
   } catch {
