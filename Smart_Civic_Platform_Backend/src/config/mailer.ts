@@ -27,10 +27,10 @@ const transporter = nodemailer.createTransport({
 //  VERIFY CONNECTION (DEV ONLY)
 // ===============================
 
-if (env.NODE_ENV === "development") {
+if (env.NODE_ENV === "development" && env.SMTP.HOST) {
   transporter.verify((error: Error | null) => {
     if (error) {
-      console.error(" Mailer connection failed:", error);
+      console.warn("Mailer connection failed:", error.message);
     } else {
       console.log("Mailer is ready to send emails");
     }

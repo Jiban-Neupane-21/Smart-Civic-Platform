@@ -14,7 +14,7 @@
  */
 
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
-import { Database } from "../types/database.type";
+import type { Database } from "../types/database.type";
 
 // ─── Validate env vars at module load time ────────────────────────────────────
 
@@ -25,18 +25,18 @@ const SUPABASE_SERVICE_ROLE_KEY: string =
 
 if (!SUPABASE_URL) {
   throw new Error(
-    "[supabase] SUPABASE_URL is missing. Add it to your .env file."
+    "[supabase] SUPABASE_URL is missing. Add it to your .env file.",
   );
 }
 if (!SUPABASE_ANON_KEY) {
   throw new Error(
-    "[supabase] SUPABASE_ANON_KEY is missing. Add it to your .env file."
+    "[supabase] SUPABASE_ANON_KEY is missing. Add it to your .env file.",
   );
 }
 if (!SUPABASE_SERVICE_ROLE_KEY) {
   throw new Error(
     "[supabase] SUPABASE_SERVICE_ROLE_KEY is missing. Add it to your .env file. " +
-      "Never expose this key to the client."
+      "Never expose this key to the client.",
   );
 }
 
@@ -66,11 +66,11 @@ const sharedOptions = {
  * Or pass the user's JWT in Supabase's Authorization header by constructing
  * a per-request client using createClient with the user's token.
  */
-export const supabase: SupabaseClient<Database> = createClient<Database>(
+export const supabase = createClient(
   SUPABASE_URL,
   SUPABASE_ANON_KEY,
-  sharedOptions
-);
+  sharedOptions,
+) as SupabaseClient<Database>;
 
 // ─── Admin client (bypasses RLS) ──────────────────────────────────────────────
 
@@ -87,10 +87,11 @@ export const supabase: SupabaseClient<Database> = createClient<Database>(
  * Never use this client in a route handler that receives arbitrary user input
  * without validating the caller's role and scope first in middleware.
  */
-export const supabaseAdmin: SupabaseClient<Database> = createClient<Database>(
+/** Untyped client avoids strict generic inference issues with hand-maintained Database types */
+export const supabaseAdmin = createClient(
   SUPABASE_URL,
   SUPABASE_SERVICE_ROLE_KEY,
-  sharedOptions
+  sharedOptions,
 );
 
 // ─── Per-request user client factory ─────────────────────────────────────────
@@ -107,8 +108,10 @@ export const supabaseAdmin: SupabaseClient<Database> = createClient<Database>(
  *
  * @param accessToken  The Bearer JWT from the Authorization header
  */
-export function createUserClient(accessToken: string): SupabaseClient<Database> {
-  return createClient<Database>(SUPABASE_URL, SUPABASE_ANON_KEY, {
+export function createUserClient(
+  accessToken: string,
+) {
+  return createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
     ...sharedOptions,
     global: {
       headers: {

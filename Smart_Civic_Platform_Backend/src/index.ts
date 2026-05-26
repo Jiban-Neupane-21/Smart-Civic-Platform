@@ -1,54 +1,101 @@
-// index.ts
+import "./config/env";
 import express, { Request, Response, NextFunction } from "express";
 import cors from "cors";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 import swaggerUi from "swagger-ui-express";
-import dotenv from "dotenv";
-import { swaggerSpec } from "./config/swagger";
-import authRoutes from "./routes/auth.route";
 
-dotenv.config();
+import { getSwaggerSpec } from "./config/swagger";
+import authRoutes from "./modules/auth/routes/auth.routes";
+import superadminRoutes from "./modules/superadmin/routes/superadmin.routes";
+import municipalityRoutes from "./modules/municipality/routes/municipality.routes";
+import departmentRoutes from "./modules/department/routes/department.route";
+import staffRoutes from "./modules/staff/routes/staff.routes";
+import citizenRoutes from "./modules/citizen/routes/citizen.routes";
+import healthRoutes from "./routes/health.routes";
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Security
-app.use(helmet());
-app.use(cors());
+app.use(
+  helmet({
+    contentSecurityPolicy: false,
+  }),
+);
+app.use(
+  cors({
+    origin: [
+      "http://localhost:3000",
+      "http://localhost:5173",
+      "http://localhost:8080",
+    ],
+    credentials: true,
+  }),
+);
 app.use(express.json());
 
-// Rate limiting — 100 requests per 15 minutes per IP
-app.use(rateLimit({ windowMs: 15 * 60 * 1000, max: 100 }));
+const swaggerUiOptions: any = {
+  customSiteTitle: "Smart Civic Platform API Docs",
+  swaggerOptions: {
+    persistAuthorization: true,
+    displayRequestDuration: true,
+    url: "/api/docs/swagger.json",
+  },
+};
 
-// Swagger UI — visit /api/docs
+app.get("/api/docs/swagger.json", (_req, res) => {
+  res.setHeader("Cache-Control", "no-store");
+  res.json(getSwaggerSpec());
+  console.log(getSwaggerSpec());
+});
+
+/**
+ * Mount Swagger UI. Using the consolidated approach ensures relative paths
+ * for CSS/JS assets and the OpenAPI JSON are resolved correctly.
+ */
 app.use(
   "/api/docs",
   swaggerUi.serve,
-  swaggerUi.setup(swaggerSpec, {
-    customSiteTitle: "Smart Civic Platform API Docs",
-  }),
+  swaggerUi.setup(undefined, swaggerUiOptions),
 );
 
-// Routes
+app.use(rateLimit({ windowMs: 15 * 60 * 1000, max: 100 }));
+
+app.get("/", (_req, res) => {
+  res.json({
+    message: "Smart Civic Platform API",
+    docs: "/api/docs",
+    health: "/health",
+  });
+});
+
+app.use("/health", healthRoutes);
 app.use("/api/auth", authRoutes);
+app.use("/api/superadmin", superadminRoutes);
+app.use("/api/municipality", municipalityRoutes);
+app.use("/api/department", departmentRoutes);
+app.use("/api/staff", staffRoutes);
+app.use("/api/citizen", citizenRoutes);
 
-// Health check
-app.get("/health", (_, res) =>
-  res.json({ status: "ok", timestamp: new Date().toISOString() }),
-);
+app.use((_req, res) => {
+  res.status(404).json({ success: false, message: "Route not found" });
+});
 
-// Global Error Handler
-app.use((err: any, req: Request, res: Response, next: NextFunction) => {
-  const status = err.status || 500;
-  res
-    .status(status)
-    .json({ success: false, message: err.message || "Internal Server Error" });
+app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
+  const status =
+    err && typeof err === "object" && "status" in err
+      ? Number((err as { status: number }).status) || 500
+      : 500;
+  const message = err instanceof Error ? err.message : "Internal Server Error";
+  res.status(status).json({ success: false, message });
 });
 
 app.listen(PORT, () => {
+  const spec = getSwaggerSpec();
+  const pathCount = Object.keys(spec.paths ?? {}).length;
   console.log(`Server running on http://localhost:${PORT}`);
   console.log(`Swagger docs at http://localhost:${PORT}/api/docs`);
+  console.log(`Swagger paths loaded: ${pathCount}`);
 });
 
 export default app;
