@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router } from "express";
 import {
   authenticate,
   isSuperadmin,
@@ -10,8 +10,8 @@ import {
   requestLogger,
   municipalityRateLimiter,
   validateBody,
-} from '../middleware';
-import { StaffController } from '../controller/staff.controller';
+} from "../middleware";
+import { StaffController } from "../controller/staff.controller";
 
 const router = Router();
 
@@ -25,143 +25,370 @@ router.use(authenticate);
 // These don't require municipalityId in URL - extracted from JWT
 
 /**
- * GET /staff/me
- * Get currently logged-in staff member's profile.
+ * @swagger
+ * /api/staff/me:
+ *   get:
+ *     tags: [Staff]
+ *     summary: Get current staff profile
+ *     security:
+ *       - BearerAuth: []
+ *     responses:
+ *       200:
+ *         description: OK
  */
-router.get('/me', isMunicipalityStaff, StaffController.getMe);
+router.get("/me", isMunicipalityStaff, StaffController.getMe);
 
 /**
- * PATCH /staff/me
- * Update own profile (limited fields: name, phone, address).
+ * @swagger
+ * /api/staff/me:
+ *   patch:
+ *     tags: [Staff]
+ *     summary: Update own staff profile
+ *     security:
+ *       - BearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *     responses:
+ *       200:
+ *         description: Updated
  */
 router.patch(
-  '/me',
+  "/me",
   isMunicipalityStaff,
   validateBody([]), // empty array = no required fields, but validates body exists
-  StaffController.updateMe
+  StaffController.updateMe,
 );
 
 /**
- * POST /staff/change-password
- * Staff member changes their own password.
- * Body: { currentPassword: string, newPassword: string }
+ * @swagger
+ * /api/staff/change-password:
+ *   post:
+ *     tags: [Staff]
+ *     summary: Change own staff password
+ *     security:
+ *       - BearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - currentPassword
+ *               - newPassword
+ *     responses:
+ *       200:
+ *         description: Password changed
  */
 router.post(
-  '/change-password',
+  "/change-password",
   isMunicipalityStaff,
-  validateBody(['currentPassword', 'newPassword']),
-  StaffController.changePassword
+  validateBody(["currentPassword", "newPassword"]),
+  StaffController.changePassword,
 );
 
 // ─── Standalone Staff Routes (municipalityId from query) ─────────────────────
 
 /**
- * GET /staff?municipalityId=xxx&page=1&limit=20&search=&departmentId=&role=&status=
- * List all staff members (admin only).
+ * @swagger
+ * /api/staff:
+ *   get:
+ *     tags: [Staff]
+ *     summary: List staff members
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: municipalityId
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *       - in: query
+ *         name: search
+ *         schema:
+ *           type: string
+ *       - in: query
+ *         name: departmentId
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *       - in: query
+ *         name: role
+ *         schema:
+ *           type: string
+ *       - in: query
+ *         name: status
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: OK
  */
-router.get(
-  '/',
-  isMunicipalityAdmin,
-  StaffController.list
-);
+router.get("/", isMunicipalityAdmin, StaffController.list);
 
 /**
- * GET /staff/export?municipalityId=xxx&format=csv
- * Export staff list to CSV/Excel (admin only).
+ * @swagger
+ * /api/staff/export:
+ *   get:
+ *     tags: [Staff]
+ *     summary: Export staff list
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: municipalityId
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *       - in: query
+ *         name: format
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: OK
  */
-router.get(
-  '/export',
-  isMunicipalityAdmin,
-  StaffController.export
-);
+router.get("/export", isMunicipalityAdmin, StaffController.export);
 
 /**
- * GET /staff/:staffId?municipalityId=xxx
- * Get detailed information about a specific staff member.
+ * @swagger
+ * /api/staff/{staffId}:
+ *   get:
+ *     tags: [Staff]
+ *     summary: Get a staff member
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: staffId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *       - in: query
+ *         name: municipalityId
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       200:
+ *         description: OK
  */
 router.get(
-  '/:staffId',
+  "/:staffId",
   isMunicipalityStaff,
   belongsToMunicipality,
-  StaffController.getById
+  StaffController.getById,
 );
 
 /**
- * POST /staff?municipalityId=xxx
- * Create a new staff account (admin only).
- * Body: { name, email, password, role, departmentId, phone?, designation?, address? }
+ * @swagger
+ * /api/staff:
+ *   post:
+ *     tags: [Staff]
+ *     summary: Create a new staff member
+ *     security:
+ *       - BearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - name
+ *               - email
+ *               - password
+ *               - role
+ *               - departmentId
+ *     responses:
+ *       201:
+ *         description: Created
  */
 router.post(
-  '/',
+  "/",
   isMunicipalityAdmin,
   auditLogger,
-  validateBody(['name', 'email', 'password', 'role', 'departmentId']),
-  StaffController.create
+  validateBody(["name", "email", "password", "role", "departmentId"]),
+  StaffController.create,
 );
 
 /**
- * PATCH /staff/:staffId
- * Update staff profile (admin only).
- * Body: { name?, phone?, designation?, address?, departmentId?, role? }
+ * @swagger
+ * /api/staff/{staffId}:
+ *   patch:
+ *     tags: [Staff]
+ *     summary: Update a staff profile
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: staffId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *     responses:
+ *       200:
+ *         description: Updated
  */
 router.patch(
-  '/:staffId',
+  "/:staffId",
   isMunicipalityAdmin,
   belongsToMunicipality,
   auditLogger,
-  StaffController.update
+  StaffController.update,
 );
-
 /**
- * PATCH /staff/:staffId/status
- * Activate or deactivate a staff member.
- * Body: { status: 'active' | 'inactive', reason?: string }
+ * @swagger
+ * /api/staff/{staffId}/status:
+ *   patch:
+ *     tags: [Staff]
+ *     summary: Update staff status
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: staffId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - status
+ *     responses:
+ *       200:
+ *         description: Updated
  */
 router.patch(
-  '/:staffId/status',
+  "/:staffId/status",
   isMunicipalityAdmin,
   belongsToMunicipality,
   auditLogger,
-  validateBody(['status']),
-  StaffController.updateStatus
+  validateBody(["status"]),
+  StaffController.updateStatus,
 );
 
 /**
- * POST /staff/:staffId/reset-password
- * Reset staff password (admin initiated).
- * Body: { newPassword?: string }
+ * @swagger
+ * /api/staff/{staffId}/reset-password:
+ *   post:
+ *     tags: [Staff]
+ *     summary: Reset a staff member's password
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: staffId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *     responses:
+ *       200:
+ *         description: Password reset
  */
 router.post(
-  '/:staffId/reset-password',
+  "/:staffId/reset-password",
   isMunicipalityAdmin,
   belongsToMunicipality,
   auditLogger,
-  StaffController.resetPassword
+  StaffController.resetPassword,
 );
-
 /**
- * GET /staff/:staffId/audit-logs?page=1&limit=20
- * Get audit trail for a specific staff member.
+ * @swagger
+ * /api/staff/{staffId}/audit-logs:
+ *   get:
+ *     tags: [Staff]
+ *     summary: Get audit logs for a staff member
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: staffId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: OK
  */
 router.get(
-  '/:staffId/audit-logs',
+  "/:staffId/audit-logs",
   isMunicipalityAdmin,
   belongsToMunicipality,
-  StaffController.getAuditLogs
+  StaffController.getAuditLogs,
 );
 
 /**
- * DELETE /staff/:staffId?permanent=false
- * Remove a staff member (soft delete by default).
+ * @swagger
+ * /api/staff/{staffId}:
+ *   delete:
+ *     tags: [Staff]
+ *     summary: Delete a staff member
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: staffId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *       - in: query
+ *         name: permanent
+ *         schema:
+ *           type: boolean
+ *     responses:
+ *       200:
+ *         description: Deleted
  */
 router.delete(
-  '/:staffId',
+  "/:staffId",
   isMunicipalityAdmin,
   belongsToMunicipality,
   auditLogger,
-  StaffController.delete
+  StaffController.delete,
 );
-
 // ─── Municipality-scoped Staff Routes (municipalityId in URL) ────────────────
 
 /**
@@ -170,190 +397,487 @@ router.delete(
  */
 
 /**
- * GET /municipalities/:municipalityId/staff
- * List all staff members in a municipality.
+ * @swagger
+ * /api/staff/municipalities/{municipalityId}/staff:
+ *   get:
+ *     tags: [Staff]
+ *     summary: List staff members in a municipality
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: municipalityId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       200:
+ *         description: OK
  */
 router.get(
-  '/municipalities/:municipalityId/staff',
+  "/municipalities/:municipalityId/staff",
   isMunicipalityStaff,
   belongsToMunicipality,
-  StaffController.list
+  StaffController.list,
 );
 
 /**
- * GET /municipalities/:municipalityId/staff/export
- * Export staff list for a municipality.
+ * @swagger
+ * /api/staff/municipalities/{municipalityId}/staff/export:
+ *   get:
+ *     tags: [Staff]
+ *     summary: Export staff list for a municipality
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: municipalityId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       200:
+ *         description: OK
  */
 router.get(
-  '/municipalities/:municipalityId/staff/export',
+  "/municipalities/:municipalityId/staff/export",
   isMunicipalityAdmin,
   belongsToMunicipality,
-  StaffController.export
+  StaffController.export,
 );
 
 /**
- * GET /municipalities/:municipalityId/staff/:staffId
- * Get specific staff member in a municipality.
+ * @swagger
+ * /api/staff/municipalities/{municipalityId}/staff/{staffId}:
+ *   get:
+ *     tags: [Staff]
+ *     summary: Get a staff member in a municipality
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: municipalityId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *       - in: path
+ *         name: staffId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       200:
+ *         description: OK
  */
 router.get(
-  '/municipalities/:municipalityId/staff/:staffId',
+  "/municipalities/:municipalityId/staff/:staffId",
   isMunicipalityStaff,
   belongsToMunicipality,
-  StaffController.getById
+  StaffController.getById,
 );
 
 /**
- * POST /municipalities/:municipalityId/staff
- * Create new staff account in a municipality.
+ * @swagger
+ * /api/staff/municipalities/{municipalityId}/staff:
+ *   post:
+ *     tags: [Staff]
+ *     summary: Create a staff member in a municipality
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: municipalityId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - name
+ *               - email
+ *               - password
+ *               - role
+ *               - departmentId
+ *     responses:
+ *       201:
+ *         description: Created
  */
 router.post(
-  '/municipalities/:municipalityId/staff',
+  "/municipalities/:municipalityId/staff",
   isMunicipalityAdmin,
   belongsToMunicipality,
   auditLogger,
-  validateBody(['name', 'email', 'password', 'role', 'departmentId']),
-  StaffController.create
+  validateBody(["name", "email", "password", "role", "departmentId"]),
+  StaffController.create,
 );
 
 /**
- * PATCH /municipalities/:municipalityId/staff/:staffId
- * Update staff profile in a municipality.
+ * @swagger
+ * /api/staff/municipalities/{municipalityId}/staff/{staffId}:
+ *   patch:
+ *     tags: [Staff]
+ *     summary: Update a staff member in a municipality
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: municipalityId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *       - in: path
+ *         name: staffId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *     responses:
+ *       200:
+ *         description: Updated
  */
 router.patch(
-  '/municipalities/:municipalityId/staff/:staffId',
+  "/municipalities/:municipalityId/staff/:staffId",
   isMunicipalityAdmin,
   belongsToMunicipality,
   auditLogger,
-  StaffController.update
+  StaffController.update,
 );
 
 /**
- * PATCH /municipalities/:municipalityId/staff/:staffId/status
- * Update staff status.
+ * @swagger
+ * /api/staff/municipalities/{municipalityId}/staff/{staffId}/status:
+ *   patch:
+ *     tags: [Staff]
+ *     summary: Update staff status in a municipality
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: municipalityId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *       - in: path
+ *         name: staffId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - status
+ *     responses:
+ *       200:
+ *         description: Updated
  */
 router.patch(
-  '/municipalities/:municipalityId/staff/:staffId/status',
+  "/municipalities/:municipalityId/staff/:staffId/status",
   isMunicipalityAdmin,
   belongsToMunicipality,
   auditLogger,
-  validateBody(['status']),
-  StaffController.updateStatus
+  validateBody(["status"]),
+  StaffController.updateStatus,
 );
 
 /**
- * POST /municipalities/:municipalityId/staff/:staffId/reset-password
- * Reset staff password.
+ * @swagger
+ * /api/staff/municipalities/{municipalityId}/staff/{staffId}/reset-password:
+ *   post:
+ *     tags: [Staff]
+ *     summary: Reset a staff password in a municipality
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: municipalityId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *       - in: path
+ *         name: staffId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       200:
+ *         description: Password reset
  */
 router.post(
-  '/municipalities/:municipalityId/staff/:staffId/reset-password',
+  "/municipalities/:municipalityId/staff/:staffId/reset-password",
   isMunicipalityAdmin,
   belongsToMunicipality,
   auditLogger,
-  StaffController.resetPassword
+  StaffController.resetPassword,
 );
-
 /**
- * GET /municipalities/:municipalityId/staff/:staffId/audit-logs
- * Get staff audit logs.
+ * @swagger
+ * /api/staff/municipalities/{municipalityId}/staff/{staffId}/audit-logs:
+ *   get:
+ *     tags: [Staff]
+ *     summary: Get staff audit logs in a municipality
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: municipalityId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *       - in: path
+ *         name: staffId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       200:
+ *         description: OK
  */
 router.get(
-  '/municipalities/:municipalityId/staff/:staffId/audit-logs',
+  "/municipalities/:municipalityId/staff/:staffId/audit-logs",
   isMunicipalityAdmin,
   belongsToMunicipality,
-  StaffController.getAuditLogs
+  StaffController.getAuditLogs,
 );
 
 /**
- * DELETE /municipalities/:municipalityId/staff/:staffId
- * Delete staff member.
+ * @swagger
+ * /api/staff/municipalities/{municipalityId}/staff/{staffId}:
+ *   delete:
+ *     tags: [Staff]
+ *     summary: Delete a staff member in a municipality
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: municipalityId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *       - in: path
+ *         name: staffId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       200:
+ *         description: Deleted
  */
 router.delete(
-  '/municipalities/:municipalityId/staff/:staffId',
+  "/municipalities/:municipalityId/staff/:staffId",
   isMunicipalityAdmin,
   belongsToMunicipality,
   auditLogger,
-  StaffController.delete
+  StaffController.delete,
 );
-
 // ─── Department-scoped Staff Routes (restricted to department access) ────────
 
 /**
- * GET /departments/:departmentId/staff
- * List staff members in a specific department (department staff can view their own department).
+ * @swagger
+ * /api/staff/departments/{departmentId}/staff:
+ *   get:
+ *     tags: [Staff]
+ *     summary: List staff in a department
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: departmentId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       200:
+ *         description: OK
  */
 router.get(
-  '/departments/:departmentId/staff',
+  "/departments/:departmentId/staff",
   isMunicipalityStaff,
   belongsToDepartment,
-  StaffController.listByDepartment
+  StaffController.listByDepartment,
 );
 
 /**
- * GET /departments/:departmentId/staff/:staffId
- * Get staff member in a department.
+ * @swagger
+ * /api/staff/departments/{departmentId}/staff/{staffId}:
+ *   get:
+ *     tags: [Staff]
+ *     summary: Get a staff member in a department
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: departmentId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *       - in: path
+ *         name: staffId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       200:
+ *         description: OK
  */
 router.get(
-  '/departments/:departmentId/staff/:staffId',
+  "/departments/:departmentId/staff/:staffId",
   isMunicipalityStaff,
   belongsToDepartment,
-  StaffController.getById
+  StaffController.getById,
 );
 
 /**
- * GET /departments/:departmentId/staff/export
- * Export staff list for a department.
+ * @swagger
+ * /api/staff/departments/{departmentId}/staff/export:
+ *   get:
+ *     tags: [Staff]
+ *     summary: Export department staff list
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: departmentId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       200:
+ *         description: OK
  */
 router.get(
-  '/departments/:departmentId/staff/export',
+  "/departments/:departmentId/staff/export",
   isMunicipalityAdmin,
   belongsToMunicipality,
-  StaffController.export
+  StaffController.export,
 );
 
 // ─── Superadmin-only Staff Routes ────────────────────────────────────────────
 
 /**
- * GET /superadmin/staff
- * Superadmin can view all staff across all municipalities.
+ * @swagger
+ * /api/staff/superadmin/staff:
+ *   get:
+ *     tags: [Staff]
+ *     summary: Superadmin list of all staff
+ *     security:
+ *       - BearerAuth: []
+ *     responses:
+ *       200:
+ *         description: OK
  */
-router.get(
-  '/superadmin/staff',
-  isSuperadmin,
-  StaffController.listAll
-);
+router.get("/superadmin/staff", isSuperadmin, StaffController.listAll);
 
 /**
- * GET /superadmin/staff/:staffId
- * Superadmin can view any staff member.
+ * @swagger
+ * /api/staff/superadmin/staff/{staffId}:
+ *   get:
+ *     tags: [Staff]
+ *     summary: Superadmin get any staff member
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: staffId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       200:
+ *         description: OK
  */
-router.get(
-  '/superadmin/staff/:staffId',
-  isSuperadmin,
-  StaffController.getById
-);
+router.get("/superadmin/staff/:staffId", isSuperadmin, StaffController.getById);
 
 /**
- * PATCH /superadmin/staff/:staffId/role
- * Superadmin can change staff role across municipalities.
- * Body: { role: string, municipalityId?: string }
+ * @swagger
+ * /api/staff/superadmin/staff/{staffId}/role:
+ *   patch:
+ *     tags: [Staff]
+ *     summary: Change staff role as superadmin
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: staffId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - role
+ *     responses:
+ *       200:
+ *         description: Updated
  */
 router.patch(
-  '/superadmin/staff/:staffId/role',
+  "/superadmin/staff/:staffId/role",
   isSuperadmin,
   auditLogger,
-  validateBody(['role']),
-  StaffController.changeRole
+  validateBody(["role"]),
+  StaffController.changeRole,
 );
-
 /**
- * DELETE /superadmin/staff/:staffId
- * Superadmin can permanently delete any staff member.
+ * @swagger
+ * /api/staff/superadmin/staff/{staffId}:
+ *   delete:
+ *     tags: [Staff]
+ *     summary: Superadmin delete a staff member permanently
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: staffId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       200:
+ *         description: Deleted
  */
 router.delete(
-  '/superadmin/staff/:staffId',
+  "/superadmin/staff/:staffId",
   isSuperadmin,
   auditLogger,
-  StaffController.deletePermanent
+  StaffController.deletePermanent,
 );
 
 export default router;

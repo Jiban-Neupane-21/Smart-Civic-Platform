@@ -4,7 +4,11 @@ import { sendSuccess, sendError } from "../../../utils/response";
 
 export const submitComplaint = async (req: Request, res: Response) => {
   try {
-    const data = await CitizenService.submitComplaint(req.user!.id, req.body);
+    const data = await CitizenService.submitComplaint(
+      req.user!.id,
+      req.body,
+      req.userClient!,
+    );
     return sendSuccess(res, data, "Complaint submitted successfully", 201);
   } catch (e: any) {
     return sendError(res, e.message, 400);
@@ -16,6 +20,7 @@ export const getMyComplaints = async (req: Request, res: Response) => {
     const data = await CitizenService.getMyComplaints(
       req.user!.id,
       req.query.status as string,
+      req.userClient!,
     );
     return sendSuccess(res, data);
   } catch (e: any) {
@@ -29,6 +34,7 @@ export const getComplaintDetail = async (req: Request, res: Response) => {
     const data = await CitizenService.getComplaintDetail(
       req.user!.id,
       complaintId,
+      req.userClient!,
     );
     return sendSuccess(res, data);
   } catch (e: any) {
@@ -42,6 +48,7 @@ export const getComplaintHistory = async (req: Request, res: Response) => {
     const data = await CitizenService.getComplaintHistory(
       req.user!.id,
       complaintId,
+      req.userClient!,
     );
     return sendSuccess(res, data);
   } catch (e: any) {
@@ -75,6 +82,7 @@ export const submitFeedback = async (req: Request, res: Response) => {
       req.user!.id,
       complaintId,
       req.body,
+      req.userClient!,
     );
     return sendSuccess(res, data, "Feedback submitted", 201);
   } catch (e: any) {

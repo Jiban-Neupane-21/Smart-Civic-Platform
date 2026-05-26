@@ -181,7 +181,10 @@ export const acceptInviteService = async (body: {
   password: string;
   phone?: string;
 }) => {
-  const tokenHash = crypto.createHash("sha256").update(body.token).digest("hex");
+  const tokenHash = crypto
+    .createHash("sha256")
+    .update(body.token)
+    .digest("hex");
 
   await supabaseAdmin.rpc("expire_stale_invitations");
 
@@ -202,7 +205,10 @@ export const acceptInviteService = async (body: {
       email: invite.target_email,
       password: body.password,
       email_confirm: true,
-      user_metadata: { full_name: body.full_name },
+      user_metadata: {
+        full_name: body.full_name,
+        role: invite.target_role,
+      },
     });
   if (authErr) throw new Error(authErr.message);
 
@@ -220,8 +226,6 @@ export const acceptInviteService = async (body: {
       force_password_reset: false,
     })
     .eq("id", uid);
-
-  await supabaseAdmin.from("citizens").delete().eq("id", uid);
 
   await supabaseAdmin.from("staff").insert({
     profile_id: uid,

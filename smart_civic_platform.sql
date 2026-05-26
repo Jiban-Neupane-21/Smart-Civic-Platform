@@ -424,6 +424,22 @@ create table feedback (
   updated_at        timestamptz not null default now()
 );
 
+create or replace function populate_feedback_assignee()
+returns trigger language plpgsql security definer as $$
+begin
+  select team_id, staff_id into new.team_id, new.staff_id
+  from assignments
+  where complaint_id = new.complaint_id
+  order by actual_end desc nulls last, created_at desc
+  limit 1;
+  return new;
+end;
+$$;
+
+create trigger trg_feedback_populate_assignee
+  before insert on feedback
+  for each row execute function populate_feedback_assignee();
+
 create table audit_logs (
   al_uid            uuid primary key default uuid_generate_v4(),
   action_by         uuid references profiles(id),
@@ -496,21 +512,27 @@ $$;
 -- handle_new_user trigger
 create or replace function handle_new_user()
 returns trigger language plpgsql security definer as $$
+declare
+  user_role text;
 begin
+  user_role := coalesce(new.raw_user_meta_data->>'role', 'citizen');
+
   insert into profiles (id, full_name, email, role)
   values (
     new.id,
     coalesce(new.raw_user_meta_data->>'full_name', 'Unknown'),
     new.email,
-    'citizen'
+    user_role::user_role
   );
 
-  insert into citizens (id, first_name, last_name)
-  values (
-    new.id,
-    coalesce(new.raw_user_meta_data->>'first_name', 'Unknown'),
-    coalesce(new.raw_user_meta_data->>'last_name', 'Unknown')
-  );
+  if user_role = 'citizen' then
+    insert into citizens (id, first_name, last_name)
+    values (
+      new.id,
+      coalesce(new.raw_user_meta_data->>'first_name', 'Unknown'),
+      coalesce(new.raw_user_meta_data->>'last_name', 'Unknown')
+    );
+  end if;
 
   return new;
 end;
@@ -845,11 +867,8 @@ create policy "department_head manages own department invitations"
     and target_role = 'staff'
   );
 
--- Public read on pending invite by token_hash (needed for accept-invite endpoint)
--- Backend uses service role so this is a safety net only
-create policy "anyone can read pending invitation by token"
-  on staff_invitations for select
-  using (status = 'pending' and expires_at > now());
+-- This endpoint is handled by server-side invite acceptance using the service role.
+-- Public read policies for invitation token hashes are unsafe and are not required.
 
 -- Refresh tokens: users can only see and revoke their own
 create policy "users manage own refresh tokens"

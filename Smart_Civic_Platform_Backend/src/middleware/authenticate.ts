@@ -1,7 +1,8 @@
-import { Request, Response, NextFunction } from 'express';
-import { createUserClient } from '../config/supabase.js';
-import { supabaseAdmin } from '../config/supabase.js';
-import { sendError } from '../utils/response.js';
+import { Request, Response, NextFunction } from "express";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import { createUserClient, supabaseAdmin } from "../config/supabase.js";
+import type { Database } from "../types/database.type";
+import { sendError } from "../utils/response.js";
 
 export interface AuthUser {
   id: string;
@@ -20,32 +21,44 @@ declare global {
     interface Request {
       user?: AuthUser;
       accessToken?: string;
+      userClient?: SupabaseClient<Database>;
     }
   }
 }
 
-export const authenticate = async (req: Request, res: Response, next: NextFunction) => {
+export const authenticate = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
   const authHeader = req.headers.authorization;
-  if (!authHeader?.startsWith('Bearer ')) {
-    return sendError(res, 'Missing or invalid authorization header', 401);
+  if (!authHeader?.startsWith("Bearer ")) {
+    return sendError(res, "Missing or invalid authorization header", 401);
   }
 
-  const token = authHeader.split(' ')[1];
+  const token = authHeader.split(" ")[1];
 
   try {
     const client = createUserClient(token);
-    const { data: { user }, error } = await client.auth.getUser();
+    const {
+      data: { user },
+      error,
+    } = await client.auth.getUser();
 
-    if (error || !user) return sendError(res, 'Invalid or expired token', 401);
+    if (error || !user) return sendError(res, "Invalid or expired token", 401);
 
     const { data: profile, error: profileError } = await supabaseAdmin
-      .from('profiles')
-      .select('id, email, role, municipality_id, department_id, full_name, account_status')
-      .eq('id', user.id)
+      .from("profiles")
+      .select(
+        "id, email, role, municipality_id, department_id, full_name, account_status",
+      )
+      .eq("id", user.id)
       .single();
 
-    if (profileError || !profile) return sendError(res, 'Profile not found', 401);
-    if (profile.account_status === 'suspended') return sendError(res, 'Account suspended', 403);
+    if (profileError || !profile)
+      return sendError(res, "Profile not found", 401);
+    if (profile.account_status === "suspended")
+      return sendError(res, "Account suspended", 403);
 
     req.user = {
       ...profile,
@@ -54,8 +67,9 @@ export const authenticate = async (req: Request, res: Response, next: NextFuncti
       departmentId: profile.department_id,
     } as AuthUser;
     req.accessToken = token;
+    req.userClient = client;
     next();
   } catch {
-    return sendError(res, 'Authentication failed', 401);
+    return sendError(res, "Authentication failed", 401);
   }
 };

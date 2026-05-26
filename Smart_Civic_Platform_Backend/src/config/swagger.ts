@@ -4,24 +4,38 @@ import swaggerJsdoc from "swagger-jsdoc";
 
 /** Collect route files — merges cwd-based and package-relative dirs so Swagger works regardless of process.cwd(). */
 function getRouteApiFiles(): string[] {
-  const dirs = [
+  const searchDirs = [
     path.resolve(process.cwd(), "src", "routes"),
+    path.resolve(process.cwd(), "src", "modules"),
     path.resolve(process.cwd(), "dist", "routes"),
+    path.resolve(process.cwd(), "dist", "modules"),
     path.resolve(__dirname, "..", "routes"),
   ].filter((dir, i, all) => fs.existsSync(dir) && all.indexOf(dir) === i);
 
   const byBase = new Map<string, string>();
 
-  for (const dir of dirs) {
-    for (const file of fs.readdirSync(dir)) {
-      if (!/\.(ts|js)$/.test(file) || file.endsWith(".d.ts")) continue;
-      const fullPath = path.join(dir, file);
-      const base = file.replace(/\.(ts|js)$/, "");
+  function collectFiles(dir: string) {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const fullPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        collectFiles(fullPath);
+        continue;
+      }
+      if (!/\.(ts|js)$/.test(entry.name) || entry.name.endsWith(".d.ts"))
+        continue;
+      const base = entry.name.replace(/\.(ts|js)$/, "");
       const existing = byBase.get(base);
-      if (!existing || (file.endsWith(".ts") && !existing.endsWith(".ts"))) {
+      if (
+        !existing ||
+        (entry.name.endsWith(".ts") && !existing.endsWith(".ts"))
+      ) {
         byBase.set(base, fullPath);
       }
     }
+  }
+
+  for (const dir of searchDirs) {
+    collectFiles(dir);
   }
 
   return [...byBase.values()].sort();
