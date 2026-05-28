@@ -121,7 +121,7 @@ const swaggerDefinition: swaggerJsdoc.Options["definition"] = {
           email: { type: "string", format: "email" },
           password: { type: "string", minLength: 8 },
           phone: { type: "string" },
-          ward_number: { type: "string" },
+          full_address: { type: "string" },
         },
       },
       RefreshRequest: {

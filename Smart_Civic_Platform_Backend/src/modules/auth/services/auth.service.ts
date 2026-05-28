@@ -9,7 +9,7 @@ export const registerService = async (body: {
   first_name: string;
   last_name: string;
   phone?: string;
-  ward_number?: string;
+  full_address?: string;
 }) => {
   const { data, error } = await supabaseAdmin.auth.admin.createUser({
     email: body.email,
@@ -24,17 +24,17 @@ export const registerService = async (body: {
 
   if (error) throw new Error(error.message);
 
-  if (body.phone || body.ward_number) {
+  if (body.phone || body.full_address) {
     if (body.phone) {
       await supabaseAdmin
         .from("profiles")
         .update({ phone: body.phone })
         .eq("id", data.user.id);
     }
-    if (body.ward_number) {
+    if (body.full_address) {
       await supabaseAdmin
         .from("citizens")
-        .update({ ward_number: body.ward_number })
+        .update({ home_address: body.full_address })
         .eq("id", data.user.id);
     }
   }
