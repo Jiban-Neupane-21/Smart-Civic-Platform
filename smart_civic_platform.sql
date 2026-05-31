@@ -1,6 +1,64 @@
 create extension if not exists "uuid-ossp";
 create extension if not exists "postgis";
 
+-- 1. Drop existing views to prevent dependency errors
+drop view if exists v_complaints cascade;
+drop view if exists v_budget_utilisation cascade;
+drop view if exists v_team_workload cascade;
+drop view if exists v_sla_breaches cascade;
+drop view if exists v_pending_invitations cascade;
+
+-- 2. Drop existing tables to allow re-running the script
+drop table if exists audit_logs cascade;
+drop table if exists feedback cascade;
+drop table if exists notification_reads cascade;
+drop table if exists notifications cascade;
+drop table if exists announcements cascade;
+drop table if exists spending_logs cascade;
+drop table if exists budgets cascade;
+drop table if exists route_stops cascade;
+drop table if exists garbage_routes cascade;
+drop table if exists assignments cascade;
+drop table if exists vehicles cascade;
+drop table if exists media cascade;
+drop table if exists complaints cascade;
+drop table if exists sla_rules cascade;
+drop table if exists complaint_categories cascade;
+drop table if exists team_members cascade;
+drop table if exists teams cascade;
+drop table if exists citizens cascade;
+drop table if exists staff cascade;
+drop table if exists departments cascade;
+drop table if exists municipalities cascade;
+drop table if exists profiles cascade;
+drop table if exists staff_invitations cascade;
+drop table if exists refresh_tokens cascade;
+
+-- 3. Drop existing types
+drop type if exists user_role cascade;
+drop type if exists account_status cascade;
+drop type if exists employee_status cascade;
+drop type if exists team_role cascade;
+drop type if exists complaint_status cascade;
+drop type if exists record_type cascade;
+drop type if exists assignment_status cascade;
+drop type if exists priority cascade;
+drop type if exists vehicle_status cascade;
+drop type if exists route_status cascade;
+drop type if exists stop_status cascade;
+drop type if exists budget_status cascade;
+drop type if exists transaction_type cascade;
+drop type if exists payment_type cascade;
+drop type if exists transaction_status cascade;
+drop type if exists broadcast_type cascade;
+drop type if exists department_type cascade;
+drop type if exists announcement_audience cascade;
+drop type if exists audit_action cascade;
+drop type if exists severity cascade;
+drop type if exists media_context cascade;
+drop type if exists gender cascade;
+drop type if exists notification_pref cascade;
+
 create type user_role as enum (
   'superadmin', 'municipality_head', 'department_head', 'staff', 'citizen'
 );
@@ -511,33 +569,82 @@ $$;
 
 -- handle_new_user trigger
 create or replace function handle_new_user()
-returns trigger language plpgsql security definer as $$
+returns trigger language plpgsql security definer set search_path = public as $$
 declare
-  user_role text;
+  v_role           text;
+  v_municipality_id uuid := null;
+  v_department_id   uuid := null;
+  v_mun_raw        text;
+  v_dept_raw       text;
 begin
-  user_role := coalesce(new.raw_user_meta_data->>'role', 'citizen');
+  v_role            := coalesce(new.raw_user_meta_data->>'role', 'citizen');
 
-  insert into profiles (id, full_name, email, role)
+  -- 1. Safeguard: Ensure role is actually a valid enum value
+  if v_role not in ('superadmin', 'municipality_head', 'department_head', 'staff', 'citizen') then
+    v_role := 'citizen';
+  end if;
+
+  -- 2. Safeguard: Safely parse UUIDs, ignoring formats like "null", "undefined", or empty strings
+  v_mun_raw := new.raw_user_meta_data->>'municipality_id';
+  if v_mun_raw ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' then
+    v_municipality_id := v_mun_raw::uuid;
+  end if;
+
+  v_dept_raw := new.raw_user_meta_data->>'department_id';
+  if v_dept_raw ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' then
+    v_department_id := v_dept_raw::uuid;
+  end if;
+
+  -- Insert base profile row for every new user
+  insert into public.profiles (
+    id, full_name, email, role,
+    municipality_id, department_id
+  )
   values (
     new.id,
     coalesce(new.raw_user_meta_data->>'full_name', 'Unknown'),
     new.email,
-    user_role::user_role
+    v_role::user_role,
+    v_municipality_id,
+    v_department_id
   );
 
-  if user_role = 'citizen' then
-    insert into citizens (id, first_name, last_name)
+  -- Citizen: populate the citizens detail table
+  if v_role = 'citizen' then
+    insert into public.citizens (id, first_name, last_name)
     values (
       new.id,
       coalesce(new.raw_user_meta_data->>'first_name', 'Unknown'),
       coalesce(new.raw_user_meta_data->>'last_name', 'Unknown')
     );
+
+  -- Staff roles: populate the staff table
+  elsif v_role in ('municipality_head', 'department_head', 'staff') then
+    insert into public.staff (
+      profile_id,
+      municipality_id,
+      department_id,
+      staff_role
+    )
+    values (
+      new.id,
+      v_municipality_id,
+      v_department_id,
+      v_role::user_role
+    );
+
+  -- superadmin: profile row is sufficient, no staff/citizen row needed
   end if;
 
   return new;
+exception when others then
+  -- 3. Safeguard: Log the exact crash reason so you can see it in Supabase Logs
+  raise log 'handle_new_user trigger crashed: % %', SQLERRM, SQLSTATE;
+  raise exception 'handle_new_user trigger crashed: %', SQLERRM;
 end;
 $$;
 
+drop trigger if exists trg_on_auth_user_created on auth.users;
 create trigger trg_on_auth_user_created
   after insert on auth.users
   for each row execute function handle_new_user();

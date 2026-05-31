@@ -2,6 +2,11 @@ import crypto from "crypto";
 import { supabaseAdmin } from "../../../config/supabase";
 import { sendInviteEmail } from "../../../config/mailer";
 import type { UserRole } from "../../../types/database.type";
+import { TOKEN_CONFIG } from "../../../app";
+
+// Derived millisecond value — computed once at module load
+const REFRESH_TOKEN_TTL_MS =
+  TOKEN_CONFIG.REFRESH_TOKEN_EXPIRY_DAYS * 24 * 60 * 60 * 1000;
 
 export const registerService = async (body: {
   email: string;
@@ -10,6 +15,9 @@ export const registerService = async (body: {
   last_name: string;
   phone?: string;
   full_address?: string;
+  role?: "citizen";
+  municipality_id?: string;
+  department_id?: string;
 }) => {
   const { data, error } = await supabaseAdmin.auth.admin.createUser({
     email: body.email,
@@ -19,6 +27,9 @@ export const registerService = async (body: {
       full_name: `${body.first_name} ${body.last_name}`,
       first_name: body.first_name,
       last_name: body.last_name,
+      role: body.role ?? "citizen",
+      municipality_id: body.municipality_id || null,
+      department_id: body.department_id || null,
     },
   });
 
@@ -73,7 +84,7 @@ export const loginService = async (email: string, password: string) => {
   await supabaseAdmin.from("refresh_tokens").insert({
     profile_id: data.user.id,
     token_hash: tokenHash,
-    expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+    expires_at: new Date(Date.now() + REFRESH_TOKEN_TTL_MS).toISOString(), // 7 days
   });
 
   return {
@@ -118,7 +129,7 @@ export const refreshTokenService = async (refreshToken: string) => {
   await supabaseAdmin.from("refresh_tokens").insert({
     profile_id: stored.profile_id,
     token_hash: newHash,
-    expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+    expires_at: new Date(Date.now() + REFRESH_TOKEN_TTL_MS).toISOString(), // 7 days
   });
 
   return {
@@ -207,34 +218,37 @@ export const acceptInviteService = async (body: {
       email_confirm: true,
       user_metadata: {
         full_name: body.full_name,
+        // Pass role, municipality_id, department_id so the handle_new_user trigger
+        // creates the staff row with correct FKs right from the start
         role: invite.target_role,
+        municipality_id: invite.municipality_id,
+        department_id: invite.department_id ?? null,
       },
     });
   if (authErr) throw new Error(authErr.message);
 
   const uid = authData.user.id;
 
+  // Fix up profile with full invite context (trigger sets basics; we add phone/invited_by)
   await supabaseAdmin
     .from("profiles")
     .update({
       full_name: body.full_name,
-      role: invite.target_role,
-      municipality_id: invite.municipality_id,
-      department_id: invite.department_id,
       phone: body.phone ?? null,
       invited_by: invite.invited_by,
       force_password_reset: false,
     })
     .eq("id", uid);
 
-  await supabaseAdmin.from("staff").insert({
-    profile_id: uid,
-    municipality_id: invite.municipality_id,
-    department_id: invite.department_id,
-    staff_role: invite.target_role,
-    invited_at: new Date().toISOString(),
-    onboarded_at: new Date().toISOString(),
-  });
+  // The handle_new_user trigger already inserted the staff row.
+  // UPDATE it to record the invite timestamp and onboarding timestamp.
+  await supabaseAdmin
+    .from("staff")
+    .update({
+      invited_at: invite.created_at, // when the invite was originally sent
+      onboarded_at: new Date().toISOString(), // when they accepted
+    })
+    .eq("profile_id", uid);
 
   await supabaseAdmin
     .from("staff_invitations")

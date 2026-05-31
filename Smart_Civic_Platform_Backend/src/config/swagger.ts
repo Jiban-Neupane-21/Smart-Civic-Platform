@@ -187,6 +187,39 @@ const swaggerDefinition: swaggerJsdoc.Options["definition"] = {
           is_anonymous: { type: "boolean" },
         },
       },
+      CitizenDetails: {
+        type: "object",
+        description: "Extra citizen-specific data (only present when role = citizen)",
+        properties: {
+          first_name:        { type: "string" },
+          middle_name:       { type: "string", nullable: true },
+          last_name:         { type: "string" },
+          date_of_birth:     { type: "string", format: "date", nullable: true },
+          gender:            { type: "string", enum: ["male", "female", "other", "prefer_not_to_say"], nullable: true },
+          home_address:      { type: "string", nullable: true, example: "Kathmandu, Ward 5" },
+          permanent_address: { type: "string", nullable: true, example: "Pokhara, Ward 3" },
+          ward_number:       { type: "string", nullable: true },
+          notification_pref: { type: "string", enum: ["email", "sms", "both", "none"] },
+        },
+      },
+      MeResponse: {
+        type: "object",
+        properties: {
+          id:              { type: "string", format: "uuid" },
+          full_name:       { type: "string", example: "John Doe" },
+          email:           { type: "string", format: "email" },
+          phone:           { type: "string", nullable: true },
+          role:            { type: "string", enum: ["superadmin", "municipality_head", "department_head", "staff", "citizen"] },
+          account_status:  { type: "string", enum: ["active", "inactive", "suspended"] },
+          municipality_id: { type: "string", format: "uuid", nullable: true },
+          department_id:   { type: "string", format: "uuid", nullable: true },
+          citizen_details: {
+            nullable: true,
+            description: "Only present when role = citizen",
+            allOf: [{ $ref: "#/components/schemas/CitizenDetails" }],
+          },
+        },
+      },
     },
     responses: {
       Unauthorized: {
