@@ -1,23 +1,23 @@
 import { Routes, Route } from "react-router-dom";
 import MainLayout from "../components/layout/MainLayout";
-import LandingPage from "../pages/LandingPag";
+import AuthLayout from "../components/layout/AuthLayout";
+import SmartCitizenLanding from "../pages/LandingPage";
 import { Login } from "../pages/auth/Login";
 import { CitizenDashboard } from "../pages/citizen/Homepage";
 import { Register } from "../pages/auth/CitizenRegister";
 
 function AppRoute() {
   return (
-    //Use Protected route after fully implementing auth
     <Routes>
-      {/* Add Login route here */}
-      {/* Pages without Navbar */}
-
-      {/* other pages with navbar can go here */}
-      {/* Pages with Navbar */}
-      <Route element={<MainLayout />}>
-        <Route index element={<LandingPage />} />
-        <Route path="/login" element={<Login />} />{" "}
+      {/* Pages without Navbar - Public/Auth Routes */}
+      <Route element={<AuthLayout />}>
+        <Route index element={<SmartCitizenLanding />} />
+        <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
+      </Route>
+
+      {/* Pages with Navbar - Protected Routes */}
+      <Route element={<MainLayout />}>
         <Route path="/home" element={<CitizenDashboard />} />
       </Route>
     </Routes>
