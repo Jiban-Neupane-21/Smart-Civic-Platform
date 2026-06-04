@@ -1,4 +1,15 @@
 import { supabaseAdmin } from "../../../config/supabase";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import type { ComplaintStatus, Database } from "../../../types/database.type";
+
+type CitizenSupabaseClient = {
+  from: <TableName extends keyof Database["public"]["Tables"]>(
+    relation: TableName,
+  ) => any;
+};
+
+const getCitizenDb = (_client: SupabaseClient<Database>) =>
+  _client as unknown as CitizenSupabaseClient;
 
 export const submitComplaint = async (
   citizenId: string,
@@ -14,8 +25,11 @@ export const submitComplaint = async (
     is_anonymous?: boolean;
     record_type?: string;
   },
+  client: SupabaseClient<Database>,
 ) => {
-  const { data, error } = await supabaseAdmin
+  const db = getCitizenDb(client);
+
+  const { data, error } = await db
     .from("complaints")
     .insert({
       citizen_id: citizenId,
@@ -38,8 +52,14 @@ export const submitComplaint = async (
   return data;
 };
 
-export const getMyComplaints = async (citizenId: string, status?: string) => {
-  let query = supabaseAdmin
+export const getMyComplaints = async (
+  citizenId: string,
+  status: string | undefined,
+  client: SupabaseClient<Database>,
+) => {
+  const db = getCitizenDb(client);
+
+  let query = db
     .from("complaints")
     .select(
       `
@@ -63,8 +83,11 @@ export const getMyComplaints = async (citizenId: string, status?: string) => {
 export const getComplaintDetail = async (
   citizenId: string,
   complaintId: string,
+  client: SupabaseClient<Database>,
 ) => {
-  const { data, error } = await supabaseAdmin
+  const db = getCitizenDb(client);
+
+  const { data, error } = await db
     .from("complaints")
     .select(
       `
@@ -87,8 +110,11 @@ export const getComplaintDetail = async (
 export const getComplaintHistory = async (
   citizenId: string,
   complaintId: string,
+  client: SupabaseClient<Database>,
 ) => {
-  const { data: complaint } = await supabaseAdmin
+  const db = getCitizenDb(client);
+
+  const { data: complaint } = await db
     .from("complaints")
     .select("co_uid")
     .eq("co_uid", complaintId)
@@ -96,7 +122,7 @@ export const getComplaintHistory = async (
     .maybeSingle();
   if (!complaint) throw new Error("Complaint not found");
 
-  const { data, error } = await supabaseAdmin
+  const { data, error } = await db
     .from("audit_logs")
     .select("action, old_value, new_value, note, created_at")
     .eq("table_name", "complaints")
@@ -134,27 +160,48 @@ export const submitFeedback = async (
   citizenId: string,
   complaintId: string,
   body: { rating: number; comment?: string; is_anonymous?: boolean },
+  client: SupabaseClient<Database>,
 ) => {
-  const { data: complaint } = await supabaseAdmin
+  const db = getCitizenDb(client);
+
+  const { data: complaint } = (await db
     .from("complaints")
     .select("status")
     .eq("co_uid", complaintId)
     .eq("citizen_id", citizenId)
-    .maybeSingle();
+    .maybeSingle()) as {
+    data: { status: ComplaintStatus } | null;
+    error: unknown;
+  };
+
   if (!complaint) throw new Error("Complaint not found");
   if (complaint.status !== "resolved") {
     throw new Error("Can only rate resolved complaints");
   }
 
-  const { data, error } = await supabaseAdmin
+  const { data: assignment } = await supabaseAdmin
+    .from("assignments")
+    .select("team_id, staff_id")
+    .eq("complaint_id", complaintId)
+    .order("actual_end", { ascending: false })
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  const payload: Record<string, unknown> = {
+    complaint_id: complaintId,
+    citizen_id: citizenId,
+    rating: body.rating,
+    comment: body.comment ?? null,
+    is_anonymous: body.is_anonymous ?? false,
+  };
+
+  if (assignment?.team_id) payload.team_id = assignment.team_id;
+  if (assignment?.staff_id) payload.staff_id = assignment.staff_id;
+
+  const { data, error } = await db
     .from("feedback")
-    .insert({
-      complaint_id: complaintId,
-      citizen_id: citizenId,
-      rating: body.rating,
-      comment: body.comment ?? null,
-      is_anonymous: body.is_anonymous ?? false,
-    })
+    .insert(payload)
     .select("f_uid, rating, comment")
     .single();
 

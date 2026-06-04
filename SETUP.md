@@ -78,7 +78,7 @@ yarn dev
 This will trigger:
 
 - **Backend:** Running on http://localhost:PORT via `tsx` and `nodemon`.
-- **Frontend:** Running on http://localhost:5173 via `Vite`.
+- **Frontend:** Running on http://localhost:8080 via `Vite`.
 
 ## Building for Production
 

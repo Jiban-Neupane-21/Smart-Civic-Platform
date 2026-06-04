@@ -72,7 +72,10 @@ export class UserService {
       .order("created_at", { ascending: false })
       .limit(10);
 
-    return { ...(profile as Record<string, unknown>), recent_audit: logs ?? [] };
+    return {
+      ...(profile as Record<string, unknown>),
+      recent_audit: logs ?? [],
+    };
   }
 
   static async updateUserStatus(dto: {
@@ -193,14 +196,15 @@ export class AdminService {
       .select("id")
       .eq("email", dto.email)
       .maybeSingle();
-    if (existing) throw new ConflictError(`Email ${dto.email} is already registered.`);
+    if (existing)
+      throw new ConflictError(`Email ${dto.email} is already registered.`);
 
     const { data: authData, error: authErr } =
       await supabaseAdmin.auth.admin.createUser({
         email: dto.email,
         password: dto.password,
         email_confirm: true,
-        user_metadata: { full_name: dto.name },
+        user_metadata: { full_name: dto.name, role: "superadmin" },
       });
     if (authErr) throw new Error(authErr.message);
 
@@ -209,7 +213,6 @@ export class AdminService {
       .from("profiles")
       .update({ full_name: dto.name, role: "superadmin" as UserRole })
       .eq("id", uid);
-    await supabaseAdmin.from("citizens").delete().eq("id", uid);
 
     return {
       id: uid,
@@ -227,29 +230,25 @@ export class StatsService {
     const startOfWeek = new Date(startOfDay);
     startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay());
 
-    const [
-      profiles,
-      municipalities,
-      complaints,
-      pendingInvites,
-    ] = await Promise.all([
-      supabaseAdmin
-        .from("profiles")
-        .select("id, role, account_status, created_at", { count: "exact" })
-        .eq("is_deleted", false),
-      supabaseAdmin
-        .from("municipalities")
-        .select("m_uid", { count: "exact", head: true })
-        .eq("is_deleted", false),
-      supabaseAdmin
-        .from("complaints")
-        .select("co_uid", { count: "exact", head: true })
-        .eq("is_deleted", false),
-      supabaseAdmin
-        .from("staff_invitations")
-        .select("inv_uid", { count: "exact", head: true })
-        .eq("status", "pending"),
-    ]);
+    const [profiles, municipalities, complaints, pendingInvites] =
+      await Promise.all([
+        supabaseAdmin
+          .from("profiles")
+          .select("id, role, account_status, created_at", { count: "exact" })
+          .eq("is_deleted", false),
+        supabaseAdmin
+          .from("municipalities")
+          .select("m_uid", { count: "exact", head: true })
+          .eq("is_deleted", false),
+        supabaseAdmin
+          .from("complaints")
+          .select("co_uid", { count: "exact", head: true })
+          .eq("is_deleted", false),
+        supabaseAdmin
+          .from("staff_invitations")
+          .select("inv_uid", { count: "exact", head: true })
+          .eq("status", "pending"),
+      ]);
 
     const rows = profiles.data ?? [];
     const byRole = rows.reduce(
@@ -266,12 +265,10 @@ export class StatsService {
         active: rows.filter((r) => r.account_status === "active").length,
         suspended: rows.filter((r) => r.account_status === "suspended").length,
         byRole,
-        newToday: rows.filter(
-          (r) => new Date(r.created_at) >= startOfDay,
-        ).length,
-        newThisWeek: rows.filter(
-          (r) => new Date(r.created_at) >= startOfWeek,
-        ).length,
+        newToday: rows.filter((r) => new Date(r.created_at) >= startOfDay)
+          .length,
+        newThisWeek: rows.filter((r) => new Date(r.created_at) >= startOfWeek)
+          .length,
       },
       municipalities: { total: municipalities.count ?? 0 },
       complaints: { total: complaints.count ?? 0 },

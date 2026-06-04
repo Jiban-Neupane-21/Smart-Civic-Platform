@@ -96,11 +96,19 @@ export type Gender = "male" | "female" | "other" | "prefer_not_to_say";
 export type NotificationPref = "email" | "sms" | "both" | "none";
 export type InviteStatus = "pending" | "accepted" | "expired" | "revoked";
 
+type Address = {
+  "country": String,
+  "state": string,
+  "street": string,
+  "ward_no": string,
+
+}
 export interface ProfileRow {
   id: string;
   full_name: string;
   email: string;
   phone: string | null;
+  full_address: Address;
   role: UserRole;
   account_status: AccountStatus;
   municipality_id: string | null;
@@ -181,9 +189,8 @@ export interface CitizenRow {
   last_name: string;
   date_of_birth: string | null;
   gender: Gender | null;
-  home_address: string | null;
-  permanent_address: string | null;
-  ward_number: string | null;
+  home_address: Address | null;
+  permanent_address: Address | null;
   notification_pref: NotificationPref;
   last_active_at: string | null;
   is_deleted: boolean;
@@ -388,7 +395,7 @@ export interface Database {
       complaints: {
         Row: ComplaintRow;
         Insert: Partial<ComplaintRow> &
-          Pick<ComplaintRow, "citizen_id" | "municipality_id" | "title">;
+        Pick<ComplaintRow, "citizen_id" | "municipality_id" | "title">;
         Update: Partial<Omit<ComplaintRow, "co_uid" | "reported_at">>; Relationships: []
       };
       complaint_categories: {
@@ -399,16 +406,16 @@ export interface Database {
       announcements: {
         Row: AnnouncementRow;
         Insert: Partial<AnnouncementRow> &
-          Pick<
-            AnnouncementRow,
-            "municipality_id" | "created_by" | "title" | "body" | "audience"
-          >;
+        Pick<
+          AnnouncementRow,
+          "municipality_id" | "created_by" | "title" | "body" | "audience"
+        >;
         Update: Partial<Omit<AnnouncementRow, "ann_uid" | "created_at">>; Relationships: []
       };
       feedback: {
         Row: FeedbackRow;
         Insert: Partial<FeedbackRow> &
-          Pick<FeedbackRow, "complaint_id" | "citizen_id" | "rating">;
+        Pick<FeedbackRow, "complaint_id" | "citizen_id" | "rating">;
         Update: Partial<Omit<FeedbackRow, "f_uid" | "created_at">>; Relationships: []
       };
     };

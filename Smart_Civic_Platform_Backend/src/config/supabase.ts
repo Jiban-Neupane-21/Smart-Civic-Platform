@@ -15,30 +15,13 @@
 
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "../types/database.type";
+import { env } from "./env";
 
 // ─── Validate env vars at module load time ────────────────────────────────────
 
-const SUPABASE_URL: string = process.env.SUPABASE_URL ?? "";
-const SUPABASE_ANON_KEY: string = process.env.SUPABASE_ANON_KEY ?? "";
-const SUPABASE_SERVICE_ROLE_KEY: string =
-  process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
-
-if (!SUPABASE_URL) {
-  throw new Error(
-    "[supabase] SUPABASE_URL is missing. Add it to your .env file.",
-  );
-}
-if (!SUPABASE_ANON_KEY) {
-  throw new Error(
-    "[supabase] SUPABASE_ANON_KEY is missing. Add it to your .env file.",
-  );
-}
-if (!SUPABASE_SERVICE_ROLE_KEY) {
-  throw new Error(
-    "[supabase] SUPABASE_SERVICE_ROLE_KEY is missing. Add it to your .env file. " +
-      "Never expose this key to the client.",
-  );
-}
+const SUPABASE_URL: string = env.SUPABASE_URL;
+const SUPABASE_ANON_KEY: string = env.SUPABASE_ANON_KEY;
+const SUPABASE_SERVICE_ROLE_KEY: string = env.SUPABASE_SERVICE_ROLE_KEY;
 
 // ─── Shared client options ────────────────────────────────────────────────────
 
@@ -108,9 +91,7 @@ export const supabaseAdmin = createClient(
  *
  * @param accessToken  The Bearer JWT from the Authorization header
  */
-export function createUserClient(
-  accessToken: string,
-) {
+export function createUserClient(accessToken: string) {
   return createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
     ...sharedOptions,
     global: {

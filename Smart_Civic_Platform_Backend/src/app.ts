@@ -48,7 +48,7 @@ export const INVITE_STATUS = {
 export const ACCOUNT_STATUS = {
   ACTIVE: 'active',
   SUSPENDED: 'suspended',
-  DEACTIVATED: 'deactivated',
+  INACTIVE:  'inactive',   // matches DB enum: account_status('active','inactive','suspended')
 } as const;
 
 // ===============================

@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import * as AuthService from "../services/auth.service";
 import { sendSuccess, sendError } from "../../../utils/response";
+import { supabaseAdmin } from "../../../config/supabase";
 
 export const register = async (req: Request, res: Response) => {
   try {
@@ -56,5 +57,26 @@ export const forgotPassword = async (req: Request, res: Response) => {
 };
 
 export const getMe = async (req: Request, res: Response) => {
-  return sendSuccess(res, req.user);
+  try {
+    const user = req.user!;
+
+    // For citizens, also fetch their address from the citizens table
+    if (user.role === 'citizen') {
+      const { data: citizen } = await supabaseAdmin
+        .from('citizens')
+        .select('first_name, middle_name, last_name, date_of_birth, gender, home_address, permanent_address, ward_number, notification_pref')
+        .eq('id', user.id)
+        .single();
+
+      return sendSuccess(res, {
+        ...user,
+        citizen_details: citizen ?? null,
+      });
+    }
+
+    // For staff/admin roles, just return the profile
+    return sendSuccess(res, user);
+  } catch (e: any) {
+    return sendError(res, e.message, 500);
+  }
 };

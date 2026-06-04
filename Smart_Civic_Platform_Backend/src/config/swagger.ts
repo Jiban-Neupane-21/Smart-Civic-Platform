@@ -4,24 +4,38 @@ import swaggerJsdoc from "swagger-jsdoc";
 
 /** Collect route files — merges cwd-based and package-relative dirs so Swagger works regardless of process.cwd(). */
 function getRouteApiFiles(): string[] {
-  const dirs = [
+  const searchDirs = [
     path.resolve(process.cwd(), "src", "routes"),
+    path.resolve(process.cwd(), "src", "modules"),
     path.resolve(process.cwd(), "dist", "routes"),
+    path.resolve(process.cwd(), "dist", "modules"),
     path.resolve(__dirname, "..", "routes"),
   ].filter((dir, i, all) => fs.existsSync(dir) && all.indexOf(dir) === i);
 
   const byBase = new Map<string, string>();
 
-  for (const dir of dirs) {
-    for (const file of fs.readdirSync(dir)) {
-      if (!/\.(ts|js)$/.test(file) || file.endsWith(".d.ts")) continue;
-      const fullPath = path.join(dir, file);
-      const base = file.replace(/\.(ts|js)$/, "");
+  function collectFiles(dir: string) {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const fullPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        collectFiles(fullPath);
+        continue;
+      }
+      if (!/\.(ts|js)$/.test(entry.name) || entry.name.endsWith(".d.ts"))
+        continue;
+      const base = entry.name.replace(/\.(ts|js)$/, "");
       const existing = byBase.get(base);
-      if (!existing || (file.endsWith(".ts") && !existing.endsWith(".ts"))) {
+      if (
+        !existing ||
+        (entry.name.endsWith(".ts") && !existing.endsWith(".ts"))
+      ) {
         byBase.set(base, fullPath);
       }
     }
+  }
+
+  for (const dir of searchDirs) {
+    collectFiles(dir);
   }
 
   return [...byBase.values()].sort();
@@ -107,7 +121,7 @@ const swaggerDefinition: swaggerJsdoc.Options["definition"] = {
           email: { type: "string", format: "email" },
           password: { type: "string", minLength: 8 },
           phone: { type: "string" },
-          ward_number: { type: "string" },
+          full_address: { type: "string" },
         },
       },
       RefreshRequest: {
@@ -171,6 +185,39 @@ const swaggerDefinition: swaggerJsdoc.Options["definition"] = {
           rating: { type: "integer", minimum: 1, maximum: 5 },
           comment: { type: "string" },
           is_anonymous: { type: "boolean" },
+        },
+      },
+      CitizenDetails: {
+        type: "object",
+        description: "Extra citizen-specific data (only present when role = citizen)",
+        properties: {
+          first_name:        { type: "string" },
+          middle_name:       { type: "string", nullable: true },
+          last_name:         { type: "string" },
+          date_of_birth:     { type: "string", format: "date", nullable: true },
+          gender:            { type: "string", enum: ["male", "female", "other", "prefer_not_to_say"], nullable: true },
+          home_address:      { type: "string", nullable: true, example: "Kathmandu, Ward 5" },
+          permanent_address: { type: "string", nullable: true, example: "Pokhara, Ward 3" },
+          ward_number:       { type: "string", nullable: true },
+          notification_pref: { type: "string", enum: ["email", "sms", "both", "none"] },
+        },
+      },
+      MeResponse: {
+        type: "object",
+        properties: {
+          id:              { type: "string", format: "uuid" },
+          full_name:       { type: "string", example: "John Doe" },
+          email:           { type: "string", format: "email" },
+          phone:           { type: "string", nullable: true },
+          role:            { type: "string", enum: ["superadmin", "municipality_head", "department_head", "staff", "citizen"] },
+          account_status:  { type: "string", enum: ["active", "inactive", "suspended"] },
+          municipality_id: { type: "string", format: "uuid", nullable: true },
+          department_id:   { type: "string", format: "uuid", nullable: true },
+          citizen_details: {
+            nullable: true,
+            description: "Only present when role = citizen",
+            allOf: [{ $ref: "#/components/schemas/CitizenDetails" }],
+          },
         },
       },
     },

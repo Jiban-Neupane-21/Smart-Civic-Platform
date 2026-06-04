@@ -10,6 +10,7 @@ import type {
   AnnouncementAudience,
   ComplaintStatus,
   DepartmentType,
+  EmployeeStatus,
   Priority,
 } from "../../../types/database.type";
 
@@ -31,9 +32,9 @@ function mapMunicipalityBody(body: Record<string, unknown>) {
   return {
     official_name: (body.name ?? body.official_name) as string,
     slug: (body.code ?? body.slug) as string | undefined,
-    region_state: [body.district, body.province]
-      .filter(Boolean)
-      .join(", ") || (body.region_state as string | undefined),
+    region_state:
+      [body.district, body.province].filter(Boolean).join(", ") ||
+      (body.region_state as string | undefined),
     office_address: (body.address ?? body.office_address) as string | undefined,
     login_email: (body.login_email ?? body.email) as string,
     support_email: body.support_email as string | undefined,
@@ -92,7 +93,8 @@ export class MunicipalityService {
       .eq("m_uid", id)
       .eq("is_deleted", false)
       .single();
-    if (error || !data) throw new NotFoundError(`Municipality ${id} not found.`);
+    if (error || !data)
+      throw new NotFoundError(`Municipality ${id} not found.`);
     return data;
   }
 
@@ -226,7 +228,9 @@ function mapDepartmentBody(
     department_type: (body.department_type ?? body.type) as
       | DepartmentType
       | undefined,
-    dept_contact: (body.contactPhone ?? body.dept_contact) as string | undefined,
+    dept_contact: (body.contactPhone ?? body.dept_contact) as
+      | string
+      | undefined,
     dept_email: (body.contactEmail ?? body.headEmail ?? body.dept_email) as
       | string
       | undefined,
@@ -267,7 +271,9 @@ export class DepartmentService {
     return data;
   }
 
-  static async create(dto: Record<string, unknown> & { municipalityId: string }) {
+  static async create(
+    dto: Record<string, unknown> & { municipalityId: string },
+  ) {
     const mapped = mapDepartmentBody(dto.municipalityId, dto);
     if (!mapped.dept_name) throw new Error("dept_name is required");
 
@@ -348,7 +354,9 @@ export class StaffService {
     };
   }
 
-  static async create(dto: Record<string, unknown> & { municipalityId: string }) {
+  static async create(
+    dto: Record<string, unknown> & { municipalityId: string },
+  ) {
     throw new Error(
       "Direct staff creation is not supported. Use POST /api/auth/invite to invite staff.",
     );
@@ -359,8 +367,7 @@ export class StaffService {
     municipalityId: string,
     status: string,
   ) {
-    const employeeStatus =
-      status === "inactive" ? "inactive" : status === "terminated" ? "terminated" : "active";
+    const employeeStatus = status as EmployeeStatus;
 
     const { data, error } = await supabaseAdmin
       .from("staff")
@@ -467,7 +474,9 @@ export class ComplaintService {
     return data;
   }
 
-  static async create(dto: Record<string, unknown> & { municipalityId: string }) {
+  static async create(
+    dto: Record<string, unknown> & { municipalityId: string },
+  ) {
     const { data, error } = await supabaseAdmin
       .from("complaints")
       .insert({
@@ -575,10 +584,12 @@ export class NoticeService {
     return data;
   }
 
-  static async create(dto: Record<string, unknown> & {
-    municipalityId: string;
-    publishedBy: string;
-  }) {
+  static async create(
+    dto: Record<string, unknown> & {
+      municipalityId: string;
+      publishedBy: string;
+    },
+  ) {
     const { data, error } = await supabaseAdmin
       .from("announcements")
       .insert({
@@ -586,7 +597,9 @@ export class NoticeService {
         created_by: dto.publishedBy,
         title: dto.title as string,
         body: dto.body as string,
-        audience: (dto.category ?? dto.audience ?? "all") as AnnouncementAudience,
+        audience: (dto.category ??
+          dto.audience ??
+          "all") as AnnouncementAudience,
         department_id: (dto.departmentId as string) ?? null,
         published_at: dto.publishedAt
           ? new Date(dto.publishedAt as string).toISOString()

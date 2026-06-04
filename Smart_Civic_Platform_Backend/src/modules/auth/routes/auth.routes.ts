@@ -137,15 +137,24 @@ router.post(
  * /api/auth/me:
  *   get:
  *     tags: [Auth]
- *     summary: Get current user profile
+ *     summary: Get current user profile (includes address for citizens)
  *     security: [{ BearerAuth: [] }]
  *     responses:
  *       200:
- *         description: Current user profile
+ *         description: >
+ *           Current user profile. For citizens, includes `citizen_details`
+ *           with `home_address`, `permanent_address`, and other citizen fields.
+ *           For staff/admin roles, only profile data is returned.
  *         content:
  *           application/json:
  *             schema:
- *               $ref: '#/components/schemas/SuccessResponse'
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   $ref: '#/components/schemas/MeResponse'
  *       401:
  *         $ref: '#/components/responses/Unauthorized'
  */

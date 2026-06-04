@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router } from "express";
 import {
   authenticate,
   isSuperadmin,
@@ -6,118 +6,288 @@ import {
   requestLogger,
   superadminRateLimiter,
   validateBody,
-} from '../middleware';
+} from "../middleware";
 import {
   UserController,
   AdminController,
   StatsController,
   AuditLogController,
   FeatureFlagController,
-} from '../controller';
+} from "../controller";
 
 const router = Router();
 
 // ─── Global Middleware (applied to ALL superadmin routes) ─────────────────────
 
 router.use(superadminRateLimiter); // rate limit: 100 req / 15 min
-router.use(requestLogger);         // log every request with timing
-router.use(authenticate);          // verify JWT
-router.use(isSuperadmin);          // enforce superadmin role
+router.use(requestLogger); // log every request with timing
+router.use(authenticate); // verify JWT
+router.use(isSuperadmin); // enforce superadmin role
 
 // ─── Stats ────────────────────────────────────────────────────────────────────
 
 /**
- * GET /superadmin/stats
- * Platform-wide dashboard statistics (users, growth, admins).
+ * @swagger
+ * /api/superadmin/stats:
+ *   get:
+ *     tags: [Superadmin]
+ *     summary: Platform-wide dashboard statistics
+ *     security:
+ *       - BearerAuth: []
+ *     responses:
+ *       200:
+ *         description: OK
  */
-router.get('/stats', StatsController.overview);
+router.get("/stats", StatsController.overview);
 
 // ─── Users ────────────────────────────────────────────────────────────────────
 
 /**
- * GET /superadmin/users?page=1&limit=20&search=john
- * Paginated list of all users.
+ * @swagger
+ * /api/superadmin/users:
+ *   get:
+ *     tags: [Superadmin]
+ *     summary: List users for superadmin
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *       - in: query
+ *         name: search
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: OK
  */
-router.get('/users', UserController.list);
+router.get("/users", UserController.list);
 
 /**
- * GET /superadmin/users/:id
- * Full profile for a single user including audit history.
+ * @swagger
+ * /api/superadmin/users/{id}:
+ *   get:
+ *     tags: [Superadmin]
+ *     summary: Get a user by id
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       200:
+ *         description: OK
  */
-router.get('/users/:id', UserController.getById);
+router.get("/users/:id", UserController.getById);
 
 /**
- * PATCH /superadmin/users/:id/status
- * Ban, suspend, or reactivate a user.
- * Required body: { status: 'banned' | 'suspended' | 'active', reason?: string }
+ * @swagger
+ * /api/superadmin/users/{id}/status:
+ *   patch:
+ *     tags: [Superadmin]
+ *     summary: Update user status
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - status
+ *     responses:
+ *       200:
+ *         description: Updated
  */
 router.patch(
-  '/users/:id/status',
+  "/users/:id/status",
   auditLogger,
-  validateBody(['status']),
-  UserController.updateStatus
+  validateBody(["status"]),
+  UserController.updateStatus,
 );
 
 /**
- * DELETE /superadmin/users/:id
- * Permanently delete a user account (irreversible).
+ * @swagger
+ * /api/superadmin/users/{id}:
+ *   delete:
+ *     tags: [Superadmin]
+ *     summary: Permanently delete a user account
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       200:
+ *         description: Deleted
  */
-router.delete('/users/:id', auditLogger, UserController.delete);
+router.delete("/users/:id", auditLogger, UserController.delete);
 
 /**
- * POST /superadmin/users/:id/impersonate
- * Generate a 30-minute impersonation token for debugging/support.
+ * @swagger
+ * /api/superadmin/users/{id}/impersonate:
+ *   post:
+ *     tags: [Superadmin]
+ *     summary: Generate an impersonation token for a user
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       200:
+ *         description: Impersonation token created
  */
-router.post('/users/:id/impersonate', auditLogger, UserController.impersonate);
+router.post("/users/:id/impersonate", auditLogger, UserController.impersonate);
 
 // ─── Admins ───────────────────────────────────────────────────────────────────
 
 /**
- * GET /superadmin/admins
- * List all admin and superadmin accounts.
+ * @swagger
+ * /api/superadmin/admins:
+ *   get:
+ *     tags: [Superadmin]
+ *     summary: List admin and superadmin accounts
+ *     security:
+ *       - BearerAuth: []
+ *     responses:
+ *       200:
+ *         description: OK
  */
-router.get('/admins', AdminController.list);
+router.get("/admins", AdminController.list);
 
 /**
- * POST /superadmin/admins
- * Create a new admin account.
- * Required body: { name, email, password, role? }
+ * @swagger
+ * /api/superadmin/admins:
+ *   post:
+ *     tags: [Superadmin]
+ *     summary: Create a new admin account
+ *     security:
+ *       - BearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - name
+ *               - email
+ *               - password
+ *     responses:
+ *       201:
+ *         description: Created
  */
 router.post(
-  '/admins',
+  "/admins",
   auditLogger,
-  validateBody(['name', 'email', 'password']),
-  AdminController.create
+  validateBody(["name", "email", "password"]),
+  AdminController.create,
 );
 
 // ─── Audit Logs ───────────────────────────────────────────────────────────────
 
 /**
- * GET /superadmin/audit-logs?page=1&limit=20
- * Paginated superadmin audit log.
+ * @swagger
+ * /api/superadmin/audit-logs:
+ *   get:
+ *     tags: [Superadmin]
+ *     summary: List superadmin audit logs
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: OK
  */
-router.get('/audit-logs', AuditLogController.list);
+router.get("/audit-logs", AuditLogController.list);
 
 // ─── Feature Flags ────────────────────────────────────────────────────────────
 
 /**
- * GET /superadmin/feature-flags
- * List all feature flags with their current state.
+ * @swagger
+ * /api/superadmin/feature-flags:
+ *   get:
+ *     tags: [Superadmin]
+ *     summary: List feature flags
+ *     security:
+ *       - BearerAuth: []
+ *     responses:
+ *       200:
+ *         description: OK
  */
-router.get('/feature-flags', FeatureFlagController.list);
+router.get("/feature-flags", FeatureFlagController.list);
 
 /**
- * PATCH /superadmin/feature-flags/:id/toggle
- * Enable or disable a feature flag.
- * Required body: { enabled: boolean }
+ * @swagger
+ * /api/superadmin/feature-flags/{id}/toggle:
+ *   patch:
+ *     tags: [Superadmin]
+ *     summary: Toggle a feature flag
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - enabled
+ *             properties:
+ *               enabled:
+ *                 type: boolean
+ *     responses:
+ *       200:
+ *         description: Updated
  */
 router.patch(
-  '/feature-flags/:id/toggle',
+  "/feature-flags/:id/toggle",
   auditLogger,
-  validateBody(['enabled']),
-  FeatureFlagController.toggle
+  validateBody(["enabled"]),
+  FeatureFlagController.toggle,
 );
-
 export default router;
 
 // ─── Route Summary ────────────────────────────────────────────────────────────
