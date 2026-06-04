@@ -16,10 +16,13 @@ import VisibilityIcon from "@mui/icons-material/Visibility";
 import VisibilityOffIcon from "@mui/icons-material/VisibilityOff";
 import LockOutlinedIcon from "@mui/icons-material/LockOutlined";
 import { loginSchema } from "../../validation/auth.schema";
+import { useAuth } from "../../components/layout/AuthContext";
+import { withRoleRedirect } from "./withRoleRedirect";
 
-export const Login: React.FC = () => {
+function LoginBase() {
   const [showPassword, setShowPassword] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const { login } = useAuth();
 
   const formik = useFormik({
     initialValues: {
@@ -30,9 +33,27 @@ export const Login: React.FC = () => {
     onSubmit: async (values, { setSubmitting }) => {
       try {
         setSubmitError(null);
-        // Integrate your backend routing or Supabase auth client here:
-        // const { data, error } = await supabase.auth.signInWithPassword({ email: values.email, password: values.password })
-        console.log("Login Payload Submitted:", values);
+
+        const response = await fetch("http://localhost:3000/api/auth/login", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(values),
+        });
+
+        const result = await response.json();
+
+        if (!response.ok) {
+          throw new Error(result.message || "Login failed");
+        }
+
+        // Global state updates here. HOC catches it and redirects securely!
+        if (result.data) {
+          login(result.data.access_token, result.data.profile);
+        } else {
+          login(result.access_token, result.profile); // Fallback mapping
+        }
       } catch (err: unknown) {
         const errorMessage =
           err instanceof Error
@@ -168,4 +189,6 @@ export const Login: React.FC = () => {
       </Box>
     </Container>
   );
-};
+}
+
+export default withRoleRedirect(LoginBase);

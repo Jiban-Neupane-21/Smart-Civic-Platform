@@ -14,6 +14,7 @@ import {
   FiAlertTriangle,
   FiMessageSquare,
   FiClock,
+  FiLogOut,
 } from "react-icons/fi";
 import { MdOutlinePeople } from "react-icons/md";
 
@@ -34,90 +35,136 @@ function cloneWithSize(
   icon: React.ReactElement,
   size: number,
 ): React.ReactElement {
-  return React.cloneElement(icon, size);
+  return React.cloneElement(icon, { size });
 }
+
+//superadmin
+//municipality
+//department
+//staff
+//citizen
+
+//common
+const dashboardItem = createNavItem("Dashboard", <FiGrid />);
+const logoutItem = createNavItem("Logout", <FiLogOut />);
+const manageMunicipalityItem = createNavItem(
+  "Manage Municipality",
+  <FiBriefcase />,
+);
+const auditLogItem = createNavItem("Audit Log", <FiList />);
+const systemSettingItem = createNavItem("System Setting", <FiSettings />);
+const manageDepartmentItem = createNavItem(
+  "Manage Department",
+  <FiGitBranch />,
+);
+const manageStaffItem = createNavItem("Manage Staff", <FiUsers />);
+const complaintDetailItem = createNavItem("Complaint Detail", <FiFileText />);
+const reportAnalyticsItem = createNavItem(
+  "Report & Analytics",
+  <FiBarChart2 />,
+);
+const notificationItem = createNavItem("Notification", <FiBell />);
+const profileItem = createNavItem("Profile", <FiUser />);
+const staffItem = createNavItem("Staff", <FiUsers />);
+const teamItem = createNavItem("Team", <MdOutlinePeople />);
+const complaintItem = createNavItem("Complaint", <FiAlertTriangle />);
+const submitComplaintItem = createNavItem(
+  "Submit Complaint",
+  <FiMessageSquare />,
+);
+const complaintHistoryItem = createNavItem("Complaint History", <FiClock />);
 
 export const NavbarItems: NavbarConfig = {
   SuperAdmin: {
     desktop: [
-      createNavItem("Dashboard", <FiGrid />).desktop,
-      createNavItem("Manage Municipality", <FiBriefcase />).desktop,
-      createNavItem("Audit Log", <FiList />).desktop,
-      createNavItem("System Setting", <FiSettings />).desktop,
+      dashboardItem.desktop,
+      manageMunicipalityItem.desktop,
+      auditLogItem.desktop,
+      systemSettingItem.desktop,
+      logoutItem.desktop,
     ],
     mobile: [
-      createNavItem("Dashboard", <FiGrid />).mobile,
-      createNavItem("Manage Municipality", <FiBriefcase />).mobile,
-      createNavItem("Audit Log", <FiList />).mobile,
-      createNavItem("System Setting", <FiSettings />).mobile,
+      dashboardItem.mobile,
+      manageMunicipalityItem.mobile,
+      auditLogItem.mobile,
+      systemSettingItem.mobile,
+      logoutItem.mobile,
     ],
   },
 
   Municipality: {
     desktop: [
-      createNavItem("Dashboard", <FiGrid />).desktop,
-      createNavItem("Manage Department", <FiGitBranch />).desktop,
-      createNavItem("Manage Staff", <FiUsers />).desktop,
-      createNavItem("Complaint Detail", <FiFileText />).desktop,
-      createNavItem("Report & Analytics", <FiBarChart2 />).desktop,
-      createNavItem("Notification", <FiBell />).desktop,
-      createNavItem("Profile", <FiUser />).desktop,
+      dashboardItem.desktop,
+      manageDepartmentItem.desktop,
+      manageStaffItem.desktop,
+      complaintDetailItem.desktop,
+      reportAnalyticsItem.desktop,
+      notificationItem.desktop,
+      profileItem.desktop,
+      logoutItem.desktop,
     ],
     mobile: [
-      createNavItem("Dashboard", <FiGrid />).mobile,
-      createNavItem("Complaint Detail", <FiFileText />).mobile,
-      createNavItem("Notification", <FiBell />).mobile,
-      createNavItem("Profile", <FiUser />).mobile,
+      dashboardItem.mobile,
+      complaintDetailItem.mobile,
+      notificationItem.mobile,
+      profileItem.mobile,
+      logoutItem.mobile,
     ],
   },
 
   Department: {
     desktop: [
-      createNavItem("Dashboard", <FiGrid />).desktop,
-      createNavItem("Staff", <FiUsers />).desktop,
-      createNavItem("Team", <MdOutlinePeople />).desktop,
-      createNavItem("Complaint Detail", <FiFileText />).desktop,
-      createNavItem("Report & Analytics", <FiBarChart2 />).desktop,
-      createNavItem("Notification", <FiBell />).desktop,
-      createNavItem("Profile", <FiUser />).desktop,
+      dashboardItem.desktop,
+      staffItem.desktop,
+      teamItem.desktop,
+      complaintDetailItem.desktop,
+      reportAnalyticsItem.desktop,
+      notificationItem.desktop,
+      profileItem.desktop,
+      logoutItem.desktop,
     ],
     mobile: [
-      createNavItem("Dashboard", <FiGrid />).mobile,
-      createNavItem("Complaint Detail", <FiFileText />).mobile,
-      createNavItem("Notification", <FiBell />).mobile,
-      createNavItem("Profile", <FiUser />).mobile,
+      dashboardItem.mobile,
+      complaintDetailItem.mobile,
+      notificationItem.mobile,
+      profileItem.mobile,
+      logoutItem.mobile,
     ],
   },
 
   Staff: {
     desktop: [
-      createNavItem("Dashboard", <FiGrid />).desktop,
-      createNavItem("Complaint", <FiAlertTriangle />).desktop,
-      createNavItem("Notification", <FiBell />).desktop,
-      createNavItem("Profile", <FiUser />).desktop,
+      dashboardItem.desktop,
+      complaintItem.desktop,
+      notificationItem.desktop,
+      profileItem.desktop,
+      logoutItem.desktop,
     ],
     mobile: [
-      createNavItem("Dashboard", <FiGrid />).mobile,
-      createNavItem("Complaint", <FiAlertTriangle />).mobile,
-      createNavItem("Notification", <FiBell />).mobile,
-      createNavItem("Profile", <FiUser />).mobile,
+      dashboardItem.mobile,
+      complaintItem.mobile,
+      notificationItem.mobile,
+      profileItem.mobile,
+      logoutItem.mobile,
     ],
   },
 
   Citizen: {
     desktop: [
-      createNavItem("Dashboard", <FiGrid />).desktop,
-      createNavItem("Submit Complaint", <FiMessageSquare />).desktop,
-      createNavItem("Complaint History", <FiClock />).desktop,
-      createNavItem("Notification", <FiBell />).desktop,
-      createNavItem("Profile", <FiUser />).desktop,
+      dashboardItem.desktop,
+      submitComplaintItem.desktop,
+      complaintHistoryItem.desktop,
+      notificationItem.desktop,
+      profileItem.desktop,
+      logoutItem.desktop,
     ],
     mobile: [
-      createNavItem("Dashboard", <FiGrid />).mobile,
-      createNavItem("Submit Complaint", <FiMessageSquare />).mobile,
-      createNavItem("Complaint History", <FiClock />).mobile,
-      createNavItem("Notification", <FiBell />).mobile,
-      createNavItem("Profile", <FiUser />).mobile,
+      dashboardItem.mobile,
+      submitComplaintItem.mobile,
+      complaintHistoryItem.mobile,
+      notificationItem.mobile,
+      profileItem.mobile,
+      logoutItem.mobile,
     ],
   },
 };

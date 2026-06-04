@@ -24,7 +24,7 @@ export function Navbar({ role }: NavbarProps) {
         }}
       >
         <DesktopNav
-          items={config.desktop}
+          items={config?.desktop || []}
           activePath={activePath}
           onNavigate={navigate}
           role={role}
@@ -41,7 +41,7 @@ export function Navbar({ role }: NavbarProps) {
         }}
       >
         <MobileNav
-          items={config.mobile}
+          items={config?.mobile || []}
           activePath={activePath}
           onNavigate={navigate}
           role={role}

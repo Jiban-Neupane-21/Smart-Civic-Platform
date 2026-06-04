@@ -40,3 +40,12 @@ coverage/
 
 # misc
 *.pem
+
+.mcp.json
+.windsurfrules
+AGENT.md 
+CLAUDE.md
+
+/.jetro
+/.github
+/.cursor
