@@ -15,11 +15,27 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setUser(profile);
   };
 
-  const logout = () => {
-    localStorage.removeItem("access_token");
-    localStorage.removeItem("refresh_token");
-    localStorage.removeItem("user_profile");
-    setUser(null);
+  const logout = async () => {
+    try {
+      const token = localStorage.getItem("access_token");
+      if (token) {
+        await fetch("http://localhost:3000/api/auth/logout", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+        });
+      }
+    } catch (error) {
+      console.error("Failed to invalidate session on the server:", error);
+    } finally {
+      // Always clean up local state regardless of server response
+      localStorage.removeItem("access_token");
+      localStorage.removeItem("refresh_token");
+      localStorage.removeItem("user_profile");
+      setUser(null);
+    }
   };
 
   return (

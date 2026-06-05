@@ -13,6 +13,7 @@ import {
   StatsController,
   AuditLogController,
   FeatureFlagController,
+  MunicipalityController,
 } from "../controller";
 
 const router = Router();
@@ -288,6 +289,113 @@ router.patch(
   validateBody(["enabled"]),
   FeatureFlagController.toggle,
 );
+
+// ─── Municipalities ───────────────────────────────────────────────────────────
+
+/**
+ * @swagger
+ * /api/superadmin/municipalities:
+ *   get:
+ *     tags: [Superadmin]
+ *     summary: List all municipalities
+ *     security:
+ *       - BearerAuth: []
+ *     responses:
+ *       200:
+ *         description: OK
+ */
+router.get("/municipalities", MunicipalityController.list);
+
+/**
+ * @swagger
+ * /api/superadmin/municipalities:
+ *   post:
+ *     tags: [Superadmin]
+ *     summary: Create a new municipality
+ *     security:
+ *       - BearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - name
+ *               - email
+ *               - head_name
+ *               - head_email
+ *               - head_password
+ *             properties:
+ *               name:
+ *                 type: string
+ *               email:
+ *                 type: string
+ *               region:
+ *                 type: string
+ *               head_name:
+ *                 type: string
+ *               head_email:
+ *                 type: string
+ *               head_password:
+ *                 type: string
+ *     responses:
+ *       201:
+ *         description: Created
+ */
+router.post(
+  "/municipalities",
+  auditLogger,
+  validateBody(["name", "email", "head_name", "head_email", "head_password"]),
+  MunicipalityController.create,
+);
+
+/**
+ * @swagger
+ * /api/superadmin/municipalities/{id}:
+ *   patch:
+ *     tags: [Superadmin]
+ *     summary: Update a municipality
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       200:
+ *         description: Updated
+ */
+router.patch("/municipalities/:id", auditLogger, MunicipalityController.update);
+
+/**
+ * @swagger
+ * /api/superadmin/municipalities/{id}:
+ *   delete:
+ *     tags: [Superadmin]
+ *     summary: Soft delete a municipality
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       200:
+ *         description: Deleted
+ */
+router.delete(
+  "/municipalities/:id",
+  auditLogger,
+  MunicipalityController.delete,
+);
+
 export default router;
 
 // ─── Route Summary ────────────────────────────────────────────────────────────
@@ -309,3 +417,6 @@ export default router;
 //
 //  GET    /superadmin/feature-flags
 //  PATCH  /superadmin/feature-flags/:id/toggle [audited]
+//
+//  GET    /superadmin/municipalities
+//  DELETE /superadmin/municipalities/:id       [audited]

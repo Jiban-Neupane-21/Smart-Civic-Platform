@@ -1,12 +1,16 @@
 import { Routes, Route } from "react-router-dom";
 import MainLayout from "../components/layout/MainLayout";
 import AuthLayout from "../components/layout/AuthLayout";
-import SmartCitizenLanding from "../pages/LandingPage";
+import SmartCitizenLanding from "../pages/common/LandingPage";
 import Login from "../pages/auth/Login";
 import { CitizenDashboard } from "../pages/citizen/Homepage";
 import { Register } from "../pages/auth/CitizenRegister";
 import { AuthProvider } from "../components/layout/AuthContext";
 import ProtectedRoute from "./ProtectedRoute";
+
+import NotFoundPage from "../pages/common/NotFoundPage";
+import AuditLog from "../pages/Superadmin/AuditLog";
+import ManageMuniciple from "../pages/Superadmin/ManageMuniciple";
 
 function AppRoute() {
   return (
@@ -35,6 +39,9 @@ function AppRoute() {
               path="/superadmin/dashboard"
               element={<div>Superadmin Dashboard Placeholder</div>}
             />
+            <Route path="/manage-municipality" element={<ManageMuniciple />} />
+            
+            <Route path="/audit-log" element={<AuditLog />} />
           </Route>
         </Route>
 
@@ -69,6 +76,11 @@ function AppRoute() {
             />
           </Route>
         </Route>
+
+        {/* --- The Catch-All 404 Route --- */}
+        {/* This route MUST be the last one in the list. */}
+        {/* It will match any path that was not matched by the routes above. */}
+        <Route path="*" element={<NotFoundPage />} />
       </Routes>
     </AuthProvider>
   );

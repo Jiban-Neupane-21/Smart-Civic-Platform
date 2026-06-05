@@ -39,44 +39,12 @@ router.use(requestLogger);
  *     responses:
  *       200:
  *         description: OK
- *   post:
- *     tags: [Municipality]
- *     summary: Create a municipality
- *     security:
- *       - BearerAuth: []
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - name
- *               - code
- *               - email
- *               - province
- *               - district
- *               - address
- *     responses:
- *       201:
- *         description: Created
  */
 router.get(
   "/",
   municipalityRateLimiter,
   authenticate,
-  isMunicipalityAdmin,
   MunicipalityController.list,
-);
-
-router.post(
-  "/",
-  municipalityRateLimiter,
-  authenticate,
-  isMunicipalityAdmin,
-  auditLogger,
-  validateBody(["name", "code", "email", "province", "district", "address"]),
-  MunicipalityController.create,
 );
 
 /**
@@ -118,21 +86,6 @@ router.post(
  *     responses:
  *       200:
  *         description: Updated
- *   delete:
- *     tags: [Municipality]
- *     summary: Delete a municipality
- *     security:
- *       - BearerAuth: []
- *     parameters:
- *       - in: path
- *         name: municipalityId
- *         required: true
- *         schema:
- *           type: string
- *           format: uuid
- *     responses:
- *       200:
- *         description: Deleted
  */
 router.get(
   "/:municipalityId",
@@ -151,15 +104,6 @@ router.patch(
   belongsToMunicipality,
   auditLogger,
   MunicipalityController.update,
-);
-
-router.delete(
-  "/:municipalityId",
-  municipalityRateLimiter,
-  authenticate,
-  isMunicipalityAdmin,
-  auditLogger,
-  MunicipalityController.delete,
 );
 
 /**
@@ -886,6 +830,9 @@ export default router;
 //  GET  /municipalities/:id/notices
 //  GET  /municipalities/:id/notices/:noticeId
 //
+//  🔐 Authenticated (Any role):
+//  GET  /municipalities
+//
 //  🔐 Municipality Staff (auth + role + belongsToMunicipality):
 //  GET    /municipalities/:id
 //  GET    /municipalities/:id/stats
@@ -898,7 +845,6 @@ export default router;
 //  PATCH  /municipalities/:id/notices/:noticeId         [audited]
 //
 //  🔐 Municipality Admin (auth + admin role + belongsToMunicipality):
-//  GET    /municipalities
 //  PATCH  /municipalities/:id                           [audited]
 //  POST   /municipalities/:id/departments               [audited]
 //  PATCH  /municipalities/:id/departments/:deptId       [audited]

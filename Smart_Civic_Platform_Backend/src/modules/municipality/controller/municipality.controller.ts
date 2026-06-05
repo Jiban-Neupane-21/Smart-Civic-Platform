@@ -1,5 +1,6 @@
-import { Response } from 'express';
-import { AuthenticatedRequest } from '../middleware';
+import { Response } from "express";
+import { AuthenticatedRequest } from "../middleware";
+import { supabaseAdmin } from "../../../config/supabase";
 import {
   MunicipalityService,
   DepartmentService,
@@ -10,7 +11,7 @@ import {
   NotFoundError,
   ForbiddenError,
   ConflictError,
-} from '../services/municipality.service';
+} from "../services/municipality.service";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -29,18 +30,20 @@ const asyncHandler =
         });
         return;
       }
-      console.error('[MUNICIPALITY CONTROLLER ERROR]', err);
-      res.status(500).json({ success: false, message: 'Internal server error.' });
+      console.error("[MUNICIPALITY CONTROLLER ERROR]", err);
+      res
+        .status(500)
+        .json({ success: false, message: "Internal server error." });
     });
   };
 
 const param = (value: string | string[] | undefined) =>
-  String(Array.isArray(value) ? value[0] : value ?? "");
+  String(Array.isArray(value) ? value[0] : (value ?? ""));
 
 const getPagination = (req: AuthenticatedRequest) => ({
   page: parseInt(req.query.page as string) || 1,
   limit: parseInt(req.query.limit as string) || 20,
-  search: (req.query.search as string) || '',
+  search: (req.query.search as string) || "",
 });
 
 // ─── Municipality Controller ──────────────────────────────────────────────────
@@ -60,7 +63,9 @@ export class MunicipalityController {
    * Get full profile of a municipality including department list.
    */
   static getById = asyncHandler(async (req, res) => {
-    const muni = await MunicipalityService.getById(param(req.params.municipalityId));
+    const muni = await MunicipalityService.getById(
+      param(req.params.municipalityId),
+    );
     res.json({ success: true, data: muni });
   });
 
@@ -70,8 +75,95 @@ export class MunicipalityController {
    * Body: { name, code, province, district, address, type, ... }
    */
   static create = asyncHandler(async (req, res) => {
-    const muni = await MunicipalityService.create(req.body);
-    res.status(201).json({ success: true, message: 'Municipality created.', data: muni });
+    const { name, email, region, head_name, head_email, head_password } =
+      req.body;
+
+    // 1. Create the Municipality first to generate its UUID
+    const { data: municipality, error: munError } = await supabaseAdmin
+      .from("municipalities")
+      .insert({
+        official_name: name,
+        region_state: region,
+        login_email: email,
+      })
+      .select("m_uid")
+      .single();
+
+    if (munError) {
+      // Handle PostgreSQL Unique Constraint Violation for Municipality Email
+      if (munError.code === "23505") {
+        throw new ConflictError("Municipality contact email already exists.");
+      }
+      throw munError;
+    }
+
+    // 2. Create the Municipality Head User (Database trigger handles the rest!)
+    const { data: authUser, error: authError } =
+      await supabaseAdmin.auth.admin.createUser({
+        email: head_email,
+        password: head_password,
+        email_confirm: true, // Bypass email verification
+        user_metadata: {
+          full_name: head_name,
+          role: "municipality_head",
+          municipality_id: municipality.m_uid, // Crucial: Links the trigger's staff row!
+        },
+      });
+
+    if (authError) {
+      // Rollback: Delete the municipality we just created if user creation fails
+      await supabaseAdmin
+        .from("municipalities")
+        .delete()
+        .eq("m_uid", municipality.m_uid);
+
+      if (authError.message.toLowerCase().includes("already registered")) {
+        throw new ConflictError(
+          "Municipality head email is already registered to another user.",
+        );
+      }
+      throw authError;
+    }
+
+    // Ensure the profile is explicitly created/updated in case the database trigger is missing or failed
+    await supabaseAdmin.from("profiles").upsert({
+      id: authUser.user.id,
+      email: head_email,
+      full_name: head_name,
+      role: "municipality_head",
+      municipality_id: municipality.m_uid,
+      account_status: "active",
+    });
+
+    // Ensure the staff record is explicitly created/updated
+    await supabaseAdmin.from("staff").upsert(
+      {
+        profile_id: authUser.user.id,
+        municipality_id: municipality.m_uid,
+        staff_role: "municipality_head",
+        employee_status: "active",
+      },
+      { onConflict: "profile_id" },
+    );
+
+    // 3. Link the new Auth User's ID back to the Municipality as the head_id
+    await supabaseAdmin
+      .from("municipalities")
+      .update({ head_id: authUser.user.id })
+      .eq("m_uid", municipality.m_uid);
+
+    // 4. Return success mapped to the frontend's expected format
+    res.status(201).json({
+      success: true,
+      message: "Municipality and Head account created successfully.",
+      data: {
+        id: municipality.m_uid,
+        name: name,
+        region: region || "N/A",
+        email: email,
+        status: "Active",
+      },
+    });
   });
 
   /**
@@ -79,8 +171,39 @@ export class MunicipalityController {
    * Update municipality details.
    */
   static update = asyncHandler(async (req, res) => {
-    const muni = await MunicipalityService.update(param(req.params.municipalityId), req.body);
-    res.json({ success: true, message: 'Municipality updated.', data: muni });
+    const id = param(req.params.municipalityId) || param(req.params.id);
+    const { name, email, region, status } = req.body;
+
+    const updateData: any = {};
+    if (name !== undefined) updateData.official_name = name;
+    if (email !== undefined) updateData.login_email = email;
+    if (region !== undefined) updateData.region_state = region;
+    if (status !== undefined) updateData.is_active = status === "Active";
+
+    const { data: muni, error } = await supabaseAdmin
+      .from("municipalities")
+      .update(updateData)
+      .eq("m_uid", id)
+      .select()
+      .single();
+
+    if (error) {
+      if (error.code === "23505")
+        throw new ConflictError("Municipality contact email already exists.");
+      throw error;
+    }
+
+    res.json({
+      success: true,
+      message: "Municipality updated.",
+      data: {
+        id: muni.m_uid,
+        name: muni.official_name,
+        region: muni.region_state || "N/A",
+        email: muni.login_email,
+        status: muni.is_active ? "Active" : "Inactive",
+      },
+    });
   });
 
   /**
@@ -88,8 +211,17 @@ export class MunicipalityController {
    * Delete a municipality (superadmin only).
    */
   static delete = asyncHandler(async (req, res) => {
-    const result = await MunicipalityService.delete(param(req.params.municipalityId));
-    res.json({ success: true, message: 'Municipality deleted.', data: result });
+    const id = param(req.params.municipalityId) || param(req.params.id);
+
+    // Soft delete
+    const { error } = await supabaseAdmin
+      .from("municipalities")
+      .update({ is_deleted: true, deleted_at: new Date().toISOString() })
+      .eq("m_uid", id);
+
+    if (error) throw error;
+
+    res.json({ success: true, message: "Municipality deleted.", data: { id } });
   });
 
   /**
@@ -97,7 +229,9 @@ export class MunicipalityController {
    * Dashboard statistics for a municipality.
    */
   static stats = asyncHandler(async (req, res) => {
-    const stats = await MunicipalityService.getStats(param(req.params.municipalityId));
+    const stats = await MunicipalityService.getStats(
+      param(req.params.municipalityId),
+    );
     res.json({ success: true, data: stats });
   });
 }
@@ -110,7 +244,9 @@ export class DepartmentController {
    * List all departments in a municipality.
    */
   static list = asyncHandler(async (req, res) => {
-    const departments = await DepartmentService.listByMunicipality(param(req.params.municipalityId));
+    const departments = await DepartmentService.listByMunicipality(
+      param(req.params.municipalityId),
+    );
     res.json({ success: true, data: departments });
   });
 
@@ -119,7 +255,10 @@ export class DepartmentController {
    * Get a single department with staff list.
    */
   static getById = asyncHandler(async (req, res) => {
-    const dept = await DepartmentService.getById(param(req.params.departmentId), param(req.params.municipalityId));
+    const dept = await DepartmentService.getById(
+      param(req.params.departmentId),
+      param(req.params.municipalityId),
+    );
     res.json({ success: true, data: dept });
   });
 
@@ -133,7 +272,9 @@ export class DepartmentController {
       ...req.body,
       municipalityId: param(req.params.municipalityId),
     });
-    res.status(201).json({ success: true, message: 'Department created.', data: dept });
+    res
+      .status(201)
+      .json({ success: true, message: "Department created.", data: dept });
   });
 
   /**
@@ -144,9 +285,9 @@ export class DepartmentController {
     const dept = await DepartmentService.update(
       param(req.params.departmentId),
       param(req.params.municipalityId),
-      req.body
+      req.body,
     );
-    res.json({ success: true, message: 'Department updated.', data: dept });
+    res.json({ success: true, message: "Department updated.", data: dept });
   });
 
   /**
@@ -154,8 +295,11 @@ export class DepartmentController {
    * Delete a department.
    */
   static delete = asyncHandler(async (req, res) => {
-    const result = await DepartmentService.delete(param(req.params.departmentId), param(req.params.municipalityId));
-    res.json({ success: true, message: 'Department deleted.', data: result });
+    const result = await DepartmentService.delete(
+      param(req.params.departmentId),
+      param(req.params.municipalityId),
+    );
+    res.json({ success: true, message: "Department deleted.", data: result });
   });
 }
 
@@ -167,7 +311,10 @@ export class StaffController {
    * Paginated list of all staff in a municipality.
    */
   static list = asyncHandler(async (req, res) => {
-    const result = await StaffService.listByMunicipality(param(req.params.municipalityId), getPagination(req));
+    const result = await StaffService.listByMunicipality(
+      param(req.params.municipalityId),
+      getPagination(req),
+    );
     res.json({ success: true, data: result });
   });
 
@@ -181,7 +328,9 @@ export class StaffController {
       ...req.body,
       municipalityId: param(req.params.municipalityId),
     });
-    res.status(201).json({ success: true, message: 'Staff account created.', data: staff });
+    res
+      .status(201)
+      .json({ success: true, message: "Staff account created.", data: staff });
   });
 
   /**
@@ -193,9 +342,13 @@ export class StaffController {
     const staff = await StaffService.updateStatus(
       param(req.params.staffId),
       param(req.params.municipalityId),
-      req.body.status
+      req.body.status,
     );
-    res.json({ success: true, message: `Staff status updated to '${req.body.status}'.`, data: staff });
+    res.json({
+      success: true,
+      message: `Staff status updated to '${req.body.status}'.`,
+      data: staff,
+    });
   });
 
   /**
@@ -203,8 +356,11 @@ export class StaffController {
    * Remove a staff member.
    */
   static delete = asyncHandler(async (req, res) => {
-    const result = await StaffService.delete(param(req.params.staffId), param(req.params.municipalityId));
-    res.json({ success: true, message: 'Staff member removed.', data: result });
+    const result = await StaffService.delete(
+      param(req.params.staffId),
+      param(req.params.municipalityId),
+    );
+    res.json({ success: true, message: "Staff member removed.", data: result });
   });
 }
 
@@ -216,11 +372,14 @@ export class ComplaintController {
    * Paginated list of complaints. Filter by ?status= or ?departmentId=
    */
   static list = asyncHandler(async (req, res) => {
-    const result = await ComplaintService.list(param(req.params.municipalityId), {
-      ...getPagination(req),
-      status: req.query.status as string,
-      departmentId: req.query.departmentId as string,
-    });
+    const result = await ComplaintService.list(
+      param(req.params.municipalityId),
+      {
+        ...getPagination(req),
+        status: req.query.status as string,
+        departmentId: req.query.departmentId as string,
+      },
+    );
     res.json({ success: true, data: result });
   });
 
@@ -229,7 +388,10 @@ export class ComplaintController {
    * Full complaint details with timeline.
    */
   static getById = asyncHandler(async (req, res) => {
-    const complaint = await ComplaintService.getById(param(req.params.complaintId), param(req.params.municipalityId));
+    const complaint = await ComplaintService.getById(
+      param(req.params.complaintId),
+      param(req.params.municipalityId),
+    );
     res.json({ success: true, data: complaint });
   });
 
@@ -245,7 +407,7 @@ export class ComplaintController {
     });
     res.status(201).json({
       success: true,
-      message: 'Complaint submitted successfully.',
+      message: "Complaint submitted successfully.",
       data: complaint,
     });
   });
@@ -260,9 +422,9 @@ export class ComplaintController {
       param(req.params.complaintId),
       param(req.params.municipalityId),
       req.body,
-      req.user!.userId
+      req.user!.userId,
     );
-    res.json({ success: true, message: 'Complaint updated.', data: complaint });
+    res.json({ success: true, message: "Complaint updated.", data: complaint });
   });
 }
 
@@ -286,7 +448,10 @@ export class NoticeController {
    * Get a single notice.
    */
   static getById = asyncHandler(async (req, res) => {
-    const notice = await NoticeService.getById(param(req.params.noticeId), param(req.params.municipalityId));
+    const notice = await NoticeService.getById(
+      param(req.params.noticeId),
+      param(req.params.municipalityId),
+    );
     res.json({ success: true, data: notice });
   });
 
@@ -301,7 +466,9 @@ export class NoticeController {
       municipalityId: param(req.params.municipalityId),
       publishedBy: req.user!.userId,
     });
-    res.status(201).json({ success: true, message: 'Notice published.', data: notice });
+    res
+      .status(201)
+      .json({ success: true, message: "Notice published.", data: notice });
   });
 
   /**
@@ -309,8 +476,12 @@ export class NoticeController {
    * Update a notice.
    */
   static update = asyncHandler(async (req, res) => {
-    const notice = await NoticeService.update(param(req.params.noticeId), param(req.params.municipalityId), req.body);
-    res.json({ success: true, message: 'Notice updated.', data: notice });
+    const notice = await NoticeService.update(
+      param(req.params.noticeId),
+      param(req.params.municipalityId),
+      req.body,
+    );
+    res.json({ success: true, message: "Notice updated.", data: notice });
   });
 
   /**
@@ -318,8 +489,11 @@ export class NoticeController {
    * Delete a notice.
    */
   static delete = asyncHandler(async (req, res) => {
-    const result = await NoticeService.delete(param(req.params.noticeId), param(req.params.municipalityId));
-    res.json({ success: true, message: 'Notice deleted.', data: result });
+    const result = await NoticeService.delete(
+      param(req.params.noticeId),
+      param(req.params.municipalityId),
+    );
+    res.json({ success: true, message: "Notice deleted.", data: result });
   });
 }
 
@@ -333,7 +507,7 @@ export class AuditLogController {
   static list = asyncHandler(async (req, res) => {
     const result = await AuditLogService.listByMunicipality(
       param(req.params.municipalityId),
-      getPagination(req)
+      getPagination(req),
     );
     res.json({ success: true, data: result });
   });
