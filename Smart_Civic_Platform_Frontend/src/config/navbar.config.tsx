@@ -1,4 +1,5 @@
 import React from "react";
+import type { IconBaseProps } from "react-icons";
 import type { NavItemConfig, NavbarConfig } from "../types/navbar.types";
 import {
   FiGrid,
@@ -22,7 +23,10 @@ import { MdOutlinePeople } from "react-icons/md";
 const toHref = (label: string): string =>
   "/" + label.toLowerCase().replace(/\s+/g, "-");
 
-function createNavItem(label: string, icon: React.ReactElement): NavItemConfig {
+function createNavItem(
+  label: string,
+  icon: React.ReactElement<IconBaseProps>,
+): NavItemConfig {
   const href = toHref(label);
   return {
     desktop: { label, icon: cloneWithSize(icon, 18), href, type: "desktop" },
@@ -32,7 +36,7 @@ function createNavItem(label: string, icon: React.ReactElement): NavItemConfig {
 
 // Clone icon element with a specific size prop
 function cloneWithSize(
-  icon: React.ReactElement,
+  icon: React.ReactElement<IconBaseProps>,
   size: number,
 ): React.ReactElement {
   return React.cloneElement(icon, { size });
