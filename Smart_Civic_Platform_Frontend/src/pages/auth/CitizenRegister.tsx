@@ -41,25 +41,29 @@ export const Register: React.FC = () => {
       try {
         setSubmitError(null);
 
-        const registrationPayload = {
-          email: values.email,
-          password: values.password,
-          options: {
-            data: {
-              role: "citizen",
-              full_name: values.fullName,
+        const response = await fetch(
+          "http://localhost:3000/api/auth/register",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
               first_name: values.firstName,
               last_name: values.lastName,
-              gender: values.gender,
-              ward_number: values.wardNumber,
-              home_address: values.homeAddress,
-              registration_code: values.registrationCode,
-            },
+              email: values.email,
+              password: values.password,
+              phone: values.phone || undefined,
+              full_address: values.homeAddress || undefined,
+            }),
           },
-        };
+        );
 
-        console.log("Sending payload to auth driver:", registrationPayload);
-        // const { data, error } = await supabase.auth.signUp(registrationPayload)
+        const result = await response.json();
+
+        if (!response.ok) {
+          throw new Error(result.message || "Registration failed.");
+        }
 
         setIsSuccess(true);
       } catch (err: unknown) {
