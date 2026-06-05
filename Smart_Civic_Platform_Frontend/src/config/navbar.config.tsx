@@ -38,13 +38,6 @@ function cloneWithSize(
   return React.cloneElement(icon, { size });
 }
 
-//superadmin
-//municipality
-//department
-//staff
-//citizen
-
-//common
 const dashboardItem = createNavItem("Dashboard", <FiGrid />);
 const logoutItem = createNavItem("Logout", <FiLogOut />);
 const manageMunicipalityItem = createNavItem(
