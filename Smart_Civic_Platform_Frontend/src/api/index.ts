@@ -25,10 +25,16 @@ export const API_ENDPOINTS = {
     FEATURE_FLAGS: `${BASE_URL}/superadmin/feature-flags`,
     TOGGLE_FEATURE_FLAG: (id: string) =>
       `${BASE_URL}/superadmin/feature-flags/${id}/toggle`,
+    GET_MUNICIPALITIES: `${BASE_URL}/superadmin/municipalities`,
+    CREATE_MUNICIPALITY: `${BASE_URL}/superadmin/municipalities`,
+    UPDATE_MUNICIPALITY: (id: string) =>
+      `${BASE_URL}/superadmin/municipalities/${id}`,
+    DELETE_MUNICIPALITY: (id: string) =>
+      `${BASE_URL}/superadmin/municipalities/${id}`,
   },
   // Stubs for future modules based on your database structure
   MUNICIPALITIES: {
-    BASE: `${BASE_URL}/municipalities`,
+    BASE: `${BASE_URL}/municipality`,
   },
   COMPLAINTS: {
     BASE: `${BASE_URL}/complaints`,

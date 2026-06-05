@@ -1,33 +1,13 @@
-import { createContext, useContext, useState, useEffect } from "react";
+import { useState } from "react";
 import type { ReactNode } from "react";
-import type { UserRole } from "../../types/userRole.type";
-
-export interface UserProfile {
-  id: string;
-  email: string;
-  role: UserRole;
-  full_name: string;
-}
-
-interface AuthContextType {
-  user: UserProfile | null;
-  isAuthenticated: boolean;
-  login: (token: string, profile: UserProfile) => void;
-  logout: () => void;
-}
-
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
+import { AuthContext, type UserProfile } from "../../hooks/useAuth";
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
-  const [user, setUser] = useState<UserProfile | null>(null);
-
-  useEffect(() => {
-    // Load user from local storage when the app first loads
+  const [user, setUser] = useState<UserProfile | null>(() => {
+    if (typeof window === "undefined") return null;
     const storedUser = localStorage.getItem("user_profile");
-    if (storedUser) {
-      setUser(JSON.parse(storedUser));
-    }
-  }, []);
+    return storedUser ? (JSON.parse(storedUser) as UserProfile) : null;
+  });
 
   const login = (token: string, profile: UserProfile) => {
     localStorage.setItem("access_token", token);
@@ -35,11 +15,27 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setUser(profile);
   };
 
-  const logout = () => {
-    localStorage.removeItem("access_token");
-    localStorage.removeItem("refresh_token");
-    localStorage.removeItem("user_profile");
-    setUser(null);
+  const logout = async () => {
+    try {
+      const token = localStorage.getItem("access_token");
+      if (token) {
+        await fetch("http://localhost:3000/api/auth/logout", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+        });
+      }
+    } catch (error) {
+      console.error("Failed to invalidate session on the server:", error);
+    } finally {
+      // Always clean up local state regardless of server response
+      localStorage.removeItem("access_token");
+      localStorage.removeItem("refresh_token");
+      localStorage.removeItem("user_profile");
+      setUser(null);
+    }
   };
 
   return (
@@ -49,12 +45,4 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       {children}
     </AuthContext.Provider>
   );
-};
-
-export const useAuth = () => {
-  const context = useContext(AuthContext);
-  if (context === undefined) {
-    throw new Error("useAuth must be used within an AuthProvider");
-  }
-  return context;
 };

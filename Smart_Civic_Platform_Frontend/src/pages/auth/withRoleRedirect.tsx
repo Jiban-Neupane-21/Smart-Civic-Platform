@@ -1,6 +1,6 @@
 import React, { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { useAuth } from "../../components/layout/AuthContext";
+import { useAuth } from "../../hooks/useAuth";
 
 export const withRoleRedirect = <P extends object>(
   WrappedComponent: React.ComponentType<P>,

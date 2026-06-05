@@ -16,7 +16,7 @@ import VisibilityIcon from "@mui/icons-material/Visibility";
 import VisibilityOffIcon from "@mui/icons-material/VisibilityOff";
 import LockOutlinedIcon from "@mui/icons-material/LockOutlined";
 import { loginSchema } from "../../validation/auth.schema";
-import { useAuth } from "../../components/layout/AuthContext";
+import { useAuth } from "../../hooks/useAuth";
 import { withRoleRedirect } from "./withRoleRedirect";
 
 function LoginBase() {

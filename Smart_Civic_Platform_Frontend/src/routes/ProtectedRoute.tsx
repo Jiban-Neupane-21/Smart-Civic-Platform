@@ -1,6 +1,6 @@
 import React from "react";
 import { Navigate, Outlet } from "react-router-dom";
-import { useAuth } from "../components/layout/AuthContext";
+import { useAuth } from "../hooks/useAuth";
 
 interface ProtectedRouteProps {
   allowedRoles?: string[]; // E.g., ["superadmin", "municipality_head"]
