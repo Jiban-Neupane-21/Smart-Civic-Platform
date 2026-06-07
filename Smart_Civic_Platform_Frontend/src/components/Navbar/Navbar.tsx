@@ -2,8 +2,8 @@ import type { Role } from "../../types/navbar.types";
 import { useNavbar } from "../../hooks/useNavbar";
 import { DesktopNav } from "./DesktopNav";
 import { MobileNav } from "./MobileNav";
-
 import { Box } from "@mui/material";
+import type { UserRole } from "../../types/userRole.type";
 
 interface NavbarProps {
   role: Role;
@@ -14,7 +14,7 @@ export function Navbar({ role }: NavbarProps) {
 
   return (
     <>
-      {/* Desktop Navbar */}
+      {/* Desktop Navbar Display Branch */}
       <Box
         sx={{
           display: {
@@ -27,11 +27,11 @@ export function Navbar({ role }: NavbarProps) {
           items={config?.desktop || []}
           activePath={activePath}
           onNavigate={navigate}
-          role={role}
+          role={role as UserRole}
         />
       </Box>
 
-      {/* Mobile Navbar */}
+      {/* Mobile Navbar Display Branch */}
       <Box
         sx={{
           display: {
@@ -41,10 +41,11 @@ export function Navbar({ role }: NavbarProps) {
         }}
       >
         <MobileNav
-          items={config?.mobile || []}
+          // Sends the structured object containing .primary and .secondary
+          items={config?.mobile || { primary: [], secondary: [] }}
           activePath={activePath}
           onNavigate={navigate}
-          role={role}
+          role={role as UserRole}
         />
       </Box>
     </>

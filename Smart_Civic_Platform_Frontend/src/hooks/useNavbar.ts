@@ -3,10 +3,18 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "./useAuth";
 import Swal from "sweetalert2";
 
-import type { Role } from "../types/navbar.types";
+// Import your configuration types alongside the Role type
+import type { Role, RoleNavConfig } from "../types/navbar.types";
 import { NavbarItems } from "../config/navbar.config";
 
-export function useNavbar(role: Role) {
+// Explicitly define what this hook returns to prevent TypeScript from creating broken union types
+interface UseNavbarReturn {
+  config: RoleNavConfig | undefined;
+  activePath: string;
+  navigate: (href: string) => Promise<void>;
+}
+
+export function useNavbar(role: Role): UseNavbarReturn {
   const navigate = useNavigate();
   const location = useLocation();
   const { logout } = useAuth();
@@ -21,7 +29,10 @@ export function useNavbar(role: Role) {
   };
 
   const mappedRole = roleMapping[role as string] || role;
-  const config = NavbarItems[mappedRole as Role] || NavbarItems[role];
+
+  // Use a type cast here so TypeScript evaluates this cleanly as NavbarConfigValue
+  const items = NavbarItems as Record<string, RoleNavConfig>;
+  const config = items[mappedRole] ?? items[role as string];
 
   const activePath = location.pathname;
 

@@ -16,6 +16,7 @@ import {
   FiMessageSquare,
   FiClock,
   FiLogOut,
+  FiMenu,
 } from "react-icons/fi";
 import { MdOutlinePeople } from "react-icons/md";
 
@@ -50,11 +51,10 @@ const manageMunicipalityItem = createNavItem(
 );
 const auditLogItem = createNavItem("Audit Log", <FiList />);
 const systemSettingItem = createNavItem("System Setting", <FiSettings />);
-const manageDepartmentItem = createNavItem(
-  "Manage Department",
+const manageDepartmentStaffItem = createNavItem(
+  "Manage Department Staff",
   <FiGitBranch />,
 );
-const manageStaffItem = createNavItem("Manage Staff", <FiUsers />);
 const complaintDetailItem = createNavItem("Complaint Detail", <FiFileText />);
 const reportAnalyticsItem = createNavItem(
   "Report & Analytics",
@@ -70,6 +70,7 @@ const submitComplaintItem = createNavItem(
   <FiMessageSquare />,
 );
 const complaintHistoryItem = createNavItem("Complaint History", <FiClock />);
+export const moreItem = createNavItem("More", <FiMenu />);
 
 export const NavbarItems: NavbarConfig = {
   SuperAdmin: {
@@ -80,33 +81,39 @@ export const NavbarItems: NavbarConfig = {
       systemSettingItem.desktop,
       logoutItem.desktop,
     ],
-    mobile: [
-      dashboardItem.mobile,
-      manageMunicipalityItem.mobile,
-      auditLogItem.mobile,
-      systemSettingItem.mobile,
-      logoutItem.mobile,
-    ],
+    mobile: {
+      primary: [
+        dashboardItem.mobile,
+        manageMunicipalityItem.mobile, // Important admin task
+        auditLogItem.mobile,
+      ],
+      secondary: [systemSettingItem.mobile, logoutItem.mobile],
+    },
   },
 
   Municipality: {
     desktop: [
       dashboardItem.desktop,
-      manageDepartmentItem.desktop,
-      manageStaffItem.desktop,
+      manageDepartmentStaffItem.desktop,
       complaintDetailItem.desktop,
       reportAnalyticsItem.desktop,
       notificationItem.desktop,
       profileItem.desktop,
       logoutItem.desktop,
     ],
-    mobile: [
-      dashboardItem.mobile,
-      complaintDetailItem.mobile,
-      notificationItem.mobile,
-      profileItem.mobile,
-      logoutItem.mobile,
-    ],
+    mobile: {
+      primary: [
+        dashboardItem.mobile,
+        manageDepartmentStaffItem.mobile,
+        reportAnalyticsItem.mobile, // Heavy tables/graphs usually viewed on desktop
+        notificationItem.mobile, // Alerts for new issues
+      ],
+      secondary: [
+        complaintDetailItem.mobile, // Crucial for quick resolution checks
+        profileItem.mobile,
+        logoutItem.mobile,
+      ],
+    },
   },
 
   Department: {
@@ -120,30 +127,38 @@ export const NavbarItems: NavbarConfig = {
       profileItem.desktop,
       logoutItem.desktop,
     ],
-    mobile: [
-      dashboardItem.mobile,
-      complaintDetailItem.mobile,
-      notificationItem.mobile,
-      profileItem.mobile,
-      logoutItem.mobile,
-    ],
+    mobile: {
+      primary: [
+        dashboardItem.mobile,
+        complaintDetailItem.mobile,
+        reportAnalyticsItem.mobile,
+        notificationItem.mobile,
+      ],
+      secondary: [
+        staffItem.mobile,
+        teamItem.mobile,
+        profileItem.mobile,
+        logoutItem.mobile,
+      ],
+    },
   },
 
   Staff: {
     desktop: [
       dashboardItem.desktop,
       complaintItem.desktop,
-      notificationItem.desktop,
       profileItem.desktop,
       logoutItem.desktop,
+      notificationItem.desktop,
     ],
-    mobile: [
-      dashboardItem.mobile,
-      complaintItem.mobile,
-      notificationItem.mobile,
-      profileItem.mobile,
-      logoutItem.mobile,
-    ],
+    mobile: {
+      primary: [
+        dashboardItem.mobile,
+        complaintItem.mobile, 
+        notificationItem.mobile,
+      ],
+      secondary: [profileItem.mobile, logoutItem.mobile],
+    },
   },
 
   Citizen: {
@@ -155,13 +170,17 @@ export const NavbarItems: NavbarConfig = {
       profileItem.desktop,
       logoutItem.desktop,
     ],
-    mobile: [
-      dashboardItem.mobile,
-      submitComplaintItem.mobile,
-      complaintHistoryItem.mobile,
-      notificationItem.mobile,
-      profileItem.mobile,
-      logoutItem.mobile,
-    ],
+    mobile: {
+      primary: [
+        dashboardItem.mobile,
+        submitComplaintItem.mobile, // The #1 reason a citizen uses the app
+        complaintHistoryItem.mobile, // Checking status updates on the go
+        notificationItem.mobile,
+      ],
+      secondary: [
+        profileItem.mobile,
+        logoutItem.mobile,
+      ],
+    },
   },
 };
