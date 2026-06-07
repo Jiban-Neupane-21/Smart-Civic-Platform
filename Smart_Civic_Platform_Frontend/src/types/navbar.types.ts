@@ -1,7 +1,12 @@
 import type { ReactElement } from "react";
 import type { UserRole } from "./userRole.type";
 
-export type Role = "SuperAdmin" | "Municipality" | "Department" | "Staff" | "Citizen";
+export type Role =
+  | "SuperAdmin"
+  | "Municipality"
+  | "Department"
+  | "Staff"
+  | "Citizen";
 
 export interface DesktopNavItem {
   label: string;
@@ -24,7 +29,10 @@ export interface NavItemConfig {
 
 export interface RoleNavConfig {
   desktop: DesktopNavItem[];
-  mobile: MobileNavItem[];
+  mobile: {
+    primary: MobileNavItem[];
+    secondary: MobileNavItem[];
+  };
 }
 
 export type NavbarConfig = Record<UserRole, RoleNavConfig>;
