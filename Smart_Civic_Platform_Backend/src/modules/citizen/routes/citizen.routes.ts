@@ -14,7 +14,7 @@ const router = Router();
  * @swagger
  * /api/citizen/municipalities:
  *   get:
- *     tags: [Citizen]
+ *     tags: [Citizen API]
  *     summary: List active municipalities (complaint form dropdown)
  *     responses:
  *       200:
@@ -29,7 +29,7 @@ router.get("/municipalities", C.getMunicipalities);
  * @swagger
  * /api/citizen/municipalities/{municipalityId}/categories:
  *   get:
- *     tags: [Citizen]
+ *     tags: [Citizen API]
  *     summary: List complaint categories for a municipality
  *     parameters:
  *       - in: path
@@ -53,7 +53,7 @@ router.use(authenticate, authorize("citizen"));
  * @swagger
  * /api/citizen/complaints:
  *   post:
- *     tags: [Citizen]
+ *     tags: [Citizen API]
  *     summary: Submit a new complaint
  *     security: [{ BearerAuth: [] }]
  *     requestBody:
@@ -86,7 +86,7 @@ router.post(
  * @swagger
  * /api/citizen/complaints:
  *   get:
- *     tags: [Citizen]
+ *     tags: [Citizen API]
  *     summary: List my complaints
  *     security: [{ BearerAuth: [] }]
  *     parameters:
@@ -109,7 +109,7 @@ router.get("/complaints", C.getMyComplaints);
  * @swagger
  * /api/citizen/complaints/{id}:
  *   get:
- *     tags: [Citizen]
+ *     tags: [Citizen API]
  *     summary: Get complaint detail
  *     security: [{ BearerAuth: [] }]
  *     parameters:
@@ -137,7 +137,7 @@ router.get("/complaints/:id", C.getComplaintDetail);
  * @swagger
  * /api/citizen/complaints/{id}/history:
  *   get:
- *     tags: [Citizen]
+ *     tags: [Citizen API]
  *     summary: Get complaint status history
  *     security: [{ BearerAuth: [] }]
  *     parameters:
@@ -165,7 +165,7 @@ router.get("/complaints/:id/history", C.getComplaintHistory);
  * @swagger
  * /api/citizen/complaints/{id}/feedback:
  *   post:
- *     tags: [Citizen]
+ *     tags: [Citizen API]
  *     summary: Submit feedback for a resolved complaint
  *     security: [{ BearerAuth: [] }]
  *     parameters:

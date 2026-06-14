@@ -22,7 +22,7 @@ declare global {
     interface Request {
       user?: AuthUser;
       accessToken?: string;
-      userClient?: SupabaseClient<Database>;
+      userClient?: SupabaseClient;
     }
   }
 }

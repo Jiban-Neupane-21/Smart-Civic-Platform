@@ -5,7 +5,6 @@
 export const TOKEN_CONFIG = {
   ACCESS_TOKEN_EXPIRY: '15m',            // JWT access token
   REFRESH_TOKEN_EXPIRY_DAYS: 7,          // refresh token validity
-  INVITE_TOKEN_EXPIRY_HOURS: 72,         // staff invite expiry
   PASSWORD_RESET_EXPIRY_MINUTES: 60,     // reset link expiry
 };
 
@@ -30,16 +29,7 @@ export const ROLE_HIERARCHY = [
   ROLES.SUPERADMIN,
 ] as const;
 
-// ===============================
-//  INVITATION SYSTEM
-// ===============================
 
-export const INVITE_STATUS = {
-  PENDING: 'pending',
-  ACCEPTED: 'accepted',
-  EXPIRED: 'expired',
-  REVOKED: 'revoked',
-} as const;
 
 // ===============================
 // 👤 ACCOUNT STATUS
@@ -99,6 +89,5 @@ export const AUDIT_ACTIONS = {
 // ===============================
 
 export type Role = typeof ROLE_HIERARCHY[number];
-export type InviteStatus = typeof INVITE_STATUS[keyof typeof INVITE_STATUS];
 export type AccountStatus = typeof ACCOUNT_STATUS[keyof typeof ACCOUNT_STATUS];
 export type AuditAction = typeof AUDIT_ACTIONS[keyof typeof AUDIT_ACTIONS];

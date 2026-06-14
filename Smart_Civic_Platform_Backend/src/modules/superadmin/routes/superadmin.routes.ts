@@ -1,422 +1,245 @@
 import { Router } from "express";
-import {
-  authenticate,
-  isSuperadmin,
-  auditLogger,
-  requestLogger,
-  superadminRateLimiter,
-  validateBody,
-} from "../middleware";
-import {
-  UserController,
-  AdminController,
-  StatsController,
-  AuditLogController,
-  FeatureFlagController,
-  MunicipalityController,
-} from "../controller";
+import { SuperadminController } from "../controller/superadmin.controller";
+import { SupabaseClient } from "@supabase/supabase-js";
 
-const router = Router();
+const requireAuth =
+  (supabase: SupabaseClient) => async (req: any, res: any, next: any) => {
+    const authHeader = req.headers.authorization;
+    if (!authHeader)
+      return res.status(401).json({ error: "Authorization header absent." });
 
-// ─── Global Middleware (applied to ALL superadmin routes) ─────────────────────
+    const token = authHeader.split(" ")[1];
+    const {
+      data: { user },
+      error,
+    } = await supabase.auth.getUser(token);
 
-router.use(superadminRateLimiter); // rate limit: 100 req / 15 min
-router.use(requestLogger); // log every request with timing
-router.use(authenticate); // verify JWT
-router.use(isSuperadmin); // enforce superadmin role
+    if (error || !user)
+      return res.status(401).json({ error: "Invalid active session token." });
+    req.user = user;
+    next();
+  };
 
-// ─── Stats ────────────────────────────────────────────────────────────────────
+const requireSuperadminGuard =
+  (supabase: SupabaseClient) => async (req: any, res: any, next: any) => {
+    const { data: profile, error } = await supabase
+      .from("profiles")
+      .select("role, account_status")
+      .eq("id", req.user.id)
+      .single();
 
-/**
- * @swagger
- * /api/superadmin/stats:
- *   get:
- *     tags: [Superadmin]
- *     summary: Platform-wide dashboard statistics
- *     security:
- *       - BearerAuth: []
- *     responses:
- *       200:
- *         description: OK
- */
-router.get("/stats", StatsController.overview);
+    if (
+      error ||
+      !profile ||
+      profile.role !== "superadmin" ||
+      profile.account_status !== "active"
+    ) {
+      return res
+        .status(403)
+        .json({ error: "Access Denied: Superadmin privileges restricted." });
+    }
+    next();
+  };
 
-// ─── Users ────────────────────────────────────────────────────────────────────
+export function createSuperadminRouter(
+  supabaseAdminClient: SupabaseClient,
+  controller: SuperadminController,
+): Router {
+  const router = Router();
 
-/**
- * @swagger
- * /api/superadmin/users:
- *   get:
- *     tags: [Superadmin]
- *     summary: List users for superadmin
- *     security:
- *       - BearerAuth: []
- *     parameters:
- *       - in: query
- *         name: page
- *         schema:
- *           type: integer
- *       - in: query
- *         name: limit
- *         schema:
- *           type: integer
- *       - in: query
- *         name: search
- *         schema:
- *           type: string
- *     responses:
- *       200:
- *         description: OK
- */
-router.get("/users", UserController.list);
+  // Route Wide Global Protection Components
+  router.use(requireAuth(supabaseAdminClient));
+  router.use(requireSuperadminGuard(supabaseAdminClient));
 
-/**
- * @swagger
- * /api/superadmin/users/{id}:
- *   get:
- *     tags: [Superadmin]
- *     summary: Get a user by id
- *     security:
- *       - BearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *           format: uuid
- *     responses:
- *       200:
- *         description: OK
- */
-router.get("/users/:id", UserController.getById);
+  /**
+   * @openapi
+   * /api/v1/superadmin/analytics:
+   *   get:
+   *     summary: Fetch system-wide macro metrics
+   *     description: Returns aggregated, high-level operational metrics across all registered municipalities.
+   *     tags: [Superadmin API]
+   *     security:
+   *       - BearerAuth: []
+   *     responses:
+   *       200:
+   *         description: Macro metrics loaded successfully.
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 success: { type: boolean, example: true }
+   *                 data:
+   *                   type: object
+   *                   properties:
+   *                     total_municipalities: { type: integer, example: 14 }
+   *                     total_departments: { type: integer, example: 56 }
+   *                     total_staff: { type: integer, example: 320 }
+   *                     total_citizens: { type: integer, example: 12450 }
+   *                     total_active_users: { type: integer, example: 12700 }
+   *                     total_suspended_users: { type: integer, example: 12 }
+   *                     total_pending_complaints: { type: integer, example: 145 }
+   *                     total_resolved_complaints: { type: integer, example: 1890 }
+   *       401:
+   *         description: Unauthorized or session expired.
+   *       403:
+   *         description: Forbidden. Insufficient roles.
+   */
+  router.get("/analytics", controller.getMetrics);
 
-/**
- * @swagger
- * /api/superadmin/users/{id}/status:
- *   patch:
- *     tags: [Superadmin]
- *     summary: Update user status
- *     security:
- *       - BearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *           format: uuid
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - status
- *     responses:
- *       200:
- *         description: Updated
- */
-router.patch(
-  "/users/:id/status",
-  auditLogger,
-  validateBody(["status"]),
-  UserController.updateStatus,
-);
+  /**
+   * @openapi
+   * /api/v1/superadmin/municipalities/provision:
+   *   post:
+   *     summary: Provision a new municipality entity
+   *     description: Registers a new regional municipal jurisdiction alongside its executive administrative profile.
+   *     tags: [Superadmin API]
+   *     security:
+   *       - BearerAuth: []
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             required:
+   *               - official_name
+   *               - official_email
+   *               - head_name
+   *               - head_email
+   *               - municipality_type
+   *             properties:
+   *               official_name: { type: string, example: "Lalitpur Metropolitan City" }
+   *               official_email: { type: string, example: "info@lalitpurmun.gov.np" }
+   *               head_name: { type: string, example: "Chiribabu Maharjan" }
+   *               head_email: { type: string, example: "mayor@lalitpurmun.gov.np" }
+   *               municipality_type: { type: string, enum: [metropolitan, sub_metropolitan, urban_municipality, rural_municipality], example: "metropolitan" }
+   *               total_wards: { type: integer, minimum: 0, maximum: 33, example: 29 }
+   *               province: { type: string, example: "Bagmati Province" }
+   *               district: { type: string, example: "Lalitpur" }
+   *     responses:
+   *       201:
+   *         description: Municipality infrastructure successfully provisioned.
+   *       400:
+   *         description: Malformed structural payload or regex criteria failure.
+   */
+  router.post("/municipalities/provision", controller.provisionMunicipality);
 
-/**
- * @swagger
- * /api/superadmin/users/{id}:
- *   delete:
- *     tags: [Superadmin]
- *     summary: Permanently delete a user account
- *     security:
- *       - BearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *           format: uuid
- *     responses:
- *       200:
- *         description: Deleted
- */
-router.delete("/users/:id", auditLogger, UserController.delete);
+  /**
+   * @openapi
+   * /api/v1/superadmin/users/assign-role:
+   *   patch:
+   *     summary: Elevate or alter systemic authorization roles
+   *     description: Wraps access directly to the isolated schema RPC trigger to safely update target profile designations.
+   *     tags: [Superadmin API]
+   *     security:
+   *       - BearerAuth: []
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             required:
+   *               - targetUserId
+   *               - newRole
+   *             properties:
+   *               targetUserId: { type: string, format: uuid, example: "123e4567-e89b-12d3-a456-426614174000" }
+   *               newRole: { type: string, enum: [superadmin, municipality_head, department_head, staff, citizen], example: "municipality_head" }
+   *     responses:
+   *       200:
+   *         description: Core account role elevated and audited successfully.
+   *       400:
+   *         description: Processing error or attempt to demote the last remaining Superadmin.
+   */
+  router.patch("/users/assign-role", controller.changeUserRole);
 
-/**
- * @swagger
- * /api/superadmin/users/{id}/impersonate:
- *   post:
- *     tags: [Superadmin]
- *     summary: Generate an impersonation token for a user
- *     security:
- *       - BearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *           format: uuid
- *     responses:
- *       200:
- *         description: Impersonation token created
- */
-router.post("/users/:id/impersonate", auditLogger, UserController.impersonate);
+  /**
+   * @openapi
+   * /api/v1/superadmin/users/manage-status:
+   *   patch:
+   *     summary: Enforce account lifecycle status transitions
+   *     description: Instantly flips status flags to suspend or reactivate individual platform profiles.
+   *     tags: [Superadmin API]
+   *     security:
+   *       - BearerAuth: []
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             required:
+   *               - targetUserId
+   *               - status
+   *             properties:
+   *               targetUserId: { type: string, format: uuid, example: "8af36111-c918-4a11-b011-826315271891" }
+   *               status: { type: string, enum: [active, inactive, suspended], example: "suspended" }
+   *     responses:
+   *       200:
+   *         description: Profile successfully placed into target lifecycle phase.
+   */
+  router.patch("/users/manage-status", controller.restrictUserAccess);
 
-// ─── Admins ───────────────────────────────────────────────────────────────────
+  /**
+   * @openapi
+   * /api/v1/superadmin/audit-logs:
+   *   get:
+   *     summary: Query the system immutable audit logging stream
+   *     description: Reads data records out of the read-only infrastructure audit trail.
+   *     tags: [Superadmin API]
+   *     security:
+   *       - BearerAuth: []
+   *     parameters:
+   *       - in: query
+   *         name: page
+   *         schema: { type: integer, default: 1 }
+   *         description: Target page block context.
+   *       - in: query
+   *         name: limit
+   *         schema: { type: integer, default: 20 }
+   *         description: Total records per block query execution.
+   *     responses:
+   *       200:
+   *         description: Audit records retrieved smoothly.
+   */
+  router.get("/audit-logs", controller.getSystemAudits);
 
-/**
- * @swagger
- * /api/superadmin/admins:
- *   get:
- *     tags: [Superadmin]
- *     summary: List admin and superadmin accounts
- *     security:
- *       - BearerAuth: []
- *     responses:
- *       200:
- *         description: OK
- */
-router.get("/admins", AdminController.list);
+  /**
+   * @openapi
+   * /api/superadmin/users/create:
+   *   post:
+   *     summary: Create a municipality head user account
+   *     description: Directly creates a new user with the municipality_head role. The user is created with force_password_reset enabled.
+   *     tags: [Superadmin API]
+   *     security:
+   *       - BearerAuth: []
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             required:
+   *               - email
+   *               - password
+   *               - full_name
+   *               - role
+   *               - municipality_id
+   *             properties:
+   *               email: { type: string, format: email, example: "mayor@lalitpurmun.gov.np" }
+   *               password: { type: string, minLength: 8, example: "TempPass123!" }
+   *               full_name: { type: string, example: "Chiribabu Maharjan" }
+   *               role: { type: string, enum: [municipality_head], example: "municipality_head" }
+   *               municipality_id: { type: string, format: uuid }
+   *               phone: { type: string, example: "+9779851000000" }
+   *     responses:
+   *       201:
+   *         description: User account created successfully.
+   *       400:
+   *         description: Validation error or duplicate email.
+   */
+  router.post("/users/create", controller.createUser);
 
-/**
- * @swagger
- * /api/superadmin/admins:
- *   post:
- *     tags: [Superadmin]
- *     summary: Create a new admin account
- *     security:
- *       - BearerAuth: []
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - name
- *               - email
- *               - password
- *     responses:
- *       201:
- *         description: Created
- */
-router.post(
-  "/admins",
-  auditLogger,
-  validateBody(["name", "email", "password"]),
-  AdminController.create,
-);
-
-// ─── Audit Logs ───────────────────────────────────────────────────────────────
-
-/**
- * @swagger
- * /api/superadmin/audit-logs:
- *   get:
- *     tags: [Superadmin]
- *     summary: List superadmin audit logs
- *     security:
- *       - BearerAuth: []
- *     parameters:
- *       - in: query
- *         name: page
- *         schema:
- *           type: integer
- *       - in: query
- *         name: limit
- *         schema:
- *           type: integer
- *     responses:
- *       200:
- *         description: OK
- */
-router.get("/audit-logs", AuditLogController.list);
-
-// ─── Feature Flags ────────────────────────────────────────────────────────────
-
-/**
- * @swagger
- * /api/superadmin/feature-flags:
- *   get:
- *     tags: [Superadmin]
- *     summary: List feature flags
- *     security:
- *       - BearerAuth: []
- *     responses:
- *       200:
- *         description: OK
- */
-router.get("/feature-flags", FeatureFlagController.list);
-
-/**
- * @swagger
- * /api/superadmin/feature-flags/{id}/toggle:
- *   patch:
- *     tags: [Superadmin]
- *     summary: Toggle a feature flag
- *     security:
- *       - BearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *           format: uuid
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - enabled
- *             properties:
- *               enabled:
- *                 type: boolean
- *     responses:
- *       200:
- *         description: Updated
- */
-router.patch(
-  "/feature-flags/:id/toggle",
-  auditLogger,
-  validateBody(["enabled"]),
-  FeatureFlagController.toggle,
-);
-
-// ─── Municipalities ───────────────────────────────────────────────────────────
-
-/**
- * @swagger
- * /api/superadmin/municipalities:
- *   get:
- *     tags: [Superadmin]
- *     summary: List all municipalities
- *     security:
- *       - BearerAuth: []
- *     responses:
- *       200:
- *         description: OK
- */
-router.get("/municipalities", MunicipalityController.list);
-
-/**
- * @swagger
- * /api/superadmin/municipalities:
- *   post:
- *     tags: [Superadmin]
- *     summary: Create a new municipality
- *     security:
- *       - BearerAuth: []
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - name
- *               - email
- *               - head_name
- *               - head_email
- *               - head_password
- *             properties:
- *               name:
- *                 type: string
- *               email:
- *                 type: string
- *               region:
- *                 type: string
- *               head_name:
- *                 type: string
- *               head_email:
- *                 type: string
- *               head_password:
- *                 type: string
- *     responses:
- *       201:
- *         description: Created
- */
-router.post(
-  "/municipalities",
-  auditLogger,
-  validateBody(["name", "email", "head_name", "head_email", "head_password"]),
-  MunicipalityController.create,
-);
-
-/**
- * @swagger
- * /api/superadmin/municipalities/{id}:
- *   patch:
- *     tags: [Superadmin]
- *     summary: Update a municipality
- *     security:
- *       - BearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *           format: uuid
- *     responses:
- *       200:
- *         description: Updated
- */
-router.patch("/municipalities/:id", auditLogger, MunicipalityController.update);
-
-/**
- * @swagger
- * /api/superadmin/municipalities/{id}:
- *   delete:
- *     tags: [Superadmin]
- *     summary: Soft delete a municipality
- *     security:
- *       - BearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *           format: uuid
- *     responses:
- *       200:
- *         description: Deleted
- */
-router.delete(
-  "/municipalities/:id",
-  auditLogger,
-  MunicipalityController.delete,
-);
-
-export default router;
-
-// ─── Route Summary ────────────────────────────────────────────────────────────
-//
-//  All routes require: JWT auth + superadmin role + rate limiting
-//
-//  GET    /superadmin/stats
-//
-//  GET    /superadmin/users
-//  GET    /superadmin/users/:id
-//  PATCH  /superadmin/users/:id/status        [audited]
-//  DELETE /superadmin/users/:id               [audited]
-//  POST   /superadmin/users/:id/impersonate   [audited]
-//
-//  GET    /superadmin/admins
-//  POST   /superadmin/admins                  [audited]
-//
-//  GET    /superadmin/audit-logs
-//
-//  GET    /superadmin/feature-flags
-//  PATCH  /superadmin/feature-flags/:id/toggle [audited]
-//
-//  GET    /superadmin/municipalities
-//  DELETE /superadmin/municipalities/:id       [audited]
+  return router;
+}

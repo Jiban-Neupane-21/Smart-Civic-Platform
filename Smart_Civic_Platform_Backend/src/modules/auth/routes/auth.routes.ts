@@ -6,8 +6,6 @@ import { validateBody } from "../../../middleware/validateBody";
 import {
   registerSchema,
   loginSchema,
-  inviteSchema,
-  acceptInviteSchema,
   forgotPasswordSchema,
   refreshTokenSchema,
 } from "../../../validation/auth.validation";
@@ -160,72 +158,7 @@ router.post(
  */
 router.get("/me", authenticate, AuthController.getMe);
 
-/**
- * @swagger
- * /api/auth/invite:
- *   post:
- *     tags: [Auth]
- *     summary: Send staff invite (superadmin, municipality_head, or department_head)
- *     security: [{ BearerAuth: [] }]
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             $ref: '#/components/schemas/InviteRequest'
- *     responses:
- *       201:
- *         description: Invitation sent
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/SuccessResponse'
- *       400:
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/ErrorResponse'
- *       401:
- *         $ref: '#/components/responses/Unauthorized'
- */
-router.post(
-  "/invite",
-  authenticate,
-  authorize("superadmin", "municipality_head", "department_head"),
-  validateBody(inviteSchema),
-  AuthController.inviteStaff,
-);
 
-/**
- * @swagger
- * /api/auth/accept-invite:
- *   post:
- *     tags: [Auth]
- *     summary: Accept a staff invitation and set password
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             $ref: '#/components/schemas/AcceptInviteRequest'
- *     responses:
- *       200:
- *         description: Invitation accepted
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/SuccessResponse'
- *       400:
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/ErrorResponse'
- */
-router.post(
-  "/accept-invite",
-  validateBody(acceptInviteSchema),
-  AuthController.acceptInvite,
-);
 
 /**
  * @swagger

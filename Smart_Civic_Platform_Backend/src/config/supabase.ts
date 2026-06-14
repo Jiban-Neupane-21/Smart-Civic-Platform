@@ -53,7 +53,7 @@ export const supabase = createClient(
   SUPABASE_URL,
   SUPABASE_ANON_KEY,
   sharedOptions,
-) as SupabaseClient<Database>;
+) as SupabaseClient;
 
 // ─── Admin client (bypasses RLS) ──────────────────────────────────────────────
 
@@ -75,7 +75,7 @@ export const supabaseAdmin = createClient(
   SUPABASE_URL,
   SUPABASE_SERVICE_ROLE_KEY,
   sharedOptions,
-);
+) as SupabaseClient;
 
 // ─── Per-request user client factory ─────────────────────────────────────────
 

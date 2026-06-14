@@ -31,23 +31,6 @@ export const logout = async (req: Request, res: Response) => {
   } catch (e: any) { return sendError(res, e.message, 400); }
 };
 
-export const inviteStaff = async (req: Request, res: Response) => {
-  try {
-    const data = await AuthService.inviteStaffService({
-      ...req.body,
-      municipality_id: req.user!.municipality_id!,
-      invited_by: req.user!.id,
-    });
-    return sendSuccess(res, data, 'Invitation sent', 201);
-  } catch (e: any) { return sendError(res, e.message, 400); }
-};
-
-export const acceptInvite = async (req: Request, res: Response) => {
-  try {
-    const data = await AuthService.acceptInviteService(req.body);
-    return sendSuccess(res, data, 'Invite accepted');
-  } catch (e: any) { return sendError(res, e.message, 400); }
-};
 
 export const forgotPassword = async (req: Request, res: Response) => {
   try {

@@ -1,6 +1,5 @@
 import crypto from "crypto";
 import { supabaseAdmin } from "../../../config/supabase";
-import { sendInviteEmail } from "../../../config/mailer";
 import type { UserRole } from "../../../types/database.type";
 import { TOKEN_CONFIG } from "../../../app";
 
@@ -151,114 +150,79 @@ export const logoutService = async (refreshToken: string, userId: string) => {
     .eq("profile_id", userId);
 };
 
-export const inviteStaffService = async (body: {
-  target_email: string;
-  target_role: UserRole;
-  department_id?: string;
+// ──────────────────────────────────────────────────────────────────────────────
+// Direct User Creation (replaces the old invite flow)
+// ──────────────────────────────────────────────────────────────────────────────
+
+export const createUserService = async (body: {
+  email: string;
+  password: string;
+  full_name: string;
+  role: UserRole;
   municipality_id: string;
-  invited_by: string;
+  department_id?: string;
+  phone?: string;
+  created_by: string;
 }) => {
+  // 1. Check if email is already taken
   const { data: existing } = await supabaseAdmin
     .from("profiles")
     .select("id")
-    .eq("email", body.target_email)
+    .eq("email", body.email)
     .maybeSingle();
   if (existing) throw new Error("A user with this email already exists");
 
-  await supabaseAdmin.rpc("expire_stale_invitations");
-
-  const rawToken = crypto.randomBytes(32).toString("hex");
-  const tokenHash = crypto.createHash("sha256").update(rawToken).digest("hex");
-
-  const { error } = await supabaseAdmin.from("staff_invitations").insert({
-    token_hash: tokenHash,
-    target_email: body.target_email,
-    target_role: body.target_role,
-    municipality_id: body.municipality_id,
-    department_id: body.department_id ?? null,
-    invited_by: body.invited_by,
-    status: "pending",
-  });
-  if (error) throw new Error(error.message);
-
-  await sendInviteEmail(body.target_email, rawToken);
-
-  return { message: `Invitation sent to ${body.target_email}` };
-};
-
-export const acceptInviteService = async (body: {
-  token: string;
-  full_name: string;
-  password: string;
-  phone?: string;
-}) => {
-  const tokenHash = crypto
-    .createHash("sha256")
-    .update(body.token)
-    .digest("hex");
-
-  await supabaseAdmin.rpc("expire_stale_invitations");
-
-  const { data: invite, error } = await supabaseAdmin
-    .from("staff_invitations")
-    .select("*")
-    .eq("token_hash", tokenHash)
-    .eq("status", "pending")
-    .single();
-
-  if (error || !invite) throw new Error("Invalid or expired invitation token");
-  if (new Date(invite.expires_at) < new Date()) {
-    throw new Error("Invitation has expired");
-  }
-
+  // 2. Create the auth user via Supabase Admin API
+  //    The handle_new_user DB trigger will auto-create the profiles row
   const { data: authData, error: authErr } =
     await supabaseAdmin.auth.admin.createUser({
-      email: invite.target_email,
+      email: body.email,
       password: body.password,
       email_confirm: true,
       user_metadata: {
         full_name: body.full_name,
-        // Pass role, municipality_id, department_id so the handle_new_user trigger
-        // creates the staff row with correct FKs right from the start
-        role: invite.target_role,
-        municipality_id: invite.municipality_id,
-        department_id: invite.department_id ?? null,
+        role: body.role,
+        municipality_id: body.municipality_id,
+        department_id: body.department_id ?? null,
       },
     });
   if (authErr) throw new Error(authErr.message);
 
   const uid = authData.user.id;
 
-  // Fix up profile with full invite context (trigger sets basics; we add phone/invited_by)
+  // 3. Update profile with additional fields not handled by the trigger
   await supabaseAdmin
     .from("profiles")
     .update({
       full_name: body.full_name,
       phone: body.phone ?? null,
-      invited_by: invite.invited_by,
-      force_password_reset: false,
+      force_password_reset: true,
+      created_by: body.created_by,
     })
     .eq("id", uid);
 
-  // The handle_new_user trigger already inserted the staff row.
-  // UPDATE it to record the invite timestamp and onboarding timestamp.
-  await supabaseAdmin
-    .from("staff")
-    .update({
-      invited_at: invite.created_at, // when the invite was originally sent
-      onboarded_at: new Date().toISOString(), // when they accepted
-    })
-    .eq("profile_id", uid);
+  // 4. For staff-level roles, update the staff table with onboarding timestamp
+  if (["staff", "department_head"].includes(body.role)) {
+    await supabaseAdmin
+      .from("staff")
+      .update({
+        onboarded_at: new Date().toISOString(),
+      })
+      .eq("profile_id", uid);
+  }
 
-  await supabaseAdmin
-    .from("staff_invitations")
-    .update({
-      status: "accepted",
-      accepted_at: new Date().toISOString(),
-    })
-    .eq("token_hash", tokenHash);
+  // 5. Return the created profile
+  const { data: profile, error: profileErr } = await supabaseAdmin
+    .from("profiles")
+    .select(
+      "id, email, full_name, role, municipality_id, department_id, force_password_reset",
+    )
+    .eq("id", uid)
+    .single();
 
-  return { message: "Account created successfully. You can now log in." };
+  if (profileErr) throw new Error("User created but failed to fetch profile");
+
+  return profile;
 };
 
 export const forgotPasswordService = async (email: string) => {

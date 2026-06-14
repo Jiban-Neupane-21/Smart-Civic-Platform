@@ -5,11 +5,7 @@ export const submitComplaintSchema = z.object({
   title: z.string().min(1),
   description: z.string().min(1),
   category_id: z.string().uuid().optional(),
-  priority: z.enum(["low", "medium", "high", "urgent"]).optional(),
-  address_hint: z.string().optional(),
-  latitude: z.number().optional(),
-  longitude: z.number().optional(),
-  is_anonymous: z.boolean().optional(),
+  attachment_url: z.string().url().optional(),
 });
 
 export const submitFeedbackSchema = z.object({

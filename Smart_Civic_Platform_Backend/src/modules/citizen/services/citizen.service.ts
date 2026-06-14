@@ -18,12 +18,7 @@ export const submitComplaint = async (
     title: string;
     description: string;
     category_id?: string;
-    priority?: string;
-    address_hint?: string;
-    latitude?: number;
-    longitude?: number;
-    is_anonymous?: boolean;
-    record_type?: string;
+    attachment_url?: string;
   },
   client: SupabaseClient<Database>,
 ) => {
@@ -37,15 +32,10 @@ export const submitComplaint = async (
       title: body.title,
       description: body.description,
       category_id: body.category_id ?? null,
-      priority: body.priority ?? "medium",
-      address_hint: body.address_hint ?? null,
-      latitude: body.latitude ?? null,
-      longitude: body.longitude ?? null,
-      is_anonymous: body.is_anonymous ?? false,
-      record_type: body.record_type ?? "complaint",
+      attachment_url: body.attachment_url ?? null,
       status: "pending",
     })
-    .select("co_uid, title, status, priority, reported_at")
+    .select("co_uid, title, status, submitted_date")
     .single();
 
   if (error) throw new Error(error.message);
@@ -63,15 +53,13 @@ export const getMyComplaints = async (
     .from("complaints")
     .select(
       `
-      co_uid, title, status, priority, record_type,
-      reported_at, resolved_at, resolution_note,
-      complaint_categories ( name ),
-      departments ( dept_name )
+      co_uid, title, status, submitted_date, resolution_date, resolution_note,
+      complaint_categories ( category_name ),
+      departments ( department_name )
     `,
     )
     .eq("citizen_id", citizenId)
-    .eq("is_deleted", false)
-    .order("reported_at", { ascending: false });
+    .order("submitted_date", { ascending: false });
 
   if (status) query = query.eq("status", status);
 
@@ -91,16 +79,15 @@ export const getComplaintDetail = async (
     .from("complaints")
     .select(
       `
-      co_uid, title, description, status, priority, record_type,
-      reported_at, resolved_at, resolution_note, address_hint,
-      latitude, longitude, is_anonymous,
-      complaint_categories ( name, icon_name ),
-      departments ( dept_name )
+      co_uid, title, description, status,
+      submitted_date, resolution_date, resolution_note,
+      attachment_url,
+      complaint_categories ( category_name ),
+      departments ( department_name )
     `,
     )
     .eq("co_uid", complaintId)
     .eq("citizen_id", citizenId)
-    .eq("is_deleted", false)
     .single();
 
   if (error) throw new Error("Complaint not found");
@@ -124,7 +111,7 @@ export const getComplaintHistory = async (
 
   const { data, error } = await db
     .from("audit_logs")
-    .select("action, old_value, new_value, note, created_at")
+    .select("action, old_value, new_value, created_at")
     .eq("table_name", "complaints")
     .eq("record_id", complaintId)
     .order("created_at", { ascending: true });
@@ -136,22 +123,20 @@ export const getComplaintHistory = async (
 export const getMunicipalities = async () => {
   const { data, error } = await supabaseAdmin
     .from("municipalities")
-    .select("m_uid, official_name, region_state, slug")
+    .select(
+      "m_uid, official_name, official_email, municipality_type, province, district",
+    )
     .eq("is_active", true)
-    .eq("is_deleted", false)
     .order("official_name");
   if (error) throw new Error(error.message);
   return data;
 };
 
-export const getCategories = async (municipalityId: string) => {
+export const getCategories = async (_municipalityId: string) => {
   const { data, error } = await supabaseAdmin
     .from("complaint_categories")
-    .select("category_id, name, description, icon_name, color_hex")
-    .eq("municipality_id", municipalityId)
-    .eq("is_active", true)
-    .eq("is_deleted", false)
-    .order("display_order");
+    .select("category_id, category_name, target_department_name, created_at")
+    .order("created_at", { ascending: true });
   if (error) throw new Error(error.message);
   return data;
 };

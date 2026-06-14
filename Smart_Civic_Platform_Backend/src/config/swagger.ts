@@ -10,35 +10,38 @@ function getRouteApiFiles(): string[] {
     path.resolve(process.cwd(), "dist", "routes"),
     path.resolve(process.cwd(), "dist", "modules"),
     path.resolve(__dirname, "..", "routes"),
+    path.resolve(__dirname, "..", "modules"),
   ].filter((dir, i, all) => fs.existsSync(dir) && all.indexOf(dir) === i);
 
-  const byBase = new Map<string, string>();
+  const byPath = new Map<string, string>();
 
-  function collectFiles(dir: string) {
+  function collectFiles(dir: string, rootDir: string) {
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
       const fullPath = path.join(dir, entry.name);
       if (entry.isDirectory()) {
-        collectFiles(fullPath);
+        collectFiles(fullPath, rootDir);
         continue;
       }
       if (!/\.(ts|js)$/.test(entry.name) || entry.name.endsWith(".d.ts"))
         continue;
-      const base = entry.name.replace(/\.(ts|js)$/, "");
-      const existing = byBase.get(base);
+
+      const relativeToRoot = path.relative(rootDir, fullPath);
+      const base = relativeToRoot.replace(/\.(ts|js)$/, "");
+      const existing = byPath.get(base);
       if (
         !existing ||
         (entry.name.endsWith(".ts") && !existing.endsWith(".ts"))
       ) {
-        byBase.set(base, fullPath);
+        byPath.set(base, fullPath);
       }
     }
   }
 
   for (const dir of searchDirs) {
-    collectFiles(dir);
+    collectFiles(dir, dir);
   }
 
-  return [...byBase.values()].sort();
+  return [...byPath.values()].sort();
 }
 
 const routeFiles = getRouteApiFiles();
@@ -74,11 +77,19 @@ const swaggerDefinition: swaggerJsdoc.Options["definition"] = {
   tags: [
     { name: "Health", description: "Server health" },
     { name: "Auth", description: "Registration, login, tokens, invites" },
-    { name: "Superadmin", description: "Platform-wide administration" },
-    { name: "Municipality", description: "Municipality head operations" },
-    { name: "Department", description: "Department head operations" },
-    { name: "Staff", description: "Staff complaint handling" },
-    { name: "Citizen", description: "Citizen complaints and feedback" },
+    { name: "Superadmin API", description: "Platform-wide administration" },
+    { name: "Municipality API", description: "Municipality head operations" },
+    { name: "Department API", description: "Department head operations" },
+    { name: "Staff API", description: "Staff complaint handling" },
+    { name: "Citizen API", description: "Citizen complaints and feedback" },
+    {
+      name: "Complaints API",
+      description: "General and role-based complaint operations",
+    },
+    {
+      name: "Notifications API",
+      description: "System notifications and alerts",
+    },
   ],
   components: {
     securitySchemes: {
@@ -189,30 +200,58 @@ const swaggerDefinition: swaggerJsdoc.Options["definition"] = {
       },
       CitizenDetails: {
         type: "object",
-        description: "Extra citizen-specific data (only present when role = citizen)",
+        description:
+          "Extra citizen-specific data (only present when role = citizen)",
         properties: {
-          first_name:        { type: "string" },
-          middle_name:       { type: "string", nullable: true },
-          last_name:         { type: "string" },
-          date_of_birth:     { type: "string", format: "date", nullable: true },
-          gender:            { type: "string", enum: ["male", "female", "other", "prefer_not_to_say"], nullable: true },
-          home_address:      { type: "string", nullable: true, example: "Kathmandu, Ward 5" },
-          permanent_address: { type: "string", nullable: true, example: "Pokhara, Ward 3" },
-          ward_number:       { type: "string", nullable: true },
-          notification_pref: { type: "string", enum: ["email", "sms", "both", "none"] },
+          first_name: { type: "string" },
+          middle_name: { type: "string", nullable: true },
+          last_name: { type: "string" },
+          date_of_birth: { type: "string", format: "date", nullable: true },
+          gender: {
+            type: "string",
+            enum: ["male", "female", "other", "prefer_not_to_say"],
+            nullable: true,
+          },
+          home_address: {
+            type: "string",
+            nullable: true,
+            example: "Kathmandu, Ward 5",
+          },
+          permanent_address: {
+            type: "string",
+            nullable: true,
+            example: "Pokhara, Ward 3",
+          },
+          ward_number: { type: "string", nullable: true },
+          notification_pref: {
+            type: "string",
+            enum: ["email", "sms", "both", "none"],
+          },
         },
       },
       MeResponse: {
         type: "object",
         properties: {
-          id:              { type: "string", format: "uuid" },
-          full_name:       { type: "string", example: "John Doe" },
-          email:           { type: "string", format: "email" },
-          phone:           { type: "string", nullable: true },
-          role:            { type: "string", enum: ["superadmin", "municipality_head", "department_head", "staff", "citizen"] },
-          account_status:  { type: "string", enum: ["active", "inactive", "suspended"] },
+          id: { type: "string", format: "uuid" },
+          full_name: { type: "string", example: "John Doe" },
+          email: { type: "string", format: "email" },
+          phone: { type: "string", nullable: true },
+          role: {
+            type: "string",
+            enum: [
+              "superadmin",
+              "municipality_head",
+              "department_head",
+              "staff",
+              "citizen",
+            ],
+          },
+          account_status: {
+            type: "string",
+            enum: ["active", "inactive", "suspended"],
+          },
           municipality_id: { type: "string", format: "uuid", nullable: true },
-          department_id:   { type: "string", format: "uuid", nullable: true },
+          department_id: { type: "string", format: "uuid", nullable: true },
           citizen_details: {
             nullable: true,
             description: "Only present when role = citizen",

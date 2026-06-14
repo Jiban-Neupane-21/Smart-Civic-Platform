@@ -12,12 +12,7 @@ export type UserRole =
 export type AccountStatus = "active" | "inactive" | "suspended";
 export type EmployeeStatus = "active" | "inactive" | "suspended" | "terminated";
 export type TeamRole = "assistant_head" | "member";
-export type ComplaintStatus =
-  | "pending"
-  | "in_progress"
-  | "resolved"
-  | "rejected"
-  | "reopened";
+export type ComplaintStatus = "pending" | "ongoing" | "resolved" | "rejected";
 export type RecordType = "complaint" | "request" | "inquiry";
 export type AssignmentStatus =
   | "pending"
@@ -71,20 +66,20 @@ export type AnnouncementAudience =
   | "department"
   | "all_team"
   | "team";
+export type NotificationAudience =
+  | "all_departments"
+  | "all_staff"
+  | "particular_department"
+  | "particular_staff"
+  | "department_internal_staff";
 export type AuditAction =
+  | "LOGIN"
+  | "LOGOUT"
   | "INSERT"
   | "UPDATE"
   | "DELETE"
-  | "LOGIN"
-  | "LOGOUT"
-  | "ASSIGN"
-  | "REASSIGN"
   | "STATUS_CHANGE"
-  | "APPROVE"
-  | "REJECT"
-  | "EXPORT"
-  | "INVITE"
-  | "PASSWORD_RESET";
+  | "ROLE_CHANGE";
 export type Severity = "info" | "warning" | "critical";
 export type MediaContext =
   | "complaint"
@@ -97,29 +92,17 @@ export type NotificationPref = "email" | "sms" | "both" | "none";
 export type InviteStatus = "pending" | "accepted" | "expired" | "revoked";
 
 type Address = {
-  "country": String,
-  "state": string,
-  "street": string,
-  "ward_no": string,
-
-}
+  country: string;
+  state: string;
+  street: string;
+  ward_no: string;
+};
 export interface ProfileRow {
   id: string;
   full_name: string;
   email: string;
-  phone: string | null;
-  full_address: Address;
   role: UserRole;
   account_status: AccountStatus;
-  municipality_id: string | null;
-  department_id: string | null;
-  profile_picture: string | null;
-  last_login_at: string | null;
-  force_password_reset: boolean;
-  invited_by: string | null;
-  email_verified_at: string | null;
-  is_deleted: boolean;
-  deleted_at: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -127,38 +110,34 @@ export interface ProfileRow {
 export interface MunicipalityRow {
   m_uid: string;
   official_name: string;
-  slug: string | null;
-  boundary: unknown | null;
-  region_state: string | null;
-  country_code: string;
-  time_zone: string;
-  office_address: string | null;
-  login_email: string;
-  support_email: string | null;
-  emergency_contact: string | null;
-  website_url: string | null;
-  head_id: string | null;
-  login_domain: string | null;
-  registration_code: string | null;
+  official_email: string;
+  head_name: string;
+  head_email: string;
+  head_profile_id: string | null;
+  official_contact_no: string | null;
+  head_contact_no: string | null;
+  province: string | null;
+  district: string | null;
+  municipality_type: string | null;
+  total_wards: number;
+  official_logo: string | null;
+  about_description: string | null;
+  mayor_chairperson_name: string | null;
+  deputy_mayor_vice_chairperson_name: string | null;
   is_active: boolean;
-  is_deleted: boolean;
-  deleted_at: string | null;
-  created_at: string;
+  registered_at: string;
   updated_at: string;
 }
 
 export interface DepartmentRow {
   d_uid: string;
   municipality_id: string;
-  dept_name: string;
-  department_type: DepartmentType | null;
-  head_id: string | null;
-  dept_contact: string | null;
-  dept_email: string | null;
-  operating_budget: number | null;
-  is_active: boolean;
-  is_deleted: boolean;
-  deleted_at: string | null;
+  department_name: string;
+  official_email: string;
+  head_name: string;
+  head_email: string;
+  head_profile_id: string | null;
+  department_logo: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -166,36 +145,28 @@ export interface DepartmentRow {
 export interface StaffRow {
   s_uid: string;
   profile_id: string;
-  municipality_id: string | null;
-  department_id: string | null;
-  employee_id: string | null;
-  staff_role: UserRole;
-  shift_start: string | null;
-  shift_end: string | null;
-  employee_status: EmployeeStatus;
-  joined_date: string | null;
-  invited_at: string | null;
-  onboarded_at: string | null;
-  is_deleted: boolean;
-  deleted_at: string | null;
+  municipality_id: string;
+  primary_department_id: string;
+  employee_id: string;
+  expertise: string;
+  contact_number: string | null;
+  gender: string | null;
+  date_of_birth: string | null;
+  personal_address: string | null;
   created_at: string;
   updated_at: string;
 }
 
 export interface CitizenRow {
-  id: string;
-  first_name: string;
-  middle_name: string | null;
-  last_name: string;
-  date_of_birth: string | null;
-  gender: Gender | null;
-  home_address: Address | null;
-  permanent_address: Address | null;
-  notification_pref: NotificationPref;
-  last_active_at: string | null;
-  is_deleted: boolean;
-  deleted_at: string | null;
-  created_at: string;
+  profile_id: string;
+  current_address: string;
+  permanent_address: string;
+  contact_number: string;
+  citizenship_id: string;
+  gender: string;
+  date_of_birth: string;
+  profile_picture: string | null;
+  registered_at: string;
   updated_at: string;
 }
 
@@ -229,38 +200,55 @@ export interface ComplaintRow {
   co_uid: string;
   citizen_id: string;
   municipality_id: string;
-  department_id: string | null;
-  category_id: string | null;
-  record_type: RecordType;
-  priority: Priority;
+  category_id: string;
+  assigned_department_id: string | null;
   title: string;
-  description: string | null;
+  description: string;
+  attachment_url: string | null;
   status: ComplaintStatus;
-  resolved_at: string | null;
+  rejection_reason: string | null;
   resolution_note: string | null;
-  latitude: number | null;
-  longitude: number | null;
-  address_hint: string | null;
-  reported_at: string;
-  is_anonymous: boolean;
-  is_deleted: boolean;
-  deleted_at: string | null;
+  submitted_date: string;
+  resolution_date: string | null;
   updated_at: string;
 }
 
 export interface ComplaintCategoryRow {
   category_id: string;
-  municipality_id: string | null;
-  name: string;
-  description: string | null;
-  icon_name: string | null;
-  color_hex: string | null;
-  display_order: number;
+  category_name: string;
+  target_department_name: string;
+  created_at: string;
+}
+
+export interface TeamRow {
+  team_id: string;
+  department_id: string;
+  complaint_id: string;
+  team_name: string;
   is_active: boolean;
-  is_deleted: boolean;
-  deleted_at: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface TeamMemberRow {
+  tm_id: string;
+  team_id: string;
+  staff_id: string;
+  is_leader: boolean;
+  joined_at: string;
+}
+
+export interface NotificationRow {
+  n_uid: string;
+  sender_profile_id: string;
+  audience_type: NotificationAudience;
+  target_municipality_id: string | null;
+  target_department_id: string | null;
+  target_staff_profile_id: string | null;
+  title: string;
+  body: string;
+  is_read: boolean;
+  created_at: string;
 }
 
 export interface AnnouncementRow {
@@ -300,38 +288,96 @@ export interface FeedbackRow {
 export interface AuditLogRow {
   al_uid: string;
   action_by: string | null;
-  action_role: UserRole;
-  municipality_id: string | null;
-  department_id: string | null;
+  action_by_role: UserRole;
+  target_user_id: string | null;
+  action: AuditAction;
   table_name: string;
   record_id: string;
-  action: AuditAction;
   old_value: Record<string, unknown> | null;
   new_value: Record<string, unknown> | null;
-  ip_address: string | null;
-  user_agent: string | null;
-  request_id: string | null;
   severity: Severity;
-  note: string | null;
   created_at: string;
 }
 
 export type ProfileInsert = Pick<ProfileRow, "id" | "full_name" | "email"> &
   Partial<Omit<ProfileRow, "id" | "full_name" | "email">>;
-export type CitizenInsert = Pick<CitizenRow, "id" | "first_name" | "last_name"> &
-  Partial<Omit<CitizenRow, "id" | "first_name" | "last_name">>;
-export type StaffInsert = Pick<StaffRow, "profile_id" | "staff_role"> &
-  Partial<Omit<StaffRow, "s_uid" | "profile_id" | "staff_role">>;
+export type CitizenInsert = Pick<
+  CitizenRow,
+  | "profile_id"
+  | "current_address"
+  | "permanent_address"
+  | "contact_number"
+  | "citizenship_id"
+  | "gender"
+  | "date_of_birth"
+> &
+  Partial<
+    Omit<
+      CitizenRow,
+      | "profile_id"
+      | "current_address"
+      | "permanent_address"
+      | "contact_number"
+      | "citizenship_id"
+      | "gender"
+      | "date_of_birth"
+    >
+  >;
+export type StaffInsert = Pick<
+  StaffRow,
+  | "profile_id"
+  | "municipality_id"
+  | "primary_department_id"
+  | "employee_id"
+  | "expertise"
+> &
+  Partial<
+    Omit<
+      StaffRow,
+      | "s_uid"
+      | "profile_id"
+      | "municipality_id"
+      | "primary_department_id"
+      | "employee_id"
+      | "expertise"
+    >
+  >;
 export type MunicipalityInsert = Pick<
   MunicipalityRow,
-  "official_name" | "login_email" | "country_code" | "time_zone"
+  "official_name" | "official_email" | "head_name" | "head_email"
 > &
-  Partial<Omit<MunicipalityRow, "m_uid" | "official_name" | "login_email">>;
-export type DepartmentInsert = Pick<DepartmentRow, "municipality_id" | "dept_name"> &
-  Partial<Omit<DepartmentRow, "d_uid" | "municipality_id" | "dept_name">>;
+  Partial<
+    Omit<
+      MunicipalityRow,
+      "m_uid" | "official_name" | "official_email" | "head_name" | "head_email"
+    >
+  >;
+export type DepartmentInsert = Pick<
+  DepartmentRow,
+  | "municipality_id"
+  | "department_name"
+  | "official_email"
+  | "head_name"
+  | "head_email"
+> &
+  Partial<
+    Omit<
+      DepartmentRow,
+      | "d_uid"
+      | "municipality_id"
+      | "department_name"
+      | "official_email"
+      | "head_name"
+      | "head_email"
+    >
+  >;
 export type StaffInvitationInsert = Pick<
   StaffInvitationRow,
-  "token_hash" | "target_email" | "target_role" | "municipality_id" | "invited_by"
+  | "token_hash"
+  | "target_email"
+  | "target_role"
+  | "municipality_id"
+  | "invited_by"
 > &
   Partial<Omit<StaffInvitationRow, "inv_uid">>;
 export type RefreshTokenInsert = Pick<
@@ -339,10 +385,16 @@ export type RefreshTokenInsert = Pick<
   "profile_id" | "token_hash" | "expires_at"
 > &
   Partial<Omit<RefreshTokenRow, "rt_uid">>;
-export type ProfileUpdate = Partial<Omit<ProfileRow, "id" | "created_at" | "email">>;
+export type ProfileUpdate = Partial<
+  Omit<ProfileRow, "id" | "created_at" | "email">
+>;
 export type StaffUpdate = Partial<Omit<StaffRow, "s_uid" | "created_at">>;
-export type MunicipalityUpdate = Partial<Omit<MunicipalityRow, "m_uid" | "created_at">>;
-export type DepartmentUpdate = Partial<Omit<DepartmentRow, "d_uid" | "created_at">>;
+export type MunicipalityUpdate = Partial<
+  Omit<MunicipalityRow, "m_uid" | "registered_at">
+>;
+export type DepartmentUpdate = Partial<
+  Omit<DepartmentRow, "d_uid" | "created_at">
+>;
 export type StaffInvitationUpdate = Partial<
   Omit<StaffInvitationRow, "inv_uid" | "created_at" | "token_hash">
 >;
@@ -359,12 +411,14 @@ export interface Database {
       municipalities: {
         Row: MunicipalityRow;
         Insert: MunicipalityInsert;
-        Update: MunicipalityUpdate; Relationships: []
+        Update: MunicipalityUpdate;
+        Relationships: [];
       };
       departments: {
         Row: DepartmentRow;
         Insert: DepartmentInsert;
-        Update: DepartmentUpdate; Relationships: []
+        Update: DepartmentUpdate;
+        Relationships: [];
       };
       staff: {
         Row: StaffRow;
@@ -375,48 +429,93 @@ export interface Database {
       citizens: {
         Row: CitizenRow;
         Insert: CitizenInsert;
-        Update: Partial<Omit<CitizenRow, "id" | "created_at">>; Relationships: []
+        Update: Partial<Omit<CitizenRow, "profile_id" | "registered_at">>;
+        Relationships: [];
+      };
+      teams: {
+        Row: TeamRow;
+        Insert: Partial<TeamRow> &
+          Pick<TeamRow, "department_id" | "complaint_id" | "team_name">;
+        Update: Partial<Omit<TeamRow, "team_id" | "created_at">>;
+        Relationships: [];
+      };
+      team_members: {
+        Row: TeamMemberRow;
+        Insert: Partial<TeamMemberRow> &
+          Pick<TeamMemberRow, "team_id" | "staff_id">;
+        Update: Partial<Omit<TeamMemberRow, "tm_id" | "joined_at">>;
+        Relationships: [];
+      };
+      notifications: {
+        Row: NotificationRow;
+        Insert: Partial<NotificationRow> &
+          Pick<
+            NotificationRow,
+            "sender_profile_id" | "audience_type" | "title" | "body"
+          >;
+        Update: Partial<Omit<NotificationRow, "n_uid" | "created_at">>;
+        Relationships: [];
       };
       staff_invitations: {
         Row: StaffInvitationRow;
         Insert: StaffInvitationInsert;
-        Update: StaffInvitationUpdate; Relationships: []
+        Update: StaffInvitationUpdate;
+        Relationships: [];
       };
       refresh_tokens: {
         Row: RefreshTokenRow;
         Insert: RefreshTokenInsert;
-        Update: Partial<Omit<RefreshTokenRow, "rt_uid">>; Relationships: []
+        Update: Partial<Omit<RefreshTokenRow, "rt_uid">>;
+        Relationships: [];
       };
       audit_logs: {
         Row: AuditLogRow;
         Insert: Omit<AuditLogRow, "al_uid" | "created_at">;
-        Update: never; Relationships: []
+        Update: never;
+        Relationships: [];
       };
       complaints: {
         Row: ComplaintRow;
         Insert: Partial<ComplaintRow> &
-        Pick<ComplaintRow, "citizen_id" | "municipality_id" | "title">;
-        Update: Partial<Omit<ComplaintRow, "co_uid" | "reported_at">>; Relationships: []
+          Pick<
+            ComplaintRow,
+            | "citizen_id"
+            | "municipality_id"
+            | "category_id"
+            | "title"
+            | "description"
+          >;
+        Update: Partial<Omit<ComplaintRow, "co_uid" | "submitted_date">>;
+        Relationships: [];
       };
       complaint_categories: {
         Row: ComplaintCategoryRow;
-        Insert: Partial<ComplaintCategoryRow> & Pick<ComplaintCategoryRow, "name">;
-        Update: Partial<Omit<ComplaintCategoryRow, "category_id" | "created_at">>; Relationships: []
+        Insert: Partial<ComplaintCategoryRow> &
+          Pick<
+            ComplaintCategoryRow,
+            "category_name" | "target_department_name"
+          >;
+        Update: Partial<
+          Omit<ComplaintCategoryRow, "category_id" | "created_at">
+        >;
+        Relationships: [];
       };
       announcements: {
         Row: AnnouncementRow;
         Insert: Partial<AnnouncementRow> &
-        Pick<
-          AnnouncementRow,
-          "municipality_id" | "created_by" | "title" | "body" | "audience"
-        >;
-        Update: Partial<Omit<AnnouncementRow, "ann_uid" | "created_at">>; Relationships: []
+          Pick<
+            AnnouncementRow,
+            "municipality_id" | "created_by" | "title" | "body" | "audience"
+          >;
+        Update: Partial<Omit<AnnouncementRow, "ann_uid" | "created_at">>;
+        Relationships: [];
       };
       feedback: {
         Row: FeedbackRow;
         Insert: Partial<FeedbackRow> &
-        Pick<FeedbackRow, "complaint_id" | "citizen_id" | "rating">;
-        Update: Partial<Omit<FeedbackRow, "f_uid" | "created_at">>; Relationships: []
+          Pick<FeedbackRow, "complaint_id" | "citizen_id" | "rating">;
+        Update: Partial<Omit<FeedbackRow, "f_uid" | "created_at">>;
+        Relationships: [];
       };
     };
     Views: {
@@ -424,7 +523,10 @@ export interface Database {
       v_budget_utilisation: { Row: Record<string, unknown>; Relationships: [] };
       v_team_workload: { Row: Record<string, unknown>; Relationships: [] };
       v_sla_breaches: { Row: Record<string, unknown>; Relationships: [] };
-      v_pending_invitations: { Row: Record<string, unknown>; Relationships: [] };
+      v_pending_invitations: {
+        Row: Record<string, unknown>;
+        Relationships: [];
+      };
     };
     Functions: {
       auth_role: { Args: Record<never, never>; Returns: UserRole };
@@ -451,6 +553,7 @@ export interface Database {
       broadcast_type: BroadcastType;
       department_type: DepartmentType;
       announcement_audience: AnnouncementAudience;
+      notification_audience: NotificationAudience;
       audit_action: AuditAction;
       severity: Severity;
       media_context: MediaContext;
