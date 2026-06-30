@@ -3,7 +3,7 @@ import MainLayout from "../components/layout/MainLayout";
 import AuthLayout from "../components/layout/AuthLayout";
 import SmartCitizenLanding from "../pages/common/LandingPage";
 import Login from "../pages/auth/Login";
-import { CitizenDashboard } from "../pages/citizen/Homepage";
+import { CitizenDashboard } from "../pages/citizen/Dashboard";
 import { Register } from "../pages/auth/CitizenRegister";
 import { AuthProvider } from "../components/layout/AuthContext";
 import ProtectedRoute from "./ProtectedRoute";
@@ -40,7 +40,7 @@ function AppRoute() {
               element={<div>Superadmin Dashboard Placeholder</div>}
             />
             <Route path="/manage-municipality" element={<ManageMuniciple />} />
-            
+
             <Route path="/audit-log" element={<AuditLog />} />
           </Route>
         </Route>

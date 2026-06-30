@@ -32,7 +32,7 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ allowedRoles }) => {
         return <Navigate to="/staff/dashboard" replace />;
       case "citizen":
       default:
-        return <Navigate to="/home" replace />; // Assuming citizen default is /home
+        return <Navigate to="/citizen/dashboard" replace />;
     }
   }
 

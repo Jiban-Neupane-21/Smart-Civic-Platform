@@ -31,8 +31,7 @@ export const Register: React.FC = () => {
       firstName: "",
       lastName: "",
       gender: "",
-      wardNumber: "",
-      homeAddress: "",
+      fullAddress: "",
       registrationCode: "",
       acceptTerms: false,
     },
@@ -54,7 +53,8 @@ export const Register: React.FC = () => {
               email: values.email,
               password: values.password,
               phone: values.phone || undefined,
-              full_address: values.homeAddress || undefined,
+              full_address: values.fullAddress || undefined,
+              gender: values.gender || undefined,
             }),
           },
         );
@@ -299,40 +299,21 @@ export const Register: React.FC = () => {
                 </TextField>
               </Grid>
 
-              <Grid size={{ xs: 12, sm: 6 }}>
-                <TextField
-                  fullWidth
-                  id="wardNumber"
-                  name="wardNumber"
-                  label="Ward Number"
-                  value={formik.values.wardNumber}
-                  onChange={formik.handleChange}
-                  onBlur={formik.handleBlur}
-                  error={
-                    formik.touched.wardNumber &&
-                    Boolean(formik.errors.wardNumber)
-                  }
-                  helperText={
-                    formik.touched.wardNumber && formik.errors.wardNumber
-                  }
-                />
-              </Grid>
-
               <Grid size={{ xs: 12 }}>
                 <TextField
                   fullWidth
-                  id="homeAddress"
-                  name="homeAddress"
-                  label="Home Address Street Details"
-                  value={formik.values.homeAddress}
+                  id="fullAddress"
+                  name="fullAddress"
+                  label="Full Address"
+                  value={formik.values.fullAddress}
                   onChange={formik.handleChange}
                   onBlur={formik.handleBlur}
                   error={
-                    formik.touched.homeAddress &&
-                    Boolean(formik.errors.homeAddress)
+                    formik.touched.fullAddress &&
+                    Boolean(formik.errors.fullAddress)
                   }
                   helperText={
-                    formik.touched.homeAddress && formik.errors.homeAddress
+                    formik.touched.fullAddress && formik.errors.fullAddress
                   }
                 />
               </Grid>

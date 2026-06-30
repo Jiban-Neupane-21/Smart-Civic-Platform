@@ -7,6 +7,7 @@ export const registerSchema = z.object({
   password:     z.string().min(8, "Password must be at least 8 characters"),
   phone:        z.string().optional(),
   full_address: z.string().optional(),
+  gender:       z.string().optional(),
   // Staff/admin accounts are created directly via role-specific API endpoints.
 });
 

@@ -89,3 +89,15 @@ export const submitFeedback = async (req: Request, res: Response) => {
     return sendError(res, e.message, 400);
   }
 };
+
+export const getDashboard = async (req: Request, res: Response) => {
+  try {
+    const data = await CitizenService.getDashboardData(
+      req.user!.id,
+      req.userClient!,
+    );
+    return sendSuccess(res, data);
+  } catch (e: any) {
+    return sendError(res, e.message, 500);
+  }
+};

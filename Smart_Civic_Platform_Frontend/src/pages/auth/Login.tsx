@@ -48,7 +48,16 @@ function LoginBase() {
           throw new Error(result.message || "Login failed");
         }
 
+        console.log("Login successful. Server response:", result);
+
         // Global state updates here. HOC catches it and redirects securely!
+        const profile = result.data ? result.data.profile : result.profile;
+        console.log(`Login Email: ${profile?.email} | Role: ${profile?.role}`);
+
+        if (!profile) {
+          throw new Error("User profile not found. Please contact administrator.");
+        }
+
         if (result.data) {
           login(result.data.access_token, result.data.profile);
         } else {

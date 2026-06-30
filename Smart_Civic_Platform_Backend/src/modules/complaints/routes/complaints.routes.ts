@@ -27,28 +27,60 @@ export function createComplaintsRouter(
   router.use(requireAuth(supabase));
 
   /**
-   * @openapi
-   * /api/v1/complaints/submit:
+   * @swagger
+   * /api/complaints/submit:
    *   post:
    *     summary: Lodge a new citizen complaint entry
-   *     tags: [Citizen Complaints]
+   *     tags: [Complaints API]
    *     security: [{ BearerAuth: [] }]
    *     requestBody:
    *       required: true
    *       content:
    *         application/json:
    *           schema:
-   *             type: object
-   *             required: [municipality_id, category_id, title, description]
-   *             properties:
-   *               municipality_id: { type: string, format: uuid }
-   *               category_id: { type: string, format: uuid }
-   *               title: { type: string, example: "Broken Water Pipe near Main Bazaar" }
-   *               description: { type: string, example: "The primary fresh drinking water line has cracked, leaking continuously for 48 hours." }
-   *               attachment_url: { type: string, example: "https://xyz.supabase.co/storage/v1/object/public/complaints/leak.jpg" }
+   *             $ref: '#/components/schemas/SubmitComplaintRequest'
+   *     responses:
+   *       201:
+   *         description: Complaint submitted successfully
+   *         content:
+   *           application/json:
+   *             schema:
+   *               $ref: '#/components/schemas/SuccessResponse'
    */
   router.post("/submit", controller.create);
+
+  /**
+   * @swagger
+   * /api/complaints/my-history:
+   *   get:
+   *     summary: Get my complaint history
+   *     tags: [Complaints API]
+   *     security: [{ BearerAuth: [] }]
+   *     responses:
+   *       200:
+   *         description: List of complaints
+   *         content:
+   *           application/json:
+   *             schema:
+   *               $ref: '#/components/schemas/SuccessResponse'
+   */
   router.get("/my-history", controller.getMyHistory);
+
+  /**
+   * @swagger
+   * /api/complaints/categories:
+   *   get:
+   *     summary: List complaint categories
+   *     tags: [Complaints API]
+   *     security: [{ BearerAuth: [] }]
+   *     responses:
+   *       200:
+   *         description: List of categories
+   *         content:
+   *           application/json:
+   *             schema:
+   *               $ref: '#/components/schemas/SuccessResponse'
+   */
   router.get("/categories", controller.getCategories);
 
   return router;

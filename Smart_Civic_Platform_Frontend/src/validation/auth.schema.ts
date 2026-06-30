@@ -38,8 +38,7 @@ export const registerSchema = Yup.object().shape({
   gender: Yup.string()
     .oneOf(['male', 'female', 'other', 'prefer_not_to_say'])
     .required('Gender selection is required'),
-  wardNumber: Yup.string().required('Ward Number is required'),
-  homeAddress: Yup.string().required('Home Address is required'),
+  fullAddress: Yup.string().required('Full Address is required'),
   
   // Optional field mapping to your municipality registration rules
   registrationCode: Yup.string().optional(),

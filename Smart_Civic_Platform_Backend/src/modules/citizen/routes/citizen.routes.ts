@@ -51,6 +51,24 @@ router.use(authenticate, authorize("citizen"));
 
 /**
  * @swagger
+ * /api/citizen/dashboard:
+ *   get:
+ *     tags: [Citizen API]
+ *     summary: Get citizen dashboard data
+ *     security: [{ BearerAuth: [] }]
+ *     responses:
+ *       200:
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/SuccessResponse'
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ */
+router.get("/dashboard", C.getDashboard);
+
+/**
+ * @swagger
  * /api/citizen/complaints:
  *   post:
  *     tags: [Citizen API]

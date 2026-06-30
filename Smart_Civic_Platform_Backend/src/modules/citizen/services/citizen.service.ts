@@ -193,3 +193,65 @@ export const submitFeedback = async (
   if (error) throw new Error(error.message);
   return data;
 };
+
+export const getDashboardData = async (
+  citizenId: string,
+  client: SupabaseClient<Database>,
+) => {
+  const db = getCitizenDb(client);
+
+  // 1. Fetch complaints summary
+  const { data: complaints, error: complaintsError } = await db
+    .from("complaints")
+    .select("co_uid, status, title, submitted_date")
+    .eq("citizen_id", citizenId)
+    .order("submitted_date", { ascending: false });
+
+  if (complaintsError) throw new Error("Failed to fetch complaints data");
+
+  const totalComplaints = complaints.length;
+  const resolvedComplaints = complaints.filter((c: any) => c.status === "resolved").length;
+  const pendingComplaints = complaints.filter((c: any) => c.status === "pending").length;
+
+  const recentComplaints = complaints.slice(0, 5).map((c: any) => ({
+    id: c.co_uid,
+    title: c.title,
+    status: c.status,
+    created_at: c.submitted_date,
+  }));
+
+  // 2. Fetch active incidents (announcements for citizens)
+  const { data: announcements, error: annError } = await supabaseAdmin
+    .from("announcements")
+    .select("ann_uid, title, created_at")
+    .in("audience", ["all", "citizen", "all_citizen"])
+    .eq("is_deleted", false)
+    .order("created_at", { ascending: false })
+    .limit(5);
+
+  const recentIncidents = announcements?.map((a: any) => ({
+    id: a.ann_uid,
+    title: a.title,
+    status: "open", // generic status for incidents
+    created_at: a.created_at,
+  })) || [];
+
+  const activeIncidentsReported = recentIncidents.length;
+
+  // 3. For citizen notifications, return empty since they use SMS/email in this schema
+  const recentNotifications: any[] = [];
+  const unreadNotifications = 0;
+
+  return {
+    summary: {
+      totalComplaints,
+      resolvedComplaints,
+      pendingComplaints,
+      activeIncidentsReported,
+      unreadNotifications,
+    },
+    recentComplaints,
+    recentIncidents,
+    recentNotifications,
+  };
+};

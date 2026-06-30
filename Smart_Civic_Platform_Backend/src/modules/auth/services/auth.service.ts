@@ -1,7 +1,9 @@
 import crypto from "crypto";
-import { supabaseAdmin } from "../../../config/supabase";
+import { createClient } from "@supabase/supabase-js";
+import { supabaseAdmin, createAuthClient, supabase } from "../../../config/supabase";
 import type { UserRole } from "../../../types/database.type";
 import { TOKEN_CONFIG } from "../../../app";
+import { env } from "../../../config/env";
 
 // Derived millisecond value — computed once at module load
 const REFRESH_TOKEN_TTL_MS =
@@ -14,6 +16,7 @@ export const registerService = async (body: {
   last_name: string;
   phone?: string;
   full_address?: string;
+  gender?: string;
   role?: "citizen";
   municipality_id?: string;
   department_id?: string;
@@ -29,37 +32,27 @@ export const registerService = async (body: {
       role: body.role ?? "citizen",
       municipality_id: body.municipality_id || null,
       department_id: body.department_id || null,
+      phone: body.phone || null,
+      full_address: body.full_address || null,
+      gender: body.gender || null
     },
   });
 
   if (error) throw new Error(error.message);
 
-  if (body.phone || body.full_address) {
-    if (body.phone) {
-      await supabaseAdmin
-        .from("profiles")
-        .update({ phone: body.phone })
-        .eq("id", data.user.id);
-    }
-    if (body.full_address) {
-      await supabaseAdmin
-        .from("citizens")
-        .update({ home_address: body.full_address })
-        .eq("id", data.user.id);
-    }
-  }
-
   return { id: data.user.id, email: data.user.email };
 };
 
 export const loginService = async (email: string, password: string) => {
-  const { data, error } = await supabaseAdmin.auth.signInWithPassword({
+  const authClient = createAuthClient();
+
+  const { data, error } = await authClient.auth.signInWithPassword({
     email,
     password,
   });
   if (error) throw new Error("Invalid email or password");
 
-  const { data: profile } = await supabaseAdmin
+  const { data: profile, error: profileError } = await supabaseAdmin
     .from("profiles")
     .select(
       "id, full_name, email, role, municipality_id, department_id, account_status, force_password_reset",
@@ -67,7 +60,11 @@ export const loginService = async (email: string, password: string) => {
     .eq("id", data.user.id)
     .single();
 
-  if (profile?.account_status === "suspended") {
+  if (profileError || !profile) {
+    throw new Error("User profile not found. Please contact administrator.");
+  }
+
+  if (profile.account_status === "suspended") {
     throw new Error("Account is suspended");
   }
 
@@ -111,7 +108,8 @@ export const refreshTokenService = async (refreshToken: string) => {
     throw new Error("Refresh token expired");
   }
 
-  const { data, error } = await supabaseAdmin.auth.refreshSession({
+  const authClient = createAuthClient();
+  const { data, error } = await authClient.auth.refreshSession({
     refresh_token: refreshToken,
   });
   if (error || !data.session) throw new Error("Could not refresh session");
@@ -184,6 +182,7 @@ export const createUserService = async (body: {
         role: body.role,
         municipality_id: body.municipality_id,
         department_id: body.department_id ?? null,
+        phone: body.phone ?? null,
       },
     });
   if (authErr) throw new Error(authErr.message);
@@ -195,9 +194,7 @@ export const createUserService = async (body: {
     .from("profiles")
     .update({
       full_name: body.full_name,
-      phone: body.phone ?? null,
       force_password_reset: true,
-      created_by: body.created_by,
     })
     .eq("id", uid);
 
@@ -226,7 +223,7 @@ export const createUserService = async (body: {
 };
 
 export const forgotPasswordService = async (email: string) => {
-  const { error } = await supabaseAdmin.auth.resetPasswordForEmail(email, {
+  const { error } = await supabase.auth.resetPasswordForEmail(email, {
     redirectTo: `${process.env.CLIENT_URL}/reset-password`,
   });
   if (error) throw new Error(error.message);

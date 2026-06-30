@@ -27,11 +27,11 @@ export function createNotificationsRouter(
   router.use(requireAuth(supabase));
 
   /**
-   * @openapi
-   * /api/v1/notifications/broadcast:
+   * @swagger
+   * /api/notifications/broadcast:
    *   post:
    *     summary: Dispatch administrative notice layout
-   *     tags: [Notifications Engine]
+   *     tags: [Notifications API]
    *     security: [{ BearerAuth: [] }]
    *     requestBody:
    *       required: true
@@ -47,9 +47,55 @@ export function createNotificationsRouter(
    *               target_staff_profile_id: { type: string, format: uuid }
    *               title: { type: string, example: "Quarterly Environmental Budget Adjustments" }
    *               body: { type: string, example: "Please review structural field work re-allocations posted in department folders." }
+   *     responses:
+   *       200:
+   *         description: Broadcast sent
+   *         content:
+   *           application/json:
+   *             schema:
+   *               $ref: '#/components/schemas/SuccessResponse'
    */
   router.post("/broadcast", controller.sendAlert);
+
+  /**
+   * @swagger
+   * /api/notifications/inbound-queue:
+   *   get:
+   *     summary: Fetch my notifications
+   *     tags: [Notifications API]
+   *     security: [{ BearerAuth: [] }]
+   *     responses:
+   *       200:
+   *         description: List of notifications
+   *         content:
+   *           application/json:
+   *             schema:
+   *               $ref: '#/components/schemas/SuccessResponse'
+   */
   router.get("/inbound-queue", controller.fetchMyAlerts);
+
+  /**
+   * @swagger
+   * /api/notifications/{notificationId}/acknowledge:
+   *   patch:
+   *     summary: Mark notification as read
+   *     tags: [Notifications API]
+   *     security: [{ BearerAuth: [] }]
+   *     parameters:
+   *       - in: path
+   *         name: notificationId
+   *         required: true
+   *         schema:
+   *           type: string
+   *           format: uuid
+   *     responses:
+   *       200:
+   *         description: Notification acknowledged
+   *         content:
+   *           application/json:
+   *             schema:
+   *               $ref: '#/components/schemas/SuccessResponse'
+   */
   router.patch("/:notificationId/acknowledge", controller.readAlert);
 
   return router;

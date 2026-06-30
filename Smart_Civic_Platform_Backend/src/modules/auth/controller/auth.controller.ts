@@ -45,10 +45,10 @@ export const getMe = async (req: Request, res: Response) => {
 
     // For citizens, also fetch their address from the citizens table
     if (user.role === 'citizen') {
-      const { data: citizen } = await supabaseAdmin
+      const { data: citizen } = await req.userClient!
         .from('citizens')
         .select('first_name, middle_name, last_name, date_of_birth, gender, home_address, permanent_address, ward_number, notification_pref')
-        .eq('id', user.id)
+        .eq('profile_id', user.id)
         .single();
 
       return sendSuccess(res, {
