@@ -11,14 +11,50 @@ export class MunicipalityRepository {
 
   // Section 22: Extracts localized real-time dashboard analytics from the view
   async getLocalComplaintStats(municipalityId: string) {
-    const { data, error } = await this.supabaseAdmin
-      .from("v_municipality_complaint_stats")
-      .select("*")
-      .eq("municipality_id", municipalityId)
+    // 1. Fetch municipality details
+    const { data: municipality, error: muniError } = await this.supabaseAdmin
+      .from("municipalities")
+      .select("m_uid, official_name")
+      .eq("m_uid", municipalityId)
       .single();
 
-    if (error) throw error;
-    return data;
+    if (muniError) throw muniError;
+
+    // 2. Fetch all complaints for this municipality
+    const { data: complaints, error: compError } = await this.supabaseAdmin
+      .from("complaints")
+      .select("status")
+      .eq("municipality_id", municipalityId);
+
+    if (compError) throw compError;
+
+    let pending_count = 0;
+    let ongoing_count = 0;
+    let resolved_count = 0;
+    let rejected_count = 0;
+    const total_complaints = complaints.length;
+
+    for (const c of complaints) {
+      if (c.status === "pending") pending_count++;
+      else if (c.status === "in_progress" || c.status === "under_review") ongoing_count++;
+      else if (c.status === "resolved" || c.status === "closed") resolved_count++;
+      else if (c.status === "rejected") rejected_count++;
+    }
+
+    const dynamic_resolution_rate = total_complaints > 0 
+      ? Number(((resolved_count / total_complaints) * 100).toFixed(2))
+      : 0;
+
+    return {
+      municipality_id: municipality.m_uid,
+      official_name: municipality.official_name,
+      pending_count,
+      ongoing_count,
+      resolved_count,
+      rejected_count,
+      total_complaints,
+      dynamic_resolution_rate,
+    };
   }
 
   // Section 7: Provisions a functional department within this municipality
@@ -29,6 +65,43 @@ export class MunicipalityRepository {
       .select()
       .single();
 
+    if (error) throw error;
+    return data;
+  }
+
+  async getDepartments(municipalityId: string) {
+    const { data, error } = await this.supabaseAdmin
+      .from("departments")
+      .select("*")
+      .eq("municipality_id", municipalityId);
+
+    if (error) throw error;
+    return data;
+  }
+
+  async updateDepartment(departmentId: string, departmentData: any) {
+    const { data, error } = await this.supabaseAdmin
+      .from("departments")
+      .update(departmentData)
+      .eq("d_uid", departmentId)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  }
+
+  async deleteDepartment(departmentId: string) {
+    const { error } = await this.supabaseAdmin
+      .from("departments")
+      .delete()
+      .eq("d_uid", departmentId);
+
+    if (error) throw error;
+  }
+
+  async getDepartmentCategories() {
+    const { data, error } = await this.supabaseAdmin.rpc("get_department_categories");
     if (error) throw error;
     return data;
   }
@@ -53,7 +126,7 @@ export class MunicipalityRepository {
     let query = this.supabaseAdmin
       .from("complaints")
       .select(
-        "co_uid, title, status, submitted_date, assigned_department_id, category_id",
+        "id, title, status, submitted_date, assigned_department_id, category_id",
       )
       .eq("municipality_id", municipalityId);
 

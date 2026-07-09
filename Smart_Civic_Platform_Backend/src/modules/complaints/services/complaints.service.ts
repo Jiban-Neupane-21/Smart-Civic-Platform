@@ -11,15 +11,6 @@ export class ComplaintsService {
       "citizen_id"
     >,
   ) {
-    // Business Rule: Ensure attachments match allowed storage root paths
-    if (
-      payload.attachment_url &&
-      !payload.attachment_url.includes(".supabase.co/storage/v1/object/public/")
-    ) {
-      throw new Error(
-        "Security Violation: Invalid attachment storage source location path.",
-      );
-    }
     return await this.repo.submitComplaint({
       ...payload,
       citizen_id: citizenId,

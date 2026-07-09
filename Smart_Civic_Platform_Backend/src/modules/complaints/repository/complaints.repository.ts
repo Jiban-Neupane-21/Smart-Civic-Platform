@@ -24,7 +24,7 @@ export class ComplaintsRepository {
       .from("complaints")
       .select(
         `
-        co_uid, title, description, status, submitted_date, attachment_url,
+        id, title, description, status, submitted_date,
         assigned_department_id, resolution_note, rejection_reason
       `,
       )
@@ -39,7 +39,7 @@ export class ComplaintsRepository {
   async getActiveCategories() {
     const { data, error } = await this.supabaseAdmin
       .from("complaint_categories")
-      .select("category_id, category_name, target_department_name");
+      .select("id, category_name, department_category");
 
     if (error) throw error;
     return data;

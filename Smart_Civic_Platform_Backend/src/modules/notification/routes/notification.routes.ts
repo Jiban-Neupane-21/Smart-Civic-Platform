@@ -31,22 +31,14 @@ export function createNotificationsRouter(
    * /api/notifications/broadcast:
    *   post:
    *     summary: Dispatch administrative notice layout
-   *     tags: [Notifications API]
+   *     tags: [Superadmin API, Municipality API, Department API]
    *     security: [{ BearerAuth: [] }]
    *     requestBody:
    *       required: true
    *       content:
    *         application/json:
    *           schema:
-   *             type: object
-   *             required: [audience_type, title, body]
-   *             properties:
-   *               audience_type: { type: string, enum: [all_departments, all_staff, particular_department, particular_staff, department_internal_staff] }
-   *               target_municipality_id: { type: string, format: uuid }
-   *               target_department_id: { type: string, format: uuid }
-   *               target_staff_profile_id: { type: string, format: uuid }
-   *               title: { type: string, example: "Quarterly Environmental Budget Adjustments" }
-   *               body: { type: string, example: "Please review structural field work re-allocations posted in department folders." }
+   *             $ref: '#/components/schemas/BroadcastNotificationRequest'
    *     responses:
    *       200:
    *         description: Broadcast sent
@@ -62,7 +54,7 @@ export function createNotificationsRouter(
    * /api/notifications/inbound-queue:
    *   get:
    *     summary: Fetch my notifications
-   *     tags: [Notifications API]
+   *     tags: [Superadmin API, Municipality API, Department API, Staff API, Citizen API]
    *     security: [{ BearerAuth: [] }]
    *     responses:
    *       200:
@@ -79,7 +71,7 @@ export function createNotificationsRouter(
    * /api/notifications/{notificationId}/acknowledge:
    *   patch:
    *     summary: Mark notification as read
-   *     tags: [Notifications API]
+   *     tags: [Superadmin API, Municipality API, Department API, Staff API, Citizen API]
    *     security: [{ BearerAuth: [] }]
    *     parameters:
    *       - in: path

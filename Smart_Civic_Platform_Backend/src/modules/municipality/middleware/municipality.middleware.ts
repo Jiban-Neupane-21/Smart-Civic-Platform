@@ -24,7 +24,7 @@ export const verifyMunicipalityHeadContext = (supabase: SupabaseClient) => {
         .select("role, account_status")
         .eq("id", userId)
         .single();
-
+        
       if (
         profileError ||
         !profile ||

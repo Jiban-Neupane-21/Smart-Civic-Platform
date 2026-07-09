@@ -8,7 +8,7 @@ type CitizenSupabaseClient = {
   ) => any;
 };
 
-const getCitizenDb = (_client: SupabaseClient<Database>) =>
+const getCitizenDb = (_client: SupabaseClient<any>) =>
   _client as unknown as CitizenSupabaseClient;
 
 export const submitComplaint = async (
@@ -18,9 +18,8 @@ export const submitComplaint = async (
     title: string;
     description: string;
     category_id?: string;
-    attachment_url?: string;
   },
-  client: SupabaseClient<Database>,
+  client: SupabaseClient<any>,
 ) => {
   const db = getCitizenDb(client);
 
@@ -32,10 +31,9 @@ export const submitComplaint = async (
       title: body.title,
       description: body.description,
       category_id: body.category_id ?? null,
-      attachment_url: body.attachment_url ?? null,
       status: "pending",
-    })
-    .select("co_uid, title, status, submitted_date")
+    } as any)
+    .select("id, title, status, submitted_date")
     .single();
 
   if (error) throw new Error(error.message);
@@ -45,7 +43,7 @@ export const submitComplaint = async (
 export const getMyComplaints = async (
   citizenId: string,
   status: string | undefined,
-  client: SupabaseClient<Database>,
+  client: SupabaseClient<any>,
 ) => {
   const db = getCitizenDb(client);
 
@@ -53,7 +51,7 @@ export const getMyComplaints = async (
     .from("complaints")
     .select(
       `
-      co_uid, title, status, submitted_date, resolution_date, resolution_note,
+      id, title, status, submitted_date, resolution_date, resolution_note,
       complaint_categories ( category_name ),
       departments ( department_name )
     `,
@@ -71,7 +69,7 @@ export const getMyComplaints = async (
 export const getComplaintDetail = async (
   citizenId: string,
   complaintId: string,
-  client: SupabaseClient<Database>,
+  client: SupabaseClient<any>,
 ) => {
   const db = getCitizenDb(client);
 
@@ -79,14 +77,13 @@ export const getComplaintDetail = async (
     .from("complaints")
     .select(
       `
-      co_uid, title, description, status,
+      id, title, description, status,
       submitted_date, resolution_date, resolution_note,
-      attachment_url,
       complaint_categories ( category_name ),
       departments ( department_name )
     `,
     )
-    .eq("co_uid", complaintId)
+    .eq("id", complaintId)
     .eq("citizen_id", citizenId)
     .single();
 
@@ -97,14 +94,14 @@ export const getComplaintDetail = async (
 export const getComplaintHistory = async (
   citizenId: string,
   complaintId: string,
-  client: SupabaseClient<Database>,
+  client: SupabaseClient<any>,
 ) => {
   const db = getCitizenDb(client);
 
   const { data: complaint } = await db
     .from("complaints")
-    .select("co_uid")
-    .eq("co_uid", complaintId)
+    .select("id")
+    .eq("id", complaintId)
     .eq("citizen_id", citizenId)
     .maybeSingle();
   if (!complaint) throw new Error("Complaint not found");
@@ -124,7 +121,7 @@ export const getMunicipalities = async () => {
   const { data, error } = await supabaseAdmin
     .from("municipalities")
     .select(
-      "m_uid, official_name, official_email, municipality_type, province, district",
+      "id, official_name, official_email, local_level_type",
     )
     .eq("is_active", true)
     .order("official_name");
@@ -135,7 +132,7 @@ export const getMunicipalities = async () => {
 export const getCategories = async (_municipalityId: string) => {
   const { data, error } = await supabaseAdmin
     .from("complaint_categories")
-    .select("category_id, category_name, target_department_name, created_at")
+    .select("id, category_name, department_category, created_at")
     .order("created_at", { ascending: true });
   if (error) throw new Error(error.message);
   return data;
@@ -145,14 +142,14 @@ export const submitFeedback = async (
   citizenId: string,
   complaintId: string,
   body: { rating: number; comment?: string; is_anonymous?: boolean },
-  client: SupabaseClient<Database>,
+  client: SupabaseClient<any>,
 ) => {
   const db = getCitizenDb(client);
 
   const { data: complaint } = (await db
     .from("complaints")
     .select("status")
-    .eq("co_uid", complaintId)
+    .eq("id", complaintId)
     .eq("citizen_id", citizenId)
     .maybeSingle()) as {
     data: { status: ComplaintStatus } | null;
@@ -165,10 +162,10 @@ export const submitFeedback = async (
   }
 
   const { data: assignment } = await supabaseAdmin
-    .from("assignments")
+    .from("complaint_assignments")
     .select("team_id, staff_id")
     .eq("complaint_id", complaintId)
-    .order("actual_end", { ascending: false })
+    .order("completed_at", { ascending: false })
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
@@ -186,8 +183,8 @@ export const submitFeedback = async (
 
   const { data, error } = await db
     .from("feedback")
-    .insert(payload)
-    .select("f_uid, rating, comment")
+    .insert(payload as any)
+    .select("id, rating, comment")
     .single();
 
   if (error) throw new Error(error.message);
@@ -196,14 +193,14 @@ export const submitFeedback = async (
 
 export const getDashboardData = async (
   citizenId: string,
-  client: SupabaseClient<Database>,
+  client: SupabaseClient<any>,
 ) => {
   const db = getCitizenDb(client);
 
   // 1. Fetch complaints summary
   const { data: complaints, error: complaintsError } = await db
     .from("complaints")
-    .select("co_uid, status, title, submitted_date")
+    .select("id, status, title, submitted_date")
     .eq("citizen_id", citizenId)
     .order("submitted_date", { ascending: false });
 
@@ -214,7 +211,7 @@ export const getDashboardData = async (
   const pendingComplaints = complaints.filter((c: any) => c.status === "pending").length;
 
   const recentComplaints = complaints.slice(0, 5).map((c: any) => ({
-    id: c.co_uid,
+    id: c.id,
     title: c.title,
     status: c.status,
     created_at: c.submitted_date,
@@ -223,14 +220,14 @@ export const getDashboardData = async (
   // 2. Fetch active incidents (announcements for citizens)
   const { data: announcements, error: annError } = await supabaseAdmin
     .from("announcements")
-    .select("ann_uid, title, created_at")
-    .in("audience", ["all", "citizen", "all_citizen"])
+    .select("id, title, created_at")
+    .in("audience", ["all_citizens", "everyone"])
     .eq("is_deleted", false)
     .order("created_at", { ascending: false })
     .limit(5);
 
   const recentIncidents = announcements?.map((a: any) => ({
-    id: a.ann_uid,
+    id: a.id,
     title: a.title,
     status: "open", // generic status for incidents
     created_at: a.created_at,
@@ -255,3 +252,4 @@ export const getDashboardData = async (
     recentNotifications,
   };
 };
+

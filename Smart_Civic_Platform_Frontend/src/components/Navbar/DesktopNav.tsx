@@ -64,7 +64,7 @@ export function DesktopNav({
                 transform: "scale(1.02)",
               },
             }}
-            onClick={() => onNavigate("/dashboard")}
+            onClick={() => onNavigate(items[0]?.href || "/")}
           >
             {/* Logo with gradient */}
             <Box

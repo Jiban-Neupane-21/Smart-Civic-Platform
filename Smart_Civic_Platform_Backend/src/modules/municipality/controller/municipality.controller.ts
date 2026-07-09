@@ -16,12 +16,30 @@ export class MunicipalityController {
       res.status(500).json({ success: false, error: error.message });
     }
   };
+  getDepartments = async (req: any, res: Response): Promise<void> => {
+    try {
+      const depts = await this.service.getDepartments(req.municipalityId);
+      res.status(200).json({ success: true, data: { departments: depts } });
+    } catch (error: any) {
+      res.status(500).json({ success: false, error: error.message });
+    }
+  };
+
+  getDepartmentCategories = async (req: any, res: Response): Promise<void> => {
+    try {
+      const categories = await this.service.getDepartmentCategories();
+      res.status(200).json({ success: true, data: categories });
+    } catch (error: any) {
+      res.status(500).json({ success: false, error: error.message });
+    }
+  };
 
   provisionDepartment = async (req: any, res: Response): Promise<void> => {
     try {
       const { department_name, official_email, head_name, head_email } =
         req.body;
       if (!department_name || !official_email || !head_name || !head_email) {
+        console.error("provisionDepartment 400: Missing fundamental structural department elements.", req.body);
         res.status(400).json({
           success: false,
           error: "Missing fundamental structural department elements.",
@@ -29,16 +47,73 @@ export class MunicipalityController {
         return;
       }
 
+      // 1. Generate secure password for department head
+      const head_password = require("crypto").randomBytes(6).toString("hex");
+
+      // 2. Register department (filtering out user-profile specific fields like head_contact_no)
+      const { department_category } = req.body;
+      const departmentData = {
+        department_name,
+        official_email,
+        head_name,
+        head_email,
+        ...(department_category && { department_category }),
+      };
+
       const dept = await this.service.registerDepartment(
         req.municipalityId,
-        req.body,
+        departmentData,
       );
-      res.status(201).json({ success: true, data: dept });
+
+      try {
+        // 3. Create the department head user profile
+        const userProfile = await createUserService({
+          email: head_email,
+          password: head_password,
+          full_name: head_name,
+          role: "department_head",
+          municipality_id: req.municipalityId,
+          department_id: dept.d_uid,
+          phone: req.body.head_contact_no || undefined,
+          created_by: req.user?.id || "municipality_head",
+        });
+
+        // 4. Update the department record with the head's profile ID
+        await this.service.updateDepartment(dept.d_uid, {
+          head_profile_id: userProfile.id,
+        });
+
+        res.status(201).json({ success: true, data: { ...dept, head_password } });
+      } catch (userError: any) {
+        // Rollback department creation if user fails
+        await this.service.deleteDepartment(dept.d_uid);
+        throw new Error(`Failed to create head user account. Department creation rolled back. Reason: ${userError.message}`);
+      }
+    } catch (error: any) {
+      console.error("provisionDepartment 400 Catch Block:", error);
+      res.status(400).json({ success: false, error: error.message });
+    }
+  };
+
+  updateDepartment = async (req: any, res: Response): Promise<void> => {
+    try {
+      const { id } = req.params;
+      const dept = await this.service.updateDepartment(id, req.body);
+      res.status(200).json({ success: true, data: dept });
     } catch (error: any) {
       res.status(400).json({ success: false, error: error.message });
     }
   };
 
+  deleteDepartment = async (req: any, res: Response): Promise<void> => {
+    try {
+      const { id } = req.params;
+      await this.service.deleteDepartment(id);
+      res.status(200).json({ success: true, message: "Department deleted successfully." });
+    } catch (error: any) {
+      res.status(400).json({ success: false, error: error.message });
+    }
+  };
   onboardStaffProfile = async (req: any, res: Response): Promise<void> => {
     try {
       const { profile_id, primary_department_id, employee_id, expertise } =

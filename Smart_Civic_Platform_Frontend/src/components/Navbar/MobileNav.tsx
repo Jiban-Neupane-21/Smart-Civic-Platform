@@ -79,7 +79,7 @@ export function MobileNav({
                 transition: "transform 0.2s ease",
                 "&:hover": { transform: "scale(1.02)" },
               }}
-              onClick={() => onNavigate("/dashboard")}
+              onClick={() => onNavigate(primaryItems[0]?.href || "/")}
             >
               <Box
                 sx={{
@@ -218,15 +218,17 @@ export function MobileNav({
         anchor="bottom"
         open={drawerOpen}
         onClose={() => setDrawerOpen(false)}
-        PaperProps={{
-          sx: {
-            borderTopLeftRadius: "20px",
-            borderTopRightRadius: "20px",
-            padding: "20px",
-            paddingBottom: "calc(20px + env(safe-area-inset-bottom, 0px))",
-            backgroundColor: theme.palette.background.paper,
-            maxHeight: "75vh",
-          },
+        slotProps={{
+          paper: {
+            sx: {
+              borderTopLeftRadius: "20px",
+              borderTopRightRadius: "20px",
+              padding: "20px",
+              paddingBottom: "calc(20px + env(safe-area-inset-bottom, 0px))",
+              backgroundColor: theme.palette.background.paper,
+              maxHeight: "75vh",
+            },
+          }
         }}
         sx={{ zIndex: 1200 }}
       >

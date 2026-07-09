@@ -5,9 +5,13 @@ import { SupabaseClient } from "@supabase/supabase-js";
 
 const requireAuth =
   (supabase: SupabaseClient) => async (req: any, res: any, next: any) => {
+    console.log("requireAuth: incoming request to", req.originalUrl);
+    console.log("requireAuth: headers received:", req.headers);
     const authHeader = req.headers.authorization;
-    if (!authHeader)
+    if (!authHeader) {
+      console.log("requireAuth: Authorization header absent.");
       return res.status(401).json({ error: "Authorization header absent." });
+    }
 
     const token = authHeader.split(" ")[1];
     const {
@@ -77,18 +81,7 @@ export function createMunicipalityRouter(
    *       content:
    *         application/json:
    *           schema:
-   *             type: object
-   *             required:
-   *               - department_name
-   *               - official_email
-   *               - head_name
-   *               - head_email
-   *             properties:
-   *               department_name: { type: string, example: "Civil Infrastructure Engineering" }
-   *               official_email: { type: string, example: "infra@lalitpurmun.gov.np" }
-   *               head_name: { type: string, example: "Er. Ramesh Shrestha" }
-   *               head_email: { type: string, example: "ramesh.infra@lalitpurmun.gov.np" }
-   *               head_profile_id: { type: string, format: uuid }
+   *             $ref: '#/components/schemas/ProvisionDepartmentRequest'
    *     responses:
    *       201:
    *         description: Department entity successfully registered.
@@ -96,6 +89,16 @@ export function createMunicipalityRouter(
    *         description: Data entry constraint failure.
    */
   router.post("/departments/create", controller.provisionDepartment);
+
+  // New CRUD endpoints expected by frontend: /api/municipality/:municipalityId/departments
+  router.get("/departments/categories", controller.getDepartmentCategories);
+  router.get("/:municipalityId/departments", controller.getDepartments);
+  router.get("/departments", controller.getDepartments);
+  router.post("/:municipalityId/departments", controller.provisionDepartment);
+  router.patch("/:municipalityId/departments/:id", controller.updateDepartment);
+  router.patch("/departments/:id", controller.updateDepartment);
+  router.delete("/:municipalityId/departments/:id", controller.deleteDepartment);
+  router.delete("/departments/:id", controller.deleteDepartment);
 
   /**
    * @openapi
@@ -111,19 +114,7 @@ export function createMunicipalityRouter(
    *       content:
    *         application/json:
    *           schema:
-   *             type: object
-   *             required:
-   *               - profile_id
-   *               - primary_department_id
-   *               - employee_id
-   *               - expertise
-   *             properties:
-   *               profile_id: { type: string, format: uuid }
-   *               primary_department_id: { type: string, format: uuid }
-   *               employee_id: { type: string, example: "LMC-2026-894" }
-   *               expertise: { type: string, example: "Hydraulic Systems, Drainage Maintenance" }
-   *               contact_number: { type: string, example: "+9779851000000" }
-   *               gender: { type: string, enum: [male, female, other, prefer_not_to_say], example: "male" }
+   *             $ref: '#/components/schemas/OnboardStaffRequest'
    *     responses:
    *       201:
    *         description: Personnel successfully onboarded to the target department.
@@ -164,20 +155,7 @@ export function createMunicipalityRouter(
    *       content:
    *         application/json:
    *           schema:
-   *             type: object
-   *             required:
-   *               - email
-   *               - password
-   *               - full_name
-   *               - role
-   *               - department_id
-   *             properties:
-   *               email: { type: string, format: email, example: "staff@lalitpurmun.gov.np" }
-   *               password: { type: string, minLength: 8, example: "TempPass123!" }
-   *               full_name: { type: string, example: "Er. Ramesh Shrestha" }
-   *               role: { type: string, enum: [department_head, staff], example: "department_head" }
-   *               department_id: { type: string, format: uuid }
-   *               phone: { type: string, example: "+9779851000000" }
+   *             $ref: '#/components/schemas/CreateUserRequest'
    *     responses:
    *       201:
    *         description: User account created successfully.

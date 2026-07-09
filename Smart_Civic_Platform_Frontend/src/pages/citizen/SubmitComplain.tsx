@@ -10,7 +10,7 @@ import {
   InputLabel,
   FormControl,
   Select,
-  SelectChangeEvent,
+  type SelectChangeEvent,
 } from "@mui/material";
 import { CloudUpload } from "@mui/icons-material";
 

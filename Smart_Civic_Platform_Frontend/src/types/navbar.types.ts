@@ -3,14 +3,15 @@ import type { UserRole } from "./userRole.type";
 
 export type Role =
   | "SuperAdmin"
-  | "Municipality"
-  | "Department"
+  | "Municipality-head"
+  | "Department-head"
   | "Staff"
   | "Citizen";
 
 export interface DesktopNavItem {
   label: string;
   icon: ReactElement;
+  Role : Role;
   href: string;
   type: "desktop";
 }
@@ -18,6 +19,7 @@ export interface DesktopNavItem {
 export interface MobileNavItem {
   label: string;
   icon: ReactElement;
+  Role : Role;
   href: string;
   type: "mobile";
 }

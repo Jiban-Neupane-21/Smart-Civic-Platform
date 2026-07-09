@@ -31,7 +31,7 @@ export function createComplaintsRouter(
    * /api/complaints/submit:
    *   post:
    *     summary: Lodge a new citizen complaint entry
-   *     tags: [Complaints API]
+   *     tags: [Citizen API]
    *     security: [{ BearerAuth: [] }]
    *     requestBody:
    *       required: true
@@ -54,7 +54,7 @@ export function createComplaintsRouter(
    * /api/complaints/my-history:
    *   get:
    *     summary: Get my complaint history
-   *     tags: [Complaints API]
+   *     tags: [Citizen API]
    *     security: [{ BearerAuth: [] }]
    *     responses:
    *       200:
@@ -71,7 +71,7 @@ export function createComplaintsRouter(
    * /api/complaints/categories:
    *   get:
    *     summary: List complaint categories
-   *     tags: [Complaints API]
+   *     tags: [Citizen API]
    *     security: [{ BearerAuth: [] }]
    *     responses:
    *       200:

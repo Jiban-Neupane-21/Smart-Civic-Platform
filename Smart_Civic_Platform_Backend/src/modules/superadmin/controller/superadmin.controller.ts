@@ -1,4 +1,5 @@
 import { Request, Response } from "express";
+import crypto from "crypto";
 import { SuperadminService } from "../services/superadmin.services";
 import { createUserService } from "../../auth/services/auth.service";
 
@@ -26,6 +27,8 @@ export class SuperadminController {
         head_email,
         municipality_type,
         total_wards,
+        province,
+        district,
       } = req.body;
 
       // Inline payload sanitation check
@@ -37,8 +40,51 @@ export class SuperadminController {
         return;
       }
 
+      // 1. Check if the head_email already exists to prevent orphaned municipalities
+      const emailExists = await this.service.checkEmailExists(head_email);
+      if (emailExists) {
+        res.status(400).json({
+          success: false,
+          error: "A user with the provided head email already exists.",
+        });
+        return;
+      }
+
+      // 2. Generate a temporary password
+      const head_password = crypto.randomBytes(6).toString("hex");
+
+      // 3. Register the municipality
       const newMuni = await this.service.registerNewMunicipality(req.body);
-      res.status(201).json({ success: true, data: newMuni });
+      
+      try {
+        // 4. Create the municipality head user
+        await createUserService({
+          email: head_email,
+          password: head_password,
+          full_name: head_name,
+          role: "municipality_head",
+          municipality_id: newMuni.m_uid,
+          created_by: "superadmin" // or from req.user
+        });
+        
+        // 5. Update the municipality with the created profile ID.
+        // Wait a small moment for the trigger to fire, then fetch the profile.
+        // Wait 500ms
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        const profileId = await this.service.getProfileIdByEmail(head_email);
+          
+        if (profileId) {
+          await this.service.updateMunicipalityHead(newMuni.m_uid, profileId);
+        }
+      } catch (userError: any) {
+        // Rollback: delete the municipality
+        await this.service.removeMunicipality(newMuni.m_uid);
+        throw new Error(`Failed to create head user. Municipality was rolled back. Reason: ${userError.message}`);
+      }
+
+      // Return the generated password so the frontend can display it
+      res.status(201).json({ success: true, data: { ...newMuni, head_password } });
     } catch (error: any) {
       res.status(400).json({ success: false, error: error.message });
     }
@@ -130,6 +176,29 @@ export class SuperadminController {
       res.status(201).json({ success: true, data: profile });
     } catch (error: any) {
       res.status(400).json({ success: false, error: error.message });
+    }
+  };
+
+  getMunicipalities = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const municipalities = await this.service.getAllMunicipalities();
+      res.status(200).json({ success: true, data: municipalities });
+    } catch (error: any) {
+      res.status(500).json({ success: false, error: error.message });
+    }
+  };
+
+  deleteMunicipality = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const { id } = req.params;
+      if (!id) {
+        res.status(400).json({ success: false, error: "Municipality ID is required." });
+        return;
+      }
+      await this.service.removeMunicipality(id);
+      res.status(200).json({ success: true, message: "Municipality deleted successfully." });
+    } catch (error: any) {
+      res.status(500).json({ success: false, error: error.message });
     }
   };
 }

@@ -32,7 +32,7 @@ export const verifyStaffContext = (supabase: SupabaseClient) => {
       // Query internal metadata footprints map
       const { data: staffMeta, error: metaError } = await supabase
         .from('staff')
-        .select('s_uid, primary_department_id')
+        .select('id, primary_department_id')
         .eq('profile_id', userId)
         .single();
 
@@ -42,7 +42,7 @@ export const verifyStaffContext = (supabase: SupabaseClient) => {
       }
 
       // Bind resolved identities into route lifecycle execution parameters safely
-      req.staffId = staffMeta.s_uid;
+      req.staffId = staffMeta.id;
       req.departmentId = staffMeta.primary_department_id;
       next();
     } catch (err: any) {

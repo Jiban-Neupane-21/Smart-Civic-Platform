@@ -45,13 +45,7 @@ export function createDepartmentRouter(
    *       content:
    *         application/json:
    *           schema:
-   *             type: object
-   *             required:
-   *               - team_name
-   *               - complaint_id
-   *             properties:
-   *               team_name: { type: string, example: "Emergency Sewage Recovery Squad B" }
-   *               complaint_id: { type: string, format: uuid, example: "bc103a89-2114-419b-aa22-127839401111" }
+   *             $ref: '#/components/schemas/CreateTeamRequest'
    *     responses:
    *       201:
    *         description: Response team registered and active.
@@ -72,14 +66,7 @@ export function createDepartmentRouter(
    *       content:
    *         application/json:
    *           schema:
-   *             type: object
-   *             required:
-   *               - team_id
-   *               - staff_id
-   *             properties:
-   *               team_id: { type: string, format: uuid, example: "c2194811-1029-4112-bb91-92837190001a" }
-   *               staff_id: { type: string, format: uuid, example: "9af36111-c918-4a11-b011-826315271891" }
-   *               is_leader: { type: boolean, default: false, example: true }
+   *             $ref: '#/components/schemas/AssignTeamMemberRequest'
    *     responses:
    *       201:
    *         description: Staff profile linked to the team successfully.
@@ -106,13 +93,7 @@ export function createDepartmentRouter(
    *       content:
    *         application/json:
    *           schema:
-   *             type: object
-   *             required:
-   *               - action
-   *             properties:
-   *               action: { type: string, enum: [ongoing, resolved, rejected], example: "resolved" }
-   *               resolution_note: { type: string, example: "Main conduit line replaced. Flow testing verified normal pressure metrics." }
-   *               rejection_reason: { type: string, example: "The requested repair area falls outside municipal property lines." }
+   *             $ref: '#/components/schemas/UpdateComplaintStateRequest'
    *     responses:
    *       200:
    *         description: Complaint status updated and timestamp locked.
@@ -151,16 +132,7 @@ export function createDepartmentRouter(
    *       content:
    *         application/json:
    *           schema:
-   *             type: object
-   *             required:
-   *               - email
-   *               - password
-   *               - full_name
-   *             properties:
-   *               email: { type: string, format: email, example: "technician@lalitpurmun.gov.np" }
-   *               password: { type: string, minLength: 8, example: "TempPass123!" }
-   *               full_name: { type: string, example: "Bikash Tamang" }
-   *               phone: { type: string, example: "+9779851000000" }
+   *             $ref: '#/components/schemas/CreateUserRequest'
    *     responses:
    *       201:
    *         description: Staff account created successfully.

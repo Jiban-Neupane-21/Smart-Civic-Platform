@@ -6,10 +6,10 @@ export class NotificationsRepository {
 
   // Section 19: Dispatches broadcast records targeted at specific administrative clusters
   async dispatchNotification(
-    notificationPayload: Database["public"]["Tables"]["notifications"]["Insert"],
+    notificationPayload: any,
   ) {
     const { data, error } = await this.supabaseAdmin
-      .from("notifications")
+      .from("announcements")
       .insert([notificationPayload])
       .select()
       .single();
@@ -23,7 +23,7 @@ export class NotificationsRepository {
     const { data, error } = await this.supabaseAdmin
       .from("notifications")
       .select("*")
-      .or(`target_staff_profile_id.eq.${userId}, audience_type.eq.all_staff`)
+      .eq("user_id", userId)
       .order("created_at", { ascending: false });
 
     if (error) throw error;
@@ -34,9 +34,9 @@ export class NotificationsRepository {
   async markAsRead(notificationId: string, userId: string) {
     const { data, error } = await this.supabaseAdmin
       .from("notifications")
-      .update({ is_read: true })
-      .eq("n_uid", notificationId)
-      .eq("target_staff_profile_id", userId)
+      .update({ read_status: true })
+      .eq("id", notificationId)
+      .eq("user_id", userId)
       .select()
       .single();
 

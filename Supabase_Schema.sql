@@ -843,3 +843,45 @@ INSERT INTO complaint_categories (category_name, department_category, default_pr
 -- Global maintenance-mode default
 INSERT INTO system_settings (key, value, description) VALUES
   ('maintenance_mode', '{"enabled": false, "message": ""}', 'Global maintenance mode toggle and banner message shown platform-wide');
+  
+  DO $$
+BEGIN
+    CREATE TYPE department_category AS ENUM (
+        'infrastructure_public_work',
+        'water_supply',
+        'sanitation_waste_Management',
+        'sewerage_drainage',
+        'Electricity',
+        'parks_environment',
+        'health',
+        'building_urban_planning',
+        'traffic_parking',
+        'disaster_management',
+        'animal_control',
+        'revenue_tax',
+        'administration',
+        'information_technology',
+        'other'
+    );
+EXCEPTION
+    WHEN duplicate_object THEN NULL;
+END $$;
+
+ALTER TABLE public.departments
+ADD COLUMN IF NOT EXISTS department_category department_category
+DEFAULT 'other';
+
+NOTIFY pgrst, 'reload schema';
+
+-- RPC Function to get department categories
+CREATE OR REPLACE FUNCTION get_department_categories()
+RETURNS text[] AS $$
+BEGIN
+  RETURN ARRAY(
+    SELECT enumlabel
+    FROM pg_enum
+    JOIN pg_type ON pg_enum.enumtypid = pg_type.oid
+    WHERE pg_type.typname = 'department_category'
+  );
+END;
+$$ LANGUAGE plpgsql;

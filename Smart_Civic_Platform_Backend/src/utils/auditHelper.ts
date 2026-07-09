@@ -1,4 +1,4 @@
-import { supabaseAdmin } from "../config/supabase";
+import { supabaseAdmin } from "../config/supabase.js";
 import type { AuditAction, UserRole } from "../types/database.type";
 
 export interface AuditEntry {
@@ -17,21 +17,19 @@ export interface AuditEntry {
 }
 
 export async function recordAudit(entry: AuditEntry): Promise<void> {
-  const { error } = await supabaseAdmin.from("audit_logs").insert({
-    action_by: entry.actionBy,
-    action_role: entry.actionRole,
-    municipality_id: entry.municipalityId ?? null,
-    department_id: entry.departmentId ?? null,
-    table_name: entry.tableName,
-    record_id: entry.recordId,
-    action: entry.action,
-    old_value: entry.oldValue ?? null,
-    new_value: entry.newValue ?? null,
-    ip_address: entry.ip ?? null,
-    user_agent: entry.userAgent ?? null,
-    severity: "info",
-    note: entry.note ?? null,
-  });
+  const { error } = await supabaseAdmin
+    .from("audit_logs")
+    .insert({
+      action_by: entry.actionBy,
+      action_by_role: entry.actionRole as any,
+      municipality_id: entry.municipalityId ?? null,
+      table_name: entry.tableName,
+      record_id: entry.recordId,
+      action: entry.action as any,
+      old_value: entry.oldValue ?? null,
+      new_value: entry.newValue ?? null,
+      severity: "info",
+    } as any);
 
   if (error) console.error("[audit]", error.message);
 }

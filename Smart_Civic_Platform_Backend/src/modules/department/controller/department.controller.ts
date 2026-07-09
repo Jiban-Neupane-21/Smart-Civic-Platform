@@ -7,22 +7,21 @@ export class DepartmentController {
 
   setupTeam = async (req: any, res: Response): Promise<void> => {
     try {
-      const { team_name, complaint_id } = req.body;
-      if (!team_name || !complaint_id) {
+      const { team_name } = req.body;
+      if (!team_name) {
         res
           .status(400)
           .json({
             success: false,
             error:
-              "Team designation name and target case footprint are required.",
+              "Team designation name is required.",
           });
         return;
       }
 
       const team = await this.service.buildDeploymentTeam(
         req.departmentId,
-        team_name,
-        complaint_id,
+        team_name
       );
       res.status(201).json({ success: true, data: team });
     } catch (error: any) {
@@ -60,13 +59,13 @@ export class DepartmentController {
       const { complaintId } = req.params;
       const { action, resolution_note, rejection_reason } = req.body;
 
-      if (!action || !["ongoing", "resolved", "rejected"].includes(action)) {
+      if (!action || !["in_progress", "resolved", "rejected", "closed", "under_review"].includes(action)) {
         res
           .status(400)
           .json({
             success: false,
             error:
-              "Valid operational state modifier required (ongoing, resolved, rejected).",
+              "Valid operational state modifier required (under_review, in_progress, resolved, rejected, closed).",
           });
         return;
       }

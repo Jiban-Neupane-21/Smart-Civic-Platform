@@ -7,7 +7,7 @@ export class StaffRepository {
   async resolveStaffProfile(userId: string) {
     const { data, error } = await this.supabaseAdmin
       .from('staff')
-      .select('s_uid, municipality_id, primary_department_id, employee_id')
+      .select('id, municipality_id, primary_department_id, employee_id')
       .eq('profile_id', userId)
       .single();
 
@@ -20,20 +20,13 @@ export class StaffRepository {
     const { data, error } = await this.supabaseAdmin
       .from('team_members')
       .select(`
-        tm_id,
+        id,
         is_leader,
         joined_at,
         teams (
-          team_id,
+          id,
           team_name,
-          is_active,
-          complaints (
-            co_uid,
-            title,
-            description,
-            status,
-            attachment_url
-          )
+          is_active
         )
       `)
       .eq('staff_id', staffId);
@@ -46,7 +39,7 @@ export class StaffRepository {
   async getDepartmentComplaintsLog(departmentId: string) {
     const { data, error } = await this.supabaseAdmin
       .from('complaints')
-      .select('co_uid, title, description, status, submitted_date')
+      .select('id, title, description, status, submitted_date')
       .eq('assigned_department_id', departmentId)
       .order('submitted_date', { ascending: false });
 

@@ -19,6 +19,10 @@ import {
   DialogContent,
   DialogActions,
   TextField,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
 } from "@mui/material";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
@@ -26,30 +30,65 @@ import AddIcon from "@mui/icons-material/Add";
 import { API_ENDPOINTS, fetchWithAuth } from "../../api";
 
 interface Municipality {
-  id: string;
-  name: string;
-  region: string;
+  m_uid: string;
+  official_name: string;
+  district: string;
+  province: string;
   official_email: string;
   head_name: string;
   head_email: string;
-  status: string;
-  created_at: string;
+  is_active: boolean;
+  registered_at: string;
 }
+
+const PROVINCES = [
+  "Koshi",
+  "Madhesh",
+  "Bagmati",
+  "Gandaki",
+  "Lumbini",
+  "Karnali",
+  "Sudurpashchim"
+];
+
+const DISTRICTS_BY_PROVINCE: Record<string, string[]> = {
+  "Koshi": ["Bhojpur", "Dhankuta", "Ilam", "Jhapa", "Khotang", "Morang", "Okhaldhunga", "Panchthar", "Sankhuwasabha", "Solukhumbu", "Sunsari", "Taplejung", "Terhathum", "Udayapur"],
+  "Madhesh": ["Bara", "Dhanusha", "Mahottari", "Parsa", "Rautahat", "Saptari", "Sarlahi", "Siraha"],
+  "Bagmati": ["Bhaktapur", "Chitwan", "Dhading", "Dolakha", "Kathmandu", "Kavrepalanchok", "Lalitpur", "Makwanpur", "Nuwakot", "Ramechhap", "Rasuwa", "Sindhuli", "Sindhupalchok"],
+  "Gandaki": ["Baglung", "Gorkha", "Kaski", "Lamjung", "Manang", "Mustang", "Myagdi", "Nawalpur", "Parbat", "Syangja", "Tanahun"],
+  "Lumbini": ["Arghakhanchi", "Banke", "Bardiya", "Dang", "Eastern Rukum", "Gulmi", "Kapilvastu", "Parasi", "Palpa", "Pyuthan", "Rolpa", "Rupandehi"],
+  "Karnali": ["Dailekh", "Dolpa", "Humla", "Jajarkot", "Jumla", "Kalikot", "Mugu", "Salyan", "Surkhet", "Western Rukum"],
+  "Sudurpashchim": ["Achham", "Baitadi", "Bajhang", "Bajura", "Dadeldhura", "Darchula", "Doti", "Kailali", "Kanchanpur"]
+};
+
+const MUNICIPALITY_TYPES = [
+  { value: "metropolitan_city", label: "Metropolitan City" },
+  { value: "sub_metropolitan_city", label: "Sub-Metropolitan City" },
+  { value: "municipality", label: "Municipality" },
+  { value: "rural_municipality", label: "Rural Municipality" }
+];
 
 export default function ManageMuniciple() {
   const [municipalities, setMunicipalities] = useState<Municipality[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [successData, setSuccessData] = useState<{
+    password?: string;
+    email?: string;
+    name?: string;
+  } | null>(null);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState({
-    name: "",
-    region: "",
-    email: "",
+    official_name: "",
+    district: "",
+    province: "",
+    official_email: "",
     head_name: "",
     head_email: "",
-    head_password: "",
+    total_wards: 1,
+    municipality_type: "municipality",
   });
 
   const fetchMunicipalities = async () => {
@@ -96,7 +135,7 @@ export default function ManageMuniciple() {
       );
       if (!response.ok) throw new Error("Failed to delete municipality");
       setMunicipalities((prev) =>
-        Array.isArray(prev) ? prev.filter((m) => m.id !== id) : [],
+        Array.isArray(prev) ? prev.filter((m) => m.m_uid !== id) : [],
       );
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : "An error occurred");
@@ -119,21 +158,31 @@ export default function ManageMuniciple() {
 
       const result = await response.json();
       if (!response.ok)
-        throw new Error(result.message || "Failed to create municipality");
+        throw new Error(result.error || result.message || "Failed to create municipality");
 
       // Add the newly created municipality to the current state to update UI immediately
       const newMunicipality = result?.data || result;
       setMunicipalities((prev) =>
         Array.isArray(prev) ? [newMunicipality, ...prev] : [newMunicipality],
       );
+      
+      // Display the auto-generated password
+      setSuccessData({
+        password: newMunicipality.head_password,
+        email: newMunicipality.head_email,
+        name: newMunicipality.official_name,
+      });
+
       setIsModalOpen(false);
       setFormData({
-        name: "",
-        region: "",
-        email: "",
+        official_name: "",
+        district: "",
+        province: "",
+        official_email: "",
         head_name: "",
         head_email: "",
-        head_password: "",
+        total_wards: 1,
+        municipality_type: "municipality",
       });
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "An error occurred");
@@ -221,27 +270,22 @@ export default function ManageMuniciple() {
               ) : (
                 municipalities.map((row) => (
                   <TableRow
-                    key={row.id}
+                    key={row.m_uid}
                     sx={{ "&:last-child td, &:last-child th": { border: 0 } }}
                   >
                     <TableCell>
                       <Typography variant="body2" fontWeight={600}>
-                        {row.name}
+                        {row.official_name || (row as any).name}
                       </Typography>
-                      {row.region && row.region !== "N/A" && (
-                        <Typography variant="caption" color="text.secondary">
-                          {row.region}
-                        </Typography>
-                      )}
                     </TableCell>
                     <TableCell>{row.head_name}</TableCell>
-                    <TableCell>{row.official_email}</TableCell>
+                    <TableCell>{row.official_email || (row as any).email}</TableCell>
                     <TableCell>{row.head_email}</TableCell>
-                    <TableCell>{formatDate(row.created_at)}</TableCell>
+                    <TableCell>{formatDate(row.registered_at)}</TableCell>
                     <TableCell>
                       <Chip
-                        label={row.status}
-                        color={row.status === "Active" ? "success" : "default"}
+                        label={row.is_active ? "Active" : "Inactive"}
+                        color={row.is_active ? "success" : "default"}
                         size="small"
                       />
                     </TableCell>
@@ -252,7 +296,7 @@ export default function ManageMuniciple() {
                       <IconButton
                         color="error"
                         aria-label="delete"
-                        onClick={() => handleDelete(row.id)}
+                        onClick={() => handleDelete(row.m_uid || (row as any).id)}
                       >
                         <DeleteIcon />
                       </IconButton>
@@ -284,39 +328,88 @@ export default function ManageMuniciple() {
             <TextField
               autoFocus
               margin="dense"
-              label="Municipality Name"
+              label="Municipality Official Name"
               type="text"
               fullWidth
               required
-              value={formData.name}
+              value={formData.official_name}
               onChange={(e) =>
-                setFormData({ ...formData, name: e.target.value })
+                setFormData({ ...formData, official_name: e.target.value })
               }
               sx={{ mb: 2 }}
             />
-            <TextField
-              margin="dense"
-              label="Region / State"
-              type="text"
-              fullWidth
-              value={formData.region}
-              onChange={(e) =>
-                setFormData({ ...formData, region: e.target.value })
-              }
-              sx={{ mb: 2 }}
-            />
+            <FormControl fullWidth margin="dense" required sx={{ mb: 2 }}>
+              <InputLabel>Province</InputLabel>
+              <Select
+                value={formData.province}
+                label="Province"
+                onChange={(e) =>
+                  setFormData({ ...formData, province: e.target.value as string, district: "" })
+                }
+              >
+                {PROVINCES.map((p) => (
+                  <MenuItem key={p} value={p}>{p}</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            <FormControl fullWidth margin="dense" required sx={{ mb: 2 }} disabled={!formData.province}>
+              <InputLabel>District</InputLabel>
+              <Select
+                value={formData.district}
+                label="District"
+                onChange={(e) =>
+                  setFormData({ ...formData, district: e.target.value as string })
+                }
+              >
+                {formData.province && DISTRICTS_BY_PROVINCE[formData.province] ? (
+                  DISTRICTS_BY_PROVINCE[formData.province].map((d) => (
+                    <MenuItem key={d} value={d}>{d}</MenuItem>
+                  ))
+                ) : (
+                  <MenuItem value="" disabled>Select a province first</MenuItem>
+                )}
+              </Select>
+            </FormControl>
             <TextField
               margin="dense"
               label="Official Contact Email"
               type="email"
               fullWidth
               required
-              value={formData.email}
+              value={formData.official_email}
               onChange={(e) =>
-                setFormData({ ...formData, email: e.target.value })
+                setFormData({ ...formData, official_email: e.target.value })
               }
-              sx={{ mb: 3 }}
+              sx={{ mb: 2 }}
             />
+            <TextField
+              margin="dense"
+              label="Total Wards"
+              type="number"
+              fullWidth
+              required
+              value={formData.total_wards}
+              onChange={(e) =>
+                setFormData({ ...formData, total_wards: parseInt(e.target.value) || 1 })
+              }
+              sx={{ mb: 2 }}
+            />
+            <FormControl fullWidth margin="dense" required sx={{ mb: 3 }}>
+              <InputLabel>Municipality Type</InputLabel>
+              <Select
+                value={formData.municipality_type}
+                label="Municipality Type"
+                onChange={(e) =>
+                  setFormData({ ...formData, municipality_type: e.target.value as string })
+                }
+              >
+                {MUNICIPALITY_TYPES.map((type) => (
+                  <MenuItem key={type.value} value={type.value}>
+                    {type.label}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
 
             <Typography variant="h6" sx={{ mb: 1, fontWeight: "bold" }}>
               Municipality Head Details
@@ -345,17 +438,6 @@ export default function ManageMuniciple() {
               }
               sx={{ mb: 2 }}
             />
-            <TextField
-              margin="dense"
-              label="Head Temporary Password"
-              type="password"
-              fullWidth
-              required
-              value={formData.head_password}
-              onChange={(e) =>
-                setFormData({ ...formData, head_password: e.target.value })
-              }
-            />
           </DialogContent>
           <DialogActions sx={{ px: 3, pb: 3 }}>
             <Button
@@ -370,6 +452,37 @@ export default function ManageMuniciple() {
             </Button>
           </DialogActions>
         </form>
+      </Dialog>
+
+      {/* Success Dialog showing auto-generated password */}
+      <Dialog open={!!successData} onClose={() => setSuccessData(null)} maxWidth="sm" fullWidth>
+        <DialogTitle sx={{ fontWeight: 'bold', color: 'success.main' }}>
+          Municipality Provisioned Successfully
+        </DialogTitle>
+        <DialogContent>
+          <Alert severity="success" sx={{ mb: 3 }}>
+            The municipality <strong>{successData?.name}</strong> has been successfully provisioned.
+          </Alert>
+          <Typography variant="body1" sx={{ mb: 2 }}>
+            A head user account has been automatically created. Please securely share the following temporary credentials with the municipality head:
+          </Typography>
+          <Paper variant="outlined" sx={{ p: 2, bgcolor: 'grey.50' }}>
+            <Typography variant="body2" sx={{ mb: 1 }}>
+              <strong>Login Email:</strong> {successData?.email}
+            </Typography>
+            <Typography variant="body2">
+              <strong>Temporary Password:</strong> {successData?.password}
+            </Typography>
+          </Paper>
+          <Typography variant="caption" color="error" sx={{ display: 'block', mt: 2, fontWeight: 'bold' }}>
+            Warning: Make sure to copy this password now. It will not be shown again.
+          </Typography>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 3 }}>
+          <Button onClick={() => setSuccessData(null)} variant="contained" color="primary">
+            Close
+          </Button>
+        </DialogActions>
       </Dialog>
     </Box>
   );

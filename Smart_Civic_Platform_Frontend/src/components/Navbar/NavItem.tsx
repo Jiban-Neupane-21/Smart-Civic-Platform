@@ -10,6 +10,7 @@ interface DesktopNavItemProps {
 
 export function DesktopNavItemComponent({
   item,
+Role,
   isActive,
   onClick,
 }: DesktopNavItemProps) {

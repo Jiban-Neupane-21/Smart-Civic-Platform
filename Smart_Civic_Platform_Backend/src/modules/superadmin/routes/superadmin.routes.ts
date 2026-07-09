@@ -101,22 +101,7 @@ export function createSuperadminRouter(
    *       content:
    *         application/json:
    *           schema:
-   *             type: object
-   *             required:
-   *               - official_name
-   *               - official_email
-   *               - head_name
-   *               - head_email
-   *               - municipality_type
-   *             properties:
-   *               official_name: { type: string, example: "Lalitpur Metropolitan City" }
-   *               official_email: { type: string, example: "info@lalitpurmun.gov.np" }
-   *               head_name: { type: string, example: "Chiribabu Maharjan" }
-   *               head_email: { type: string, example: "mayor@lalitpurmun.gov.np" }
-   *               municipality_type: { type: string, enum: [metropolitan, sub_metropolitan, urban_municipality, rural_municipality], example: "metropolitan" }
-   *               total_wards: { type: integer, minimum: 0, maximum: 33, example: 29 }
-   *               province: { type: string, example: "Bagmati Province" }
-   *               district: { type: string, example: "Lalitpur" }
+   *             $ref: '#/components/schemas/ProvisionMunicipalityRequest'
    *     responses:
    *       201:
    *         description: Municipality infrastructure successfully provisioned.
@@ -139,13 +124,7 @@ export function createSuperadminRouter(
    *       content:
    *         application/json:
    *           schema:
-   *             type: object
-   *             required:
-   *               - targetUserId
-   *               - newRole
-   *             properties:
-   *               targetUserId: { type: string, format: uuid, example: "123e4567-e89b-12d3-a456-426614174000" }
-   *               newRole: { type: string, enum: [superadmin, municipality_head, department_head, staff, citizen], example: "municipality_head" }
+   *             $ref: '#/components/schemas/AssignRoleRequest'
    *     responses:
    *       200:
    *         description: Core account role elevated and audited successfully.
@@ -168,13 +147,7 @@ export function createSuperadminRouter(
    *       content:
    *         application/json:
    *           schema:
-   *             type: object
-   *             required:
-   *               - targetUserId
-   *               - status
-   *             properties:
-   *               targetUserId: { type: string, format: uuid, example: "8af36111-c918-4a11-b011-826315271891" }
-   *               status: { type: string, enum: [active, inactive, suspended], example: "suspended" }
+   *             $ref: '#/components/schemas/ManageStatusRequest'
    *     responses:
    *       200:
    *         description: Profile successfully placed into target lifecycle phase.
@@ -219,20 +192,7 @@ export function createSuperadminRouter(
    *       content:
    *         application/json:
    *           schema:
-   *             type: object
-   *             required:
-   *               - email
-   *               - password
-   *               - full_name
-   *               - role
-   *               - municipality_id
-   *             properties:
-   *               email: { type: string, format: email, example: "mayor@lalitpurmun.gov.np" }
-   *               password: { type: string, minLength: 8, example: "TempPass123!" }
-   *               full_name: { type: string, example: "Chiribabu Maharjan" }
-   *               role: { type: string, enum: [municipality_head], example: "municipality_head" }
-   *               municipality_id: { type: string, format: uuid }
-   *               phone: { type: string, example: "+9779851000000" }
+   *             $ref: '#/components/schemas/CreateUserRequest'
    *     responses:
    *       201:
    *         description: User account created successfully.
@@ -240,6 +200,44 @@ export function createSuperadminRouter(
    *         description: Validation error or duplicate email.
    */
   router.post("/users/create", controller.createUser);
+
+  /**
+   * @openapi
+   * /api/v1/superadmin/municipalities:
+   *   get:
+   *     summary: Fetch all municipalities
+   *     description: Returns a list of all registered municipalities in the system.
+   *     tags: [Superadmin API]
+   *     security:
+   *       - BearerAuth: []
+   *     responses:
+   *       200:
+   *         description: Municipalities retrieved successfully.
+   */
+  router.get("/municipalities", controller.getMunicipalities);
+
+  /**
+   * @openapi
+   * /api/v1/superadmin/municipalities/{id}:
+   *   delete:
+   *     summary: Delete a municipality
+   *     description: Deletes a municipality by its ID.
+   *     tags: [Superadmin API]
+   *     security:
+   *       - BearerAuth: []
+   *     parameters:
+   *       - in: path
+   *         name: id
+   *         required: true
+   *         schema:
+   *           type: string
+   *           format: uuid
+   *         description: The UUID of the municipality.
+   *     responses:
+   *       200:
+   *         description: Municipality deleted successfully.
+   */
+  router.delete("/municipalities/:id", controller.deleteMunicipality);
 
   return router;
 }

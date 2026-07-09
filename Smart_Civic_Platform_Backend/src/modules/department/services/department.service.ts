@@ -6,12 +6,10 @@ export class DepartmentService {
 
   async buildDeploymentTeam(
     departmentId: string,
-    teamName: string,
-    complaintId: string,
+    teamName: string
   ) {
     return await this.repo.createTeam({
       department_id: departmentId,
-      complaint_id: complaintId,
       team_name: teamName,
     });
   }

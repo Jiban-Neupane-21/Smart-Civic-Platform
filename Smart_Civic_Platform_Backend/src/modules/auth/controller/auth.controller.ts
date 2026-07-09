@@ -47,8 +47,8 @@ export const getMe = async (req: Request, res: Response) => {
     if (user.role === 'citizen') {
       const { data: citizen } = await req.userClient!
         .from('citizens')
-        .select('first_name, middle_name, last_name, date_of_birth, gender, home_address, permanent_address, ward_number, notification_pref')
-        .eq('profile_id', user.id)
+        .select('first_name, middle_name, last_name, date_of_birth, gender, current_address, permanent_address, ward_id, notification_pref')
+        .eq('id', user.id)
         .single();
 
       return sendSuccess(res, {

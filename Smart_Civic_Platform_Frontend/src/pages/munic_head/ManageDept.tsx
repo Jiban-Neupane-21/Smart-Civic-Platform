@@ -21,6 +21,10 @@ import {
   TextField,
   Tooltip,
   InputAdornment,
+  Select,
+  MenuItem,
+  FormControl,
+  InputLabel,
 } from "@mui/material";
 import AddIcon from "@mui/icons-material/Add";
 import EditIcon from "@mui/icons-material/Edit";
@@ -31,16 +35,27 @@ import { useAuth } from "../../hooks/useAuth";
 import { BASE_URL, fetchWithAuth } from "../../api";
 
 interface Department {
-  id: string;
-  name: string;
-  code: string;
-  status?: string;
+  id?: string;
+  d_uid?: string;
+  department_name: string;
+  official_email?: string;
+  head_name?: string;
+  head_email?: string;
+  is_active?: boolean;
   staff_count?: number;
   complaint_count?: number;
   created_at: string;
+  department_category?: string;
 }
 
-const emptyForm = { name: "", code: "", description: "" };
+const emptyForm = { 
+  department_name: "", 
+  official_email: "", 
+  head_name: "", 
+  head_email: "", 
+  head_contact_no: "",
+  department_category: "other",
+};
 
 export default function ManageDept() {
   const { user } = useAuth();
@@ -63,6 +78,23 @@ export default function ManageDept() {
   const [deleteTarget, setDeleteTarget] = useState<Department | null>(null);
   const [deleting, setDeleting] = useState(false);
 
+  const [categories, setCategories] = useState<string[]>([]);
+
+  // Credentials dialog for newly created department head
+  const [newCredentials, setNewCredentials] = useState<{ email: string; password: string } | null>(null);
+
+  const fetchCategories = async () => {
+    try {
+      const res = await fetchWithAuth(`${BASE_URL}/municipality/departments/categories`);
+      if (res.ok) {
+        const data = await res.json();
+        setCategories(data.data || []);
+      }
+    } catch (err) {
+      console.error("Failed to fetch department categories:", err);
+    }
+  };
+
   const fetchDepartments = async () => {
     if (!municipalityId) return;
     setLoading(true);
@@ -84,6 +116,7 @@ export default function ManageDept() {
 
   useEffect(() => {
     fetchDepartments();
+    fetchCategories();
   }, [municipalityId]);
 
   useEffect(() => {
@@ -91,7 +124,9 @@ export default function ManageDept() {
     setFiltered(
       departments.filter(
         (d) =>
-          (d.name ?? "").toLowerCase().includes(q) || (d.code ?? "").toLowerCase().includes(q)
+          (d.department_name ?? "").toLowerCase().includes(q) || 
+          (d.official_email ?? "").toLowerCase().includes(q) ||
+          (d.head_name ?? "").toLowerCase().includes(q)
       )
     );
   }, [search, departments]);
@@ -105,7 +140,13 @@ export default function ManageDept() {
 
   const openEdit = (dept: Department) => {
     setEditTarget(dept);
-    setFormData({ name: dept.name, code: dept.code, description: "" });
+    setFormData({ 
+      department_name: dept.department_name || "", 
+      official_email: dept.official_email || "", 
+      head_name: dept.head_name || "",
+      head_email: dept.head_email || "",
+      head_contact_no: "" // Not stored directly on dept if it's in profile, or you can omit
+    });
     setFormError(null);
     setModalOpen(true);
   };
@@ -116,17 +157,27 @@ export default function ManageDept() {
     setFormError(null);
     try {
       const isEdit = !!editTarget;
+      const targetId = editTarget ? (editTarget.d_uid || editTarget.id) : null;
       const url = isEdit
-        ? `${BASE_URL}/municipality/${municipalityId}/departments/${editTarget!.id}`
+        ? `${BASE_URL}/municipality/${municipalityId}/departments/${targetId}`
         : `${BASE_URL}/municipality/${municipalityId}/departments`;
       const res = await fetchWithAuth(url, {
         method: isEdit ? "PATCH" : "POST",
         body: JSON.stringify(formData),
       });
       const result = await res.json();
-      if (!res.ok) throw new Error(result.message || "Operation failed");
+      console.log("ManageDept handleSubmit raw result:", result);
+      if (!res.ok) throw new Error(result.error || result.message || "Operation failed");
       setModalOpen(false);
       await fetchDepartments();
+
+      // If a new department head was created, show their credentials
+      if (!isEdit && result.data && result.data.head_password) {
+        setNewCredentials({
+          email: formData.head_email,
+          password: result.data.head_password
+        });
+      }
     } catch (err) {
       setFormError(err instanceof Error ? err.message : "An error occurred");
     } finally {
@@ -138,15 +189,16 @@ export default function ManageDept() {
     if (!deleteTarget) return;
     setDeleting(true);
     try {
+      const targetId = deleteTarget.d_uid || deleteTarget.id;
       const res = await fetchWithAuth(
-        `${BASE_URL}/municipality/${municipalityId}/departments/${deleteTarget.id}`,
+        `${BASE_URL}/municipality/${municipalityId}/departments/${targetId}`,
         { method: "DELETE" }
       );
       if (!res.ok) {
         const d = await res.json();
         throw new Error(d.message || "Failed to delete department");
       }
-      setDepartments((prev) => prev.filter((d) => d.id !== deleteTarget.id));
+      setDepartments((prev) => prev.filter((d) => (d.d_uid || d.id) !== targetId));
       setDeleteTarget(null);
     } catch (err) {
       alert(err instanceof Error ? err.message : "Delete failed");
@@ -196,7 +248,7 @@ export default function ManageDept() {
 
       {/* Search */}
       <TextField
-        placeholder="Search by name or code..."
+        placeholder="Search by name, email, or head name..."
         value={search}
         onChange={(e) => setSearch(e.target.value)}
         size="small"
@@ -221,7 +273,7 @@ export default function ManageDept() {
           <Table sx={{ minWidth: 700 }}>
             <TableHead sx={{ bgcolor: "primary.main" }}>
               <TableRow>
-                {["Department Name", "Code", "Staff Count", "Status", "Created", "Actions"].map(
+                {["Department Name", "Official Email", "Head Name", "Staff Count", "Status", "Created", "Actions"].map(
                   (h) => (
                     <TableCell key={h} sx={{ color: "#fff", fontWeight: 700 }}>
                       {h}
@@ -240,20 +292,23 @@ export default function ManageDept() {
               ) : (
                 filtered.map((dept) => (
                   <TableRow
-                    key={dept.id}
+                    key={dept.d_uid || dept.id}
                     sx={{ "&:hover": { bgcolor: "#f5f8ff" }, "&:last-child td": { border: 0 } }}
                   >
                     <TableCell>
-                      <Typography fontWeight={600}>{dept.name}</Typography>
+                      <Typography fontWeight={600}>{dept.department_name}</Typography>
                     </TableCell>
                     <TableCell>
-                      <Chip label={dept.code} size="small" variant="outlined" />
+                      <Typography variant="body2">{dept.official_email ?? "—"}</Typography>
+                    </TableCell>
+                    <TableCell>
+                      <Typography variant="body2">{dept.head_name ?? "—"}</Typography>
                     </TableCell>
                     <TableCell>{dept.staff_count ?? "—"}</TableCell>
                     <TableCell>
                       <Chip
-                        label={dept.status ?? "Active"}
-                        color={dept.status === "inactive" ? "default" : "success"}
+                        label={dept.is_active !== false ? "Active" : "Inactive"}
+                        color={dept.is_active !== false ? "success" : "default"}
                         size="small"
                         sx={{ textTransform: "capitalize" }}
                       />
@@ -297,18 +352,65 @@ export default function ManageDept() {
               label="Department Name"
               fullWidth
               required
-              value={formData.name}
-              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+              value={formData.department_name}
+              onChange={(e) => setFormData({ ...formData, department_name: e.target.value })}
+              sx={{ mb: 2 }}
+            />
+            <FormControl fullWidth sx={{ mb: 2 }} required>
+              <InputLabel id="department-category-label">Department Category</InputLabel>
+              <Select
+                labelId="department-category-label"
+                label="Department Category"
+                value={formData.department_category}
+                onChange={(e) => setFormData({ ...formData, department_category: e.target.value })}
+              >
+                {categories.length > 0 ? (
+                  categories.map((cat) => (
+                    <MenuItem key={cat} value={cat}>
+                      {cat
+                        .split("_")
+                        .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+                        .join(" ")}
+                    </MenuItem>
+                  ))
+                ) : (
+                  <MenuItem value="other">Other</MenuItem>
+                )}
+              </Select>
+            </FormControl>
+            <TextField
+              label="Official Email"
+              type="email"
+              fullWidth
+              required
+              value={formData.official_email}
+              onChange={(e) => setFormData({ ...formData, official_email: e.target.value })}
               sx={{ mb: 2 }}
             />
             <TextField
-              label="Department Code"
+              label="Department Head Name"
               fullWidth
               required
-              value={formData.code}
-              onChange={(e) => setFormData({ ...formData, code: e.target.value.toUpperCase() })}
-              helperText="Short identifier, e.g. WATER, ROAD, HEALTH"
+              value={formData.head_name}
+              onChange={(e) => setFormData({ ...formData, head_name: e.target.value })}
               sx={{ mb: 2 }}
+            />
+            <TextField
+              label="Department Head Email"
+              type="email"
+              fullWidth
+              required
+              value={formData.head_email}
+              onChange={(e) => setFormData({ ...formData, head_email: e.target.value })}
+              sx={{ mb: 2 }}
+            />
+            <TextField
+              label="Department Head Contact No."
+              fullWidth
+              value={formData.head_contact_no}
+              onChange={(e) => setFormData({ ...formData, head_contact_no: e.target.value })}
+              sx={{ mb: 2 }}
+              helperText="Optional"
             />
           </DialogContent>
           <DialogActions sx={{ px: 3, pb: 3 }}>
@@ -328,7 +430,7 @@ export default function ManageDept() {
         <DialogContent>
           <Typography>
             Are you sure you want to delete{" "}
-            <strong>{deleteTarget?.name}</strong>? This action cannot be undone.
+            <strong>{deleteTarget?.department_name}</strong>? This action cannot be undone.
           </Typography>
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 3 }}>
@@ -343,6 +445,47 @@ export default function ManageDept() {
             sx={{ fontWeight: 600 }}
           >
             {deleting ? "Deleting..." : "Delete"}
+          </Button>
+        </DialogActions>
+      </Dialog>
+      {/* New Credentials Dialog */}
+      <Dialog open={!!newCredentials} onClose={() => setNewCredentials(null)} maxWidth="sm" fullWidth>
+        <DialogTitle sx={{ fontWeight: 700, color: "success.main" }}>
+          Department Created Successfully!
+        </DialogTitle>
+        <DialogContent>
+          <Alert severity="info" sx={{ mb: 3 }}>
+            A new department head account has been provisioned. Please copy the credentials below and securely share them with the department head. They will be prompted to change their password upon first login.
+          </Alert>
+          <Paper variant="outlined" sx={{ p: 2, bgcolor: "#f9f9f9", borderRadius: 2 }}>
+            <Box sx={{ mb: 2 }}>
+              <Typography variant="caption" color="text.secondary">Login Email</Typography>
+              <Typography variant="body1" fontWeight={600}>{newCredentials?.email}</Typography>
+            </Box>
+            <Box>
+              <Typography variant="caption" color="text.secondary">Temporary Password</Typography>
+              <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mt: 0.5 }}>
+                <Typography variant="body1" fontWeight={600} sx={{ fontFamily: "monospace", letterSpacing: 1 }}>
+                  {newCredentials?.password}
+                </Typography>
+                <Button 
+                  size="small" 
+                  variant="outlined" 
+                  onClick={() => {
+                    if (newCredentials?.password) {
+                      navigator.clipboard.writeText(newCredentials.password);
+                    }
+                  }}
+                >
+                  Copy
+                </Button>
+              </Box>
+            </Box>
+          </Paper>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 3 }}>
+          <Button variant="contained" onClick={() => setNewCredentials(null)} sx={{ fontWeight: 600 }}>
+            Done
           </Button>
         </DialogActions>
       </Dialog>

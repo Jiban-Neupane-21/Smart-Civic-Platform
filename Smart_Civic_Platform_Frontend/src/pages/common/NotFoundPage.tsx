@@ -48,7 +48,7 @@ const linkStyle: React.CSSProperties = {
 };
 
 const NotFoundPage: React.FC = () => {
-  const { logout } = useAuth();
+  const { user } = useAuth();
   return (
     <div style={containerStyle}>
       <h1 style={headingStyle}>404</h1>
@@ -58,13 +58,10 @@ const NotFoundPage: React.FC = () => {
         moved, deleted, or you may have mistyped the URL.
       </p>
       <Link
-        to="/"
+        to={user ? `/${user.role}/dashboard` : "/"}
         style={linkStyle}
         onMouseOver={(e) => (e.currentTarget.style.backgroundColor = "#0056b3")}
         onMouseOut={(e) => (e.currentTarget.style.backgroundColor = "#007bff")}
-        onClick={() => {
-          logout();
-        }}
       >
         Return to Homepage
       </Link>

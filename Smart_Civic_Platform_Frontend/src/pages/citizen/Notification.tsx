@@ -12,8 +12,8 @@ import {
   Button,
 } from "@mui/material";
 import {
-  ErrorOutline,
-  CheckCircleOutline,
+  ErrorOutlined,
+  CheckCircleOutlined,
   InfoOutlined,
   ClearAll,
 } from "@mui/icons-material";
@@ -59,13 +59,13 @@ export const Notifications: React.FC = () => {
       case "resolve":
         return (
           <Avatar sx={{ bgcolor: "success.light", color: "success.main" }}>
-            <CheckCircleOutline />
+            <CheckCircleOutlined />
           </Avatar>
         );
       case "alert":
         return (
           <Avatar sx={{ bgcolor: "error.light", color: "error.main" }}>
-            <ErrorOutline />
+            <ErrorOutlined />
           </Avatar>
         );
       default:

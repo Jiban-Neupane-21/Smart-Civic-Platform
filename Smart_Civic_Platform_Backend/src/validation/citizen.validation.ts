@@ -5,7 +5,6 @@ export const submitComplaintSchema = z.object({
   title: z.string().min(1),
   description: z.string().min(1),
   category_id: z.string().uuid().optional(),
-  attachment_url: z.string().url().optional(),
 });
 
 export const submitFeedbackSchema = z.object({

@@ -66,7 +66,7 @@ export function createStaffRouter(
    *                           complaints:
    *                             type: object
    *                             properties:
-   *                               co_uid: { type: string, format: uuid }
+   *                               id: { type: string, format: uuid }
    *                               title: { type: string, example: "Main St Sinkhole Hazard" }
    *                               status: { type: string, example: "ongoing" }
    */

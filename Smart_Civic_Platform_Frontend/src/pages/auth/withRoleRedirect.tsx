@@ -17,10 +17,10 @@ export const withRoleRedirect = <P extends object>(
             navigate("/superadmin/dashboard");
             break;
           case "municipality_head":
-            navigate("/municipality/dashboard");
+            navigate("/municipality_head/dashboard");
             break;
           case "department_head":
-            navigate("/department/dashboard");
+            navigate("/department_head/dashboard");
             break;
           case "staff":
             navigate("/staff/dashboard");

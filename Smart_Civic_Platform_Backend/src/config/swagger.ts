@@ -76,20 +76,12 @@ const swaggerDefinition: swaggerJsdoc.Options["definition"] = {
   ],
   tags: [
     { name: "Health", description: "Server health" },
-    { name: "Auth", description: "Registration, login, tokens, invites" },
+    { name: "Auth", description: "Registration, login, tokens, profiles" },
     { name: "Superadmin API", description: "Platform-wide administration" },
     { name: "Municipality API", description: "Municipality head operations" },
     { name: "Department API", description: "Department head operations" },
     { name: "Staff API", description: "Staff complaint handling" },
     { name: "Citizen API", description: "Citizen complaints and feedback" },
-    {
-      name: "Complaints API",
-      description: "General and role-based complaint operations",
-    },
-    {
-      name: "Notifications API",
-      description: "System notifications and alerts",
-    },
   ],
   components: {
     securitySchemes: {
@@ -142,27 +134,115 @@ const swaggerDefinition: swaggerJsdoc.Options["definition"] = {
           refresh_token: { type: "string" },
         },
       },
-      InviteRequest: {
+      ProvisionMunicipalityRequest: {
         type: "object",
-        required: ["target_email", "target_role"],
+        required: [
+          "official_name",
+          "official_email",
+          "head_name",
+          "head_email",
+          "municipality_type"
+        ],
         properties: {
-          target_email: { type: "string", format: "email" },
-          target_role: {
-            type: "string",
-            enum: ["municipality_head", "department_head", "staff"],
-          },
-          department_id: { type: "string", format: "uuid" },
-        },
+          official_name: { type: "string" },
+          official_email: { type: "string", format: "email" },
+          head_name: { type: "string" },
+          head_email: { type: "string", format: "email" },
+          municipality_type: { type: "string", enum: ["metropolitan", "sub_metropolitan", "urban_municipality", "rural_municipality"] },
+          total_wards: { type: "integer" },
+          province: { type: "string" },
+          district: { type: "string" }
+        }
       },
-      AcceptInviteRequest: {
+      AssignRoleRequest: {
         type: "object",
-        required: ["token", "full_name", "password"],
+        required: ["targetUserId", "newRole"],
         properties: {
-          token: { type: "string" },
-          full_name: { type: "string" },
+          targetUserId: { type: "string", format: "uuid" },
+          newRole: { type: "string", enum: ["superadmin", "municipality_head", "department_head", "staff", "citizen"] }
+        }
+      },
+      ManageStatusRequest: {
+        type: "object",
+        required: ["targetUserId", "status"],
+        properties: {
+          targetUserId: { type: "string", format: "uuid" },
+          status: { type: "string", enum: ["active", "inactive", "suspended"] }
+        }
+      },
+      CreateUserRequest: {
+        type: "object",
+        required: ["email", "password", "full_name", "role"],
+        properties: {
+          email: { type: "string", format: "email" },
           password: { type: "string", minLength: 8 },
-          phone: { type: "string" },
-        },
+          full_name: { type: "string" },
+          role: { type: "string", enum: ["municipality_head", "department_head", "staff"] },
+          municipality_id: { type: "string", format: "uuid" },
+          department_id: { type: "string", format: "uuid" },
+          phone: { type: "string" }
+        }
+      },
+      ProvisionDepartmentRequest: {
+        type: "object",
+        required: ["department_name", "official_email", "head_name", "head_email"],
+        properties: {
+          department_name: { type: "string" },
+          official_email: { type: "string", format: "email" },
+          head_name: { type: "string" },
+          head_email: { type: "string", format: "email" },
+          head_profile_id: { type: "string", format: "uuid" }
+        }
+      },
+      OnboardStaffRequest: {
+        type: "object",
+        required: ["profile_id", "primary_department_id", "employee_id", "expertise"],
+        properties: {
+          profile_id: { type: "string", format: "uuid" },
+          primary_department_id: { type: "string", format: "uuid" },
+          employee_id: { type: "string" },
+          expertise: { type: "string" },
+          contact_number: { type: "string" },
+          gender: { type: "string", enum: ["male", "female", "other", "prefer_not_to_say"] }
+        }
+      },
+      CreateTeamRequest: {
+        type: "object",
+        required: ["team_name", "complaint_id"],
+        properties: {
+          team_name: { type: "string" },
+          complaint_id: { type: "string", format: "uuid" }
+        }
+      },
+      AssignTeamMemberRequest: {
+        type: "object",
+        required: ["team_id", "staff_id"],
+        properties: {
+          team_id: { type: "string", format: "uuid" },
+          staff_id: { type: "string", format: "uuid" },
+          is_leader: { type: "boolean", default: false }
+        }
+      },
+      UpdateComplaintStateRequest: {
+        type: "object",
+        required: ["action"],
+        properties: {
+          action: { type: "string", enum: ["ongoing", "resolved", "rejected"] },
+          resolution_note: { type: "string" },
+          rejection_reason: { type: "string" }
+        }
+      },
+      BroadcastNotificationRequest: {
+        type: "object",
+        required: ["audience_type", "title", "body"],
+        properties: {
+          audience_type: { type: "string", enum: ["all_departments", "all_staff", "particular_department", "particular_staff", "department_internal_staff"] },
+          target_municipality_id: { type: "string", format: "uuid" },
+          target_department_id: { type: "string", format: "uuid" },
+          target_staff_profile_id: { type: "string", format: "uuid" },
+          title: { type: "string" },
+          body: { type: "string" }
+        }
       },
       ForgotPasswordRequest: {
         type: "object",
