@@ -1,7 +1,6 @@
 import { SuperadminRepository } from "../middleware/superadmin.repository";
 import type {
   AccountStatus,
-  MunicipalityInsert,
   UserRole,
 } from "../../../types/database.type";
 
@@ -18,7 +17,7 @@ export class SuperadminService {
     }
   }
 
-  async registerNewMunicipality(payload: MunicipalityInsert) {
+  async registerNewMunicipality(payload: Record<string, any>) {
     try {
       return await this.repo.createMunicipality(payload);
     } catch (error: any) {
@@ -68,6 +67,38 @@ export class SuperadminService {
       return await this.repo.getMunicipalities();
     } catch (error: any) {
       throw new Error(`Failed to retrieve municipalities: ${error.message}`);
+    }
+  }
+
+  async modifyMunicipality(id: string, data: Record<string, any>) {
+    try {
+      return await this.repo.updateMunicipality(id, data);
+    } catch (error: any) {
+      throw new Error(`Failed to update municipality: ${error.message}`);
+    }
+  }
+
+  async fetchMunicipalityById(id: string) {
+    try {
+      return await this.repo.getMunicipalityById(id);
+    } catch (error: any) {
+      throw new Error(`Failed to fetch municipality: ${error.message}`);
+    }
+  }
+
+  async removeProfile(profileId: string) {
+    try {
+      return await this.repo.deleteProfileById(profileId);
+    } catch (error: any) {
+      throw new Error(`Failed to delete profile: ${error.message}`);
+    }
+  }
+
+  async removeAuthUser(userId: string) {
+    try {
+      return await this.repo.deleteAuthUser(userId);
+    } catch (error: any) {
+      throw new Error(`Failed to delete auth user: ${error.message}`);
     }
   }
 

@@ -67,6 +67,197 @@ export class DepartmentRepository {
     return data;
   }
 
+  // Section 22: Aggregates the department head's operational summary
+  async getDepartmentSummary(departmentId: string) {
+    const [
+      departmentResult,
+      complaintsResult,
+      staffResult,
+      teamsResult,
+    ] = await Promise.all([
+      this.supabaseAdmin
+        .from("departments")
+        .select("department_name")
+        .eq("d_uid", departmentId)
+        .single(),
+      this.supabaseAdmin
+        .from("complaints")
+        .select("co_uid, title, status, priority, submitted_date, category_id", {
+          count: "exact",
+        })
+        .eq("assigned_department_id", departmentId)
+        .order("submitted_date", { ascending: false })
+        .limit(5),
+      this.supabaseAdmin
+        .from("staff")
+        .select("*", { count: "exact", head: true })
+        .eq("primary_department_id", departmentId)
+        .eq("is_deleted", false),
+      this.supabaseAdmin
+        .from("teams")
+        .select("*", { count: "exact", head: true })
+        .eq("department_id", departmentId)
+        .eq("is_active", true),
+    ]);
+
+    if (departmentResult.error) throw departmentResult.error;
+    if (complaintsResult.error) throw complaintsResult.error;
+    if (staffResult.error) throw staffResult.error;
+    if (teamsResult.error) throw teamsResult.error;
+
+    return {
+      department_name: departmentResult.data?.department_name ?? "Department",
+      complaints: complaintsResult.data ?? [],
+      totalComplaints: complaintsResult.count ?? 0,
+      totalStaff: staffResult.count ?? 0,
+      activeTeams: teamsResult.count ?? 0,
+    };
+  }
+
+  // Updates a staff member's record and linked profile, scoped by department
+  async updateStaffRecord(
+    staffId: string,
+    departmentId: string,
+    payload: {
+      full_name?: string;
+      email?: string;
+      phone?: string;
+      expertise?: string;
+      contact_number?: string;
+      employee_status?: string;
+      gender?: string;
+      date_of_birth?: string;
+      personal_address?: string;
+    },
+  ) {
+    // 1. Fetch the staff record to get the profile_id and verify department scope
+    const { data: staffRecord, error: fetchError } = await this.supabaseAdmin
+      .from("staff")
+      .select("profile_id, primary_department_id")
+      .eq("s_uid", staffId)
+      .eq("primary_department_id", departmentId)
+      .single();
+
+    if (fetchError || !staffRecord) {
+      throw new Error("Staff record not found or access denied.");
+    }
+
+    // 2. Update the profile fields (full_name, email, phone)
+    const profileUpdates: Record<string, string> = {};
+    if (payload.full_name !== undefined) profileUpdates.full_name = payload.full_name;
+    if (payload.email !== undefined) profileUpdates.email = payload.email;
+    if (payload.phone !== undefined) profileUpdates.phone = payload.phone;
+
+    if (Object.keys(profileUpdates).length > 0) {
+      const { error: profileError } = await this.supabaseAdmin
+        .from("profiles")
+        .update(profileUpdates)
+        .eq("id", staffRecord.profile_id);
+
+      if (profileError) throw profileError;
+    }
+
+    // 3. Update the staff-specific fields
+    const staffUpdates: Record<string, string> = {};
+    if (payload.expertise !== undefined) staffUpdates.expertise = payload.expertise;
+    if (payload.contact_number !== undefined) staffUpdates.contact_number = payload.contact_number;
+    if (payload.employee_status !== undefined) staffUpdates.employee_status = payload.employee_status;
+    if (payload.gender !== undefined) staffUpdates.gender = payload.gender;
+    if (payload.date_of_birth !== undefined) staffUpdates.date_of_birth = payload.date_of_birth;
+    if (payload.personal_address !== undefined) staffUpdates.personal_address = payload.personal_address;
+
+    if (Object.keys(staffUpdates).length > 0) {
+      staffUpdates.updated_at = new Date().toISOString();
+
+      const { data, error: staffError } = await this.supabaseAdmin
+        .from("staff")
+        .update(staffUpdates)
+        .eq("s_uid", staffId)
+        .eq("primary_department_id", departmentId)
+        .select()
+        .single();
+
+      if (staffError) throw staffError;
+      return data;
+    }
+
+    return staffRecord;
+  }
+
+  // Updates expertise on a staff record by profile_id, scoped by department
+  async updateStaffExpertiseByProfileId(
+    profileId: string,
+    departmentId: string,
+    expertise: string,
+  ) {
+    const { error } = await this.supabaseAdmin
+      .from("staff")
+      .update({ expertise, updated_at: new Date().toISOString() })
+      .eq("profile_id", profileId)
+      .eq("primary_department_id", departmentId);
+
+    if (error) throw error;
+  }
+
+  // Archives full staff+profile snapshot then deletes auth user (cascade: profiles → staff)
+  async archiveAndDeleteStaff(
+    staffId: string,
+    departmentId: string,
+    deletedBy: string,
+  ) {
+    // 1. Fetch full staff + profile data for archive
+    const { data: staffRecord, error: fetchError } = await this.supabaseAdmin
+      .from("staff")
+      .select(
+        `s_uid, profile_id, employee_id, expertise, contact_number,
+         gender, date_of_birth, personal_address, employee_status,
+         primary_department_id, municipality_id,
+         profiles(full_name, email, phone)`,
+      )
+      .eq("s_uid", staffId)
+      .eq("primary_department_id", departmentId)
+      .single();
+
+    if (fetchError || !staffRecord) {
+      throw new Error("Staff record not found or access denied.");
+    }
+
+    const profileRows = staffRecord.profiles as { full_name: string; email: string; phone: string }[] | null;
+    const profile = profileRows?.[0] ?? null;
+
+    // 2. Archive full record to deleted_staff
+    const { error: archiveError } = await this.supabaseAdmin
+      .from("deleted_staff")
+      .insert({
+        original_staff_id: staffId,
+        original_profile_id: staffRecord.profile_id,
+        full_name: (profile?.full_name as string) ?? "",
+        email: (profile?.email as string) ?? "",
+        phone: (profile?.phone as string) ?? null,
+        employee_id: staffRecord.employee_id ?? null,
+        expertise: staffRecord.expertise ?? null,
+        contact_number: staffRecord.contact_number ?? null,
+        gender: staffRecord.gender ?? null,
+        date_of_birth: staffRecord.date_of_birth ?? null,
+        personal_address: staffRecord.personal_address ?? null,
+        employee_status: staffRecord.employee_status ?? "active",
+        primary_department_id: staffRecord.primary_department_id,
+        municipality_id: staffRecord.municipality_id,
+        deleted_by: deletedBy,
+      });
+
+    if (archiveError) throw archiveError;
+
+    // 3. Delete auth user → cascades to profiles → staff via ON DELETE CASCADE
+    const { error: authError } = await this.supabaseAdmin.auth.admin.deleteUser(
+      staffRecord.profile_id,
+    );
+
+    if (authError) throw authError;
+
+    return { success: true };
+  }
+
   // Resolves the parent municipality_id for a given department
   async getDepartmentMunicipalityId(departmentId: string): Promise<string> {
     const { data, error } = await this.supabaseAdmin
@@ -77,5 +268,157 @@ export class DepartmentRepository {
 
     if (error || !data) throw new Error("Department not found");
     return data.municipality_id;
+  }
+
+  // ─── Team Management ─────────────────────────────────────────────────────────
+
+  // List all teams in a department with full member details
+  async getDepartmentTeams(departmentId: string) {
+    const { data, error } = await this.supabaseAdmin
+      .from("teams")
+      .select(`
+        *,
+        team_members (
+          staff_id, is_leader, joined_at,
+          staff (
+            s_uid, employee_id, expertise,
+            profiles ( full_name, email )
+          )
+        )
+      `)
+      .eq("department_id", departmentId)
+      .order("created_at", { ascending: false });
+
+    if (error) throw error;
+    return data;
+  }
+
+  // Get a single team by team_name (unique per department)
+  async getTeamByName(teamName: string, departmentId: string) {
+    const { data, error } = await this.supabaseAdmin
+      .from("teams")
+      .select(`
+        *,
+        team_members (
+          staff_id, is_leader, joined_at,
+          staff (
+            s_uid, employee_id, expertise,
+            profiles ( full_name, email, phone )
+          )
+        )
+      `)
+      .eq("team_name", teamName)
+      .eq("department_id", departmentId)
+      .single();
+
+    if (error) throw error;
+    return data;
+  }
+
+  // Update team fields by team_name
+  async updateTeam(
+    teamName: string,
+    departmentId: string,
+    payload: { team_name?: string; description?: string; is_active?: boolean },
+  ) {
+    const { data, error } = await this.supabaseAdmin
+      .from("teams")
+      .update({ ...payload, updated_at: new Date().toISOString() })
+      .eq("team_name", teamName)
+      .eq("department_id", departmentId)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  }
+
+  // Resolve a team's actual PK value by team_name (needed for team_members FK ops)
+  private async resolveTeamPk(
+    teamName: string,
+    departmentId: string,
+  ): Promise<string> {
+    // Get any team_member row for this team — team_id holds the actual PK value
+    const { data: member, error: mErr } = await this.supabaseAdmin
+      .from("team_members")
+      .select("team_id, teams!inner(team_name, department_id)")
+      .eq("teams.team_name", teamName)
+      .eq("teams.department_id", departmentId)
+      .limit(1)
+      .maybeSingle();
+
+    if (!mErr && member) {
+      return (member as Record<string, unknown>).team_id as string;
+    }
+
+    // Fallback: insert a temp team_member to discover the PK, then delete it
+    // Actually, just get the team row with * and find the PK
+    const { data: team } = await this.supabaseAdmin
+      .from("teams")
+      .select("*")
+      .eq("team_name", teamName)
+      .eq("department_id", departmentId)
+      .single();
+
+    if (!team) throw new Error("Team not found.");
+
+    // The PK is whatever column team_members.team_id references
+    // Get it from an existing member or from the raw team data
+    const cols = Object.keys(team);
+    // UUID columns that aren't standard data columns are likely the PK
+    const uuidCols = cols.filter(
+      (c) =>
+        !["department_id", "created_at", "updated_at", "team_name", "description"].includes(c) &&
+        typeof (team as Record<string, unknown>)[c] === "string" &&
+        ((team as Record<string, unknown>)[c] as string).includes("-"),
+    );
+
+    if (uuidCols.length === 1) return (team as Record<string, unknown>)[uuidCols[0]] as string;
+
+    throw new Error("Cannot resolve team primary key for team: " + teamName);
+  }
+
+  // Remove a staff member from a team
+  async removeTeamMember(
+    teamName: string,
+    staffId: string,
+    departmentId: string,
+  ) {
+    const teamPk = await this.resolveTeamPk(teamName, departmentId);
+
+    const { error } = await this.supabaseAdmin
+      .from("team_members")
+      .delete()
+      .eq("team_id", teamPk)
+      .eq("staff_id", staffId);
+
+    if (error) throw error;
+  }
+
+  // Toggle leader status (ensures only one leader per team)
+  async toggleTeamLeader(
+    teamName: string,
+    staffId: string,
+    departmentId: string,
+    isLeader: boolean,
+  ) {
+    const teamPk = await this.resolveTeamPk(teamName, departmentId);
+
+    // If setting as leader, remove existing leader first
+    if (isLeader) {
+      await this.supabaseAdmin
+        .from("team_members")
+        .update({ is_leader: false })
+        .eq("team_id", teamPk)
+        .eq("is_leader", true);
+    }
+
+    const { error } = await this.supabaseAdmin
+      .from("team_members")
+      .update({ is_leader: isLeader })
+      .eq("team_id", teamPk)
+      .eq("staff_id", staffId);
+
+    if (error) throw error;
   }
 }

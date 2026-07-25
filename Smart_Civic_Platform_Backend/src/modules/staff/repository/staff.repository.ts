@@ -39,7 +39,7 @@ export class StaffRepository {
   async getDepartmentComplaintsLog(departmentId: string) {
     const { data, error } = await this.supabaseAdmin
       .from('complaints')
-      .select('id, title, description, status, submitted_date')
+      .select('co_uid, title, description, status, submitted_date')
       .eq('assigned_department_id', departmentId)
       .order('submitted_date', { ascending: false });
 

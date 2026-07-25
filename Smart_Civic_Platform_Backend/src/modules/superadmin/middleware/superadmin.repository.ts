@@ -1,8 +1,6 @@
 import { SupabaseClient } from "@supabase/supabase-js";
 import type {
   AccountStatus,
-  Database,
-  MunicipalityInsert,
   UserRole,
 } from "../../../types/database.type";
 
@@ -21,7 +19,7 @@ export class SuperadminRepository {
   }
 
   // Section 6: Provisions a new municipality record
-  async createMunicipality(muniData: MunicipalityInsert) {
+  async createMunicipality(muniData: Record<string, any>) {
     const { data, error } = await this.supabaseAdmin
       .from("municipalities")
       .insert([muniData])
@@ -117,6 +115,47 @@ export class SuperadminRepository {
 
     if (error) throw error;
     return data;
+  }
+
+  // Get a single municipality by its ID
+  async getMunicipalityById(id: string) {
+    const { data, error } = await this.supabaseAdmin
+      .from("municipalities")
+      .select("*")
+      .eq("m_uid", id)
+      .single();
+
+    if (error) throw error;
+    return data;
+  }
+
+  // Delete a profile row by its ID
+  async deleteProfileById(profileId: string) {
+    const { error } = await this.supabaseAdmin
+      .from("profiles")
+      .delete()
+      .eq("id", profileId);
+
+    if (error) throw error;
+  }
+
+  // Delete a Supabase Auth user by their ID
+  async deleteAuthUser(userId: string) {
+    const { error } = await this.supabaseAdmin.auth.admin.deleteUser(userId);
+    if (error) throw error;
+  }
+
+  // Update a municipality
+  async updateMunicipality(id: string, data: Record<string, any>) {
+    const { data: result, error } = await this.supabaseAdmin
+      .from("municipalities")
+      .update(data)
+      .eq("m_uid", id)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return result;
   }
 
   // Delete a municipality

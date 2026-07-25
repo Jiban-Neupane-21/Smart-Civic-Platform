@@ -237,6 +237,7 @@ export function createSuperadminRouter(
    *       200:
    *         description: Municipality deleted successfully.
    */
+  router.put("/municipalities/:id", controller.updateMunicipality);
   router.delete("/municipalities/:id", controller.deleteMunicipality);
 
   return router;

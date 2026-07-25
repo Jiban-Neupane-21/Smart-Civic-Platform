@@ -17,6 +17,10 @@ import NotFoundPage from "../pages/common/NotFoundPage";
 import AuditLog from "../pages/Superadmin/AuditLog";
 import ManageMuniciple from "../pages/Superadmin/ManageMuniciple";
 
+import { DeptDashboard } from "../pages/dept_head/Dept_Dashboard";
+import DeptManageStaff from "../pages/dept_head/ManageStaff";
+import DeptManageTeam from "../pages/dept_head/ManageTeam";
+
 // Municipality Head Pages
 import MunicHomepage from "../pages/munic_head/Homepage";
 import MunicManageDept from "../pages/munic_head/ManageDept";
@@ -83,7 +87,15 @@ function AppRoute() {
           <Route element={<MainLayout />}>
             <Route
               path="/department_head/dashboard"
-              element={<div>Department Head Dashboard Placeholder</div>}
+              element={<DeptDashboard />}
+            />
+            <Route
+              path="/department_head/staff"
+              element={<DeptManageStaff />}
+            />
+            <Route
+              path="/department_head/team"
+              element={<DeptManageTeam />}
             />
           </Route>
         </Route>

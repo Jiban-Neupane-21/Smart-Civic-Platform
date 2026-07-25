@@ -23,12 +23,16 @@ export class SuperadminController {
       const {
         official_name,
         official_email,
+        official_contact_no,
         head_name,
         head_email,
         municipality_type,
         total_wards,
-        province,
+        mayor_chairperson_name,
+        deputy_mayor_vice_chairperson_name,
+        about_description,
         district,
+        province,
       } = req.body;
 
       // Inline payload sanitation check
@@ -53,29 +57,39 @@ export class SuperadminController {
       // 2. Generate a temporary password
       const head_password = crypto.randomBytes(6).toString("hex");
 
-      // 3. Register the municipality
-      const newMuni = await this.service.registerNewMunicipality(req.body);
+      // 3. Build the municipality payload — district and province are plain strings
+      const muniPayload = {
+        official_name,
+        official_email,
+        district: district || null,
+        province: province || null,
+        municipality_type: municipality_type || "municipality",
+        total_wards: total_wards || 1,
+        head_name,
+        head_email,
+        official_contact_no: official_contact_no || null,
+        mayor_chairperson_name: mayor_chairperson_name || null,
+        deputy_mayor_vice_chairperson_name: deputy_mayor_vice_chairperson_name || null,
+        about_description: about_description || null,
+      };
+
+      // 4. Register the municipality
+      const newMuni = await this.service.registerNewMunicipality(muniPayload);
       
       try {
-        // 4. Create the municipality head user
-        await createUserService({
+        // 6. Create the municipality head user (returns the profile with id)
+        const profile = await createUserService({
           email: head_email,
           password: head_password,
           full_name: head_name,
           role: "municipality_head",
           municipality_id: newMuni.m_uid,
-          created_by: "superadmin" // or from req.user
+          created_by: "superadmin",
         });
-        
-        // 5. Update the municipality with the created profile ID.
-        // Wait a small moment for the trigger to fire, then fetch the profile.
-        // Wait 500ms
-        await new Promise(resolve => setTimeout(resolve, 500));
-        
-        const profileId = await this.service.getProfileIdByEmail(head_email);
-          
-        if (profileId) {
-          await this.service.updateMunicipalityHead(newMuni.m_uid, profileId);
+
+        // 7. Immediately link the head profile — no sleep needed
+        if (profile && profile.id) {
+          await this.service.updateMunicipalityHead(newMuni.m_uid, profile.id);
         }
       } catch (userError: any) {
         // Rollback: delete the municipality
@@ -188,15 +202,50 @@ export class SuperadminController {
     }
   };
 
-  deleteMunicipality = async (req: Request, res: Response): Promise<void> => {
+  updateMunicipality = async (req: Request, res: Response): Promise<void> => {
     try {
-      const { id } = req.params;
+      const id = req.params.id as string;
       if (!id) {
         res.status(400).json({ success: false, error: "Municipality ID is required." });
         return;
       }
+
+      const updated = await this.service.modifyMunicipality(id, req.body);
+      res.status(200).json({ success: true, data: updated });
+    } catch (error: any) {
+      res.status(400).json({ success: false, error: error.message });
+    }
+  };
+
+  deleteMunicipality = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const id = req.params.id as string;
+      if (!id) {
+        res.status(400).json({ success: false, error: "Municipality ID is required." });
+        return;
+      }
+
+      // 1. Fetch the municipality to get the linked head profile ID
+      const municipality = await this.service.fetchMunicipalityById(id);
+      const headProfileId = municipality?.head_profile_id;
+
+      if (headProfileId) {
+        // 2. Break the FK link first
+        await this.service.modifyMunicipality(id, { head_profile_id: null });
+
+        try {
+          // 3. Delete the profile row
+          await this.service.removeProfile(headProfileId);
+          // 4. Delete the Supabase Auth user
+          await this.service.removeAuthUser(headProfileId);
+        } catch (userError: any) {
+          console.error("Failed to clean up user on municipality delete:", userError.message);
+        }
+      }
+
+      // 5. Delete the municipality itself
       await this.service.removeMunicipality(id);
-      res.status(200).json({ success: true, message: "Municipality deleted successfully." });
+      res.status(200).json({ success: true, message: "Municipality and linked user deleted successfully." });
     } catch (error: any) {
       res.status(500).json({ success: false, error: error.message });
     }

@@ -9,6 +9,7 @@ import {
   TableCell,
   TableContainer,
   TableHead,
+  TablePagination,
   TableRow,
   IconButton,
   Chip,
@@ -23,11 +24,22 @@ import {
   InputLabel,
   Select,
   MenuItem,
+  InputAdornment,
 } from "@mui/material";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
 import AddIcon from "@mui/icons-material/Add";
+import SearchIcon from "@mui/icons-material/Search";
 import { API_ENDPOINTS, fetchWithAuth } from "../../api";
+import { MUNICIPALITIES_BY_DISTRICT } from "../../data/nepal-municipalities";
+import { PROVINCES, DISTRICTS_BY_PROVINCE, PROVINCE_BY_DISTRICT } from "../../data/nepal-provinces";
+
+const MUNICIPALITY_TYPE_LABELS: Record<string, string> = {
+  metropolitan_city: "Metropolitan City",
+  sub_metropolitan_city: "Sub-Metropolitan City",
+  municipality: "Municipality",
+  rural_municipality: "Rural Municipality",
+};
 
 interface Municipality {
   m_uid: string;
@@ -41,33 +53,6 @@ interface Municipality {
   registered_at: string;
 }
 
-const PROVINCES = [
-  "Koshi",
-  "Madhesh",
-  "Bagmati",
-  "Gandaki",
-  "Lumbini",
-  "Karnali",
-  "Sudurpashchim"
-];
-
-const DISTRICTS_BY_PROVINCE: Record<string, string[]> = {
-  "Koshi": ["Bhojpur", "Dhankuta", "Ilam", "Jhapa", "Khotang", "Morang", "Okhaldhunga", "Panchthar", "Sankhuwasabha", "Solukhumbu", "Sunsari", "Taplejung", "Terhathum", "Udayapur"],
-  "Madhesh": ["Bara", "Dhanusha", "Mahottari", "Parsa", "Rautahat", "Saptari", "Sarlahi", "Siraha"],
-  "Bagmati": ["Bhaktapur", "Chitwan", "Dhading", "Dolakha", "Kathmandu", "Kavrepalanchok", "Lalitpur", "Makwanpur", "Nuwakot", "Ramechhap", "Rasuwa", "Sindhuli", "Sindhupalchok"],
-  "Gandaki": ["Baglung", "Gorkha", "Kaski", "Lamjung", "Manang", "Mustang", "Myagdi", "Nawalpur", "Parbat", "Syangja", "Tanahun"],
-  "Lumbini": ["Arghakhanchi", "Banke", "Bardiya", "Dang", "Eastern Rukum", "Gulmi", "Kapilvastu", "Parasi", "Palpa", "Pyuthan", "Rolpa", "Rupandehi"],
-  "Karnali": ["Dailekh", "Dolpa", "Humla", "Jajarkot", "Jumla", "Kalikot", "Mugu", "Salyan", "Surkhet", "Western Rukum"],
-  "Sudurpashchim": ["Achham", "Baitadi", "Bajhang", "Bajura", "Dadeldhura", "Darchula", "Doti", "Kailali", "Kanchanpur"]
-};
-
-const MUNICIPALITY_TYPES = [
-  { value: "metropolitan_city", label: "Metropolitan City" },
-  { value: "sub_metropolitan_city", label: "Sub-Metropolitan City" },
-  { value: "municipality", label: "Municipality" },
-  { value: "rural_municipality", label: "Rural Municipality" }
-];
-
 export default function ManageMuniciple() {
   const [municipalities, setMunicipalities] = useState<Municipality[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -78,18 +63,71 @@ export default function ManageMuniciple() {
     name?: string;
   } | null>(null);
 
+  const [searchQuery, setSearchQuery] = useState("");
+  const [filterProvince, setFilterProvince] = useState("");
+  const [filterDistrict, setFilterDistrict] = useState("");
+  const [page, setPage] = useState(0);
+  const [rowsPerPage, setRowsPerPage] = useState(10);
+
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingMunicipality, setEditingMunicipality] = useState<Municipality | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [formData, setFormData] = useState({
     official_name: "",
     district: "",
     province: "",
     official_email: "",
+    official_contact_no: "",
     head_name: "",
     head_email: "",
     total_wards: 1,
-    municipality_type: "municipality",
+    municipality_type: "",
+    mayor_chairperson_name: "",
+    deputy_mayor_vice_chairperson_name: "",
+    about_description: "",
   });
+
+  // Derive municipality list for the selected district
+  const municipalitiesForDistrict = formData.province && formData.district
+    ? MUNICIPALITIES_BY_DISTRICT[formData.district] ?? []
+    : [];
+
+  // Unique municipality types available in the selected district
+  const availableTypes = [...new Set(municipalitiesForDistrict.map((m) => m.type))];
+
+  // Filter & paginate the table
+  const filteredTableData = municipalities.filter((m) => {
+    const matchesSearch = !searchQuery ||
+      (m.official_name || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (m.head_name || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (m.official_email || "").toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesProvince = !filterProvince || (m as any).province === filterProvince || PROVINCE_BY_DISTRICT[(m as any).district || ""] === filterProvince;
+    const matchesDistrict = !filterDistrict || (m as any).district === filterDistrict;
+    return matchesSearch && matchesProvince && matchesDistrict;
+  });
+
+  const paginatedData = filteredTableData.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage);
+
+  // Municipalities filtered by both district AND selected type
+  const filteredMunicipalities = formData.municipality_type
+    ? municipalitiesForDistrict.filter((m) => m.type === formData.municipality_type)
+    : [];
+
+  const handleTypeChange = (type: string) => {
+    setFormData((prev) => ({
+      ...prev,
+      municipality_type: type,
+      official_name: "",
+    }));
+  };
+
+  const handleNameChange = (name: string) => {
+    setFormData((prev) => ({
+      ...prev,
+      official_name: name,
+    }));
+  };
 
   const fetchMunicipalities = async () => {
     try {
@@ -142,48 +180,115 @@ export default function ManageMuniciple() {
     }
   };
 
+  const openAddModal = () => {
+    setEditingMunicipality(null);
+    setFormData({
+      official_name: "",
+      district: "",
+      province: "",
+      official_email: "",
+      official_contact_no: "",
+      head_name: "",
+      head_email: "",
+      total_wards: 1,
+      municipality_type: "",
+      mayor_chairperson_name: "",
+      deputy_mayor_vice_chairperson_name: "",
+      about_description: "",
+    });
+    setIsModalOpen(true);
+  };
+
+  const openEditModal = (municipality: Municipality) => {
+    setEditingMunicipality(municipality);
+    const district = (municipality as any).district || "";
+    const province = PROVINCE_BY_DISTRICT[district] || "";
+    const localLevelType = (municipality as any).local_level_type || (municipality as any).municipality_type || "";
+    setFormData({
+      official_name: municipality.official_name,
+      district,
+      province,
+      official_email: municipality.official_email || "",
+      official_contact_no: (municipality as any).official_contact_no || "",
+      head_name: municipality.head_name || "",
+      head_email: municipality.head_email || "",
+      total_wards: (municipality as any).total_wards || 1,
+      municipality_type: localLevelType,
+      mayor_chairperson_name: (municipality as any).mayor_chairperson_name || "",
+      deputy_mayor_vice_chairperson_name: (municipality as any).deputy_mayor_vice_chairperson_name || "",
+      about_description: (municipality as any).about_description || "",
+    });
+    setIsModalOpen(true);
+  };
+
+  const handleCloseModal = () => {
+    setIsModalOpen(false);
+    setEditingMunicipality(null);
+    setFormErrors({});
+  };
+
+  const validateForm = (): boolean => {
+    const errors: Record<string, string> = {};
+    if (!formData.province) errors.province = "Province is required";
+    if (!formData.district) errors.district = "District is required";
+    if (!formData.municipality_type) errors.municipality_type = "Municipality type is required";
+    if (!formData.official_name) errors.official_name = "Municipality name is required";
+    if (!formData.official_email) errors.official_email = "Official email is required";
+    else if (!/\S+@\S+\.\S+/.test(formData.official_email)) errors.official_email = "Invalid email format";
+    if (!formData.head_name) errors.head_name = "Head name is required";
+    if (!formData.head_email) errors.head_email = "Head email is required";
+    else if (!/\S+@\S+\.\S+/.test(formData.head_email)) errors.head_email = "Invalid email format";
+    if (!formData.total_wards || formData.total_wards < 1) errors.total_wards = "At least 1 ward required";
+    setFormErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
   const handleAddSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!validateForm()) return;
     setIsSubmitting(true);
     setError(null);
 
     try {
-      const response = await fetchWithAuth(
-        API_ENDPOINTS.SUPERADMIN.CREATE_MUNICIPALITY,
-        {
-          method: "POST",
-          body: JSON.stringify(formData),
-        },
-      );
+      const isEdit = !!editingMunicipality;
+      const url = isEdit
+        ? API_ENDPOINTS.SUPERADMIN.UPDATE_MUNICIPALITY(editingMunicipality.m_uid)
+        : API_ENDPOINTS.SUPERADMIN.CREATE_MUNICIPALITY;
+      const method = isEdit ? "PUT" : "POST";
+
+      const response = await fetchWithAuth(url, {
+        method,
+        body: JSON.stringify(formData),
+      });
 
       const result = await response.json();
       if (!response.ok)
-        throw new Error(result.error || result.message || "Failed to create municipality");
+        throw new Error(result.error || result.message || "Failed to save municipality");
 
-      // Add the newly created municipality to the current state to update UI immediately
-      const newMunicipality = result?.data || result;
-      setMunicipalities((prev) =>
-        Array.isArray(prev) ? [newMunicipality, ...prev] : [newMunicipality],
-      );
-      
-      // Display the auto-generated password
-      setSuccessData({
-        password: newMunicipality.head_password,
-        email: newMunicipality.head_email,
-        name: newMunicipality.official_name,
-      });
+      if (isEdit) {
+        // Update the existing entry in the table
+        const updated = result?.data || result;
+        setMunicipalities((prev) =>
+          Array.isArray(prev)
+            ? prev.map((m) => (m.m_uid === updated.m_uid ? { ...m, ...updated } : m))
+            : prev,
+        );
+      } else {
+        // Add the newly created municipality to the current state
+        const newMunicipality = result?.data || result;
+        setMunicipalities((prev) =>
+          Array.isArray(prev) ? [newMunicipality, ...prev] : [newMunicipality],
+        );
 
-      setIsModalOpen(false);
-      setFormData({
-        official_name: "",
-        district: "",
-        province: "",
-        official_email: "",
-        head_name: "",
-        head_email: "",
-        total_wards: 1,
-        municipality_type: "municipality",
-      });
+        // Display the auto-generated password
+        setSuccessData({
+          password: newMunicipality.head_password,
+          email: newMunicipality.head_email,
+          name: newMunicipality.official_name,
+        });
+      }
+
+      handleCloseModal();
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "An error occurred");
     } finally {
@@ -216,10 +321,55 @@ export default function ManageMuniciple() {
         <Button
           variant="contained"
           startIcon={<AddIcon />}
-          onClick={() => setIsModalOpen(true)}
+          onClick={openAddModal}
         >
           Add Municipality
         </Button>
+      </Box>
+
+      <Box sx={{ display: "flex", gap: 2, mb: 3, flexWrap: "wrap", alignItems: "center" }}>
+        <TextField
+          size="small"
+          placeholder="Search municipalities..."
+          value={searchQuery}
+          onChange={(e) => { setSearchQuery(e.target.value); setPage(0); }}
+          sx={{ minWidth: 260 }}
+          InputProps={{
+            startAdornment: <InputAdornment position="start"><SearchIcon /></InputAdornment>,
+          }}
+        />
+        <FormControl size="small" sx={{ minWidth: 140 }}>
+          <InputLabel>Province</InputLabel>
+          <Select
+            value={filterProvince}
+            label="Province"
+            onChange={(e) => { setFilterProvince(e.target.value); setFilterDistrict(""); setPage(0); }}
+          >
+            <MenuItem value="">All</MenuItem>
+            {PROVINCES.map((p) => (
+              <MenuItem key={p} value={p}>{p}</MenuItem>
+            ))}
+          </Select>
+        </FormControl>
+        <FormControl size="small" sx={{ minWidth: 160 }} disabled={!filterProvince}>
+          <InputLabel>District</InputLabel>
+          <Select
+            value={filterDistrict}
+            label="District"
+            onChange={(e) => { setFilterDistrict(e.target.value); setPage(0); }}
+          >
+            <MenuItem value="">All</MenuItem>
+            {filterProvince && DISTRICTS_BY_PROVINCE[filterProvince]?.map((d) => (
+              <MenuItem key={d} value={d}>{d}</MenuItem>
+            ))}
+          </Select>
+        </FormControl>
+        <Typography variant="body2" color="text.secondary">
+          {filteredTableData.length} municipality{filteredTableData.length !== 1 ? "ies" : "y"}
+          {municipalities.length !== filteredTableData.length
+            ? ` (of ${municipalities.length})`
+            : ""}
+        </Typography>
       </Box>
 
       {error && (
@@ -241,13 +391,16 @@ export default function ManageMuniciple() {
                   <strong>Municipality Name</strong>
                 </TableCell>
                 <TableCell>
+                  <strong>Province</strong>
+                </TableCell>
+                <TableCell>
+                  <strong>District</strong>
+                </TableCell>
+                <TableCell>
                   <strong>Head Name</strong>
                 </TableCell>
                 <TableCell>
                   <strong>Official Email</strong>
-                </TableCell>
-                <TableCell>
-                  <strong>Head Email</strong>
                 </TableCell>
                 <TableCell>
                   <strong>Created Date</strong>
@@ -261,58 +414,72 @@ export default function ManageMuniciple() {
               </TableRow>
             </TableHead>
             <TableBody>
-              {municipalities.length === 0 ? (
+              {paginatedData.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} align="center">
-                    No municipalities found.
+                  <TableCell colSpan={8} align="center">
+                    {municipalities.length === 0 ? "No municipalities found." : "No results match your filters."}
                   </TableCell>
                 </TableRow>
               ) : (
-                municipalities.map((row) => (
-                  <TableRow
-                    key={row.m_uid}
-                    sx={{ "&:last-child td, &:last-child th": { border: 0 } }}
-                  >
-                    <TableCell>
-                      <Typography variant="body2" fontWeight={600}>
-                        {row.official_name || (row as any).name}
-                      </Typography>
-                    </TableCell>
-                    <TableCell>{row.head_name}</TableCell>
-                    <TableCell>{row.official_email || (row as any).email}</TableCell>
-                    <TableCell>{row.head_email}</TableCell>
-                    <TableCell>{formatDate(row.registered_at)}</TableCell>
-                    <TableCell>
-                      <Chip
-                        label={row.is_active ? "Active" : "Inactive"}
-                        color={row.is_active ? "success" : "default"}
-                        size="small"
-                      />
-                    </TableCell>
-                    <TableCell align="center">
-                      <IconButton color="primary" aria-label="edit">
-                        <EditIcon />
-                      </IconButton>
-                      <IconButton
-                        color="error"
-                        aria-label="delete"
-                        onClick={() => handleDelete(row.m_uid || (row as any).id)}
-                      >
-                        <DeleteIcon />
-                      </IconButton>
-                    </TableCell>
-                  </TableRow>
-                ))
+                paginatedData.map((row) => {
+                  const district = (row as any).district || "";
+                  const province = (row as any).province || PROVINCE_BY_DISTRICT[district] || "";
+                  return (
+                    <TableRow
+                      key={row.m_uid}
+                      sx={{ "&:last-child td, &:last-child th": { border: 0 } }}
+                    >
+                      <TableCell>
+                        <Typography variant="body2" fontWeight={600}>
+                          {row.official_name || (row as any).name}
+                        </Typography>
+                      </TableCell>
+                      <TableCell>{province}</TableCell>
+                      <TableCell>{district}</TableCell>
+                      <TableCell>{row.head_name}</TableCell>
+                      <TableCell>{row.official_email || (row as any).email}</TableCell>
+                      <TableCell>{formatDate(row.registered_at)}</TableCell>
+                      <TableCell>
+                        <Chip
+                          label={row.is_active ? "Active" : "Inactive"}
+                          color={row.is_active ? "success" : "default"}
+                          size="small"
+                        />
+                      </TableCell>
+                      <TableCell align="center">
+                        <IconButton color="primary" aria-label="edit" onClick={() => openEditModal(row)}>
+                          <EditIcon />
+                        </IconButton>
+                        <IconButton
+                          color="error"
+                          aria-label="delete"
+                          onClick={() => handleDelete(row.m_uid || (row as any).id)}
+                        >
+                          <DeleteIcon />
+                        </IconButton>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })
               )}
             </TableBody>
           </Table>
+          <TablePagination
+            component="div"
+            count={filteredTableData.length}
+            page={page}
+            onPageChange={(_, newPage) => setPage(newPage)}
+            rowsPerPage={rowsPerPage}
+            onRowsPerPageChange={(e) => { setRowsPerPage(parseInt(e.target.value, 10)); setPage(0); }}
+            rowsPerPageOptions={[5, 10, 25, 50]}
+          />
         </TableContainer>
       )}
 
       {/* Add Municipality Modal */}
       <Dialog
         open={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
+        onClose={handleCloseModal}
         maxWidth="sm"
         fullWidth
       >
@@ -322,29 +489,16 @@ export default function ManageMuniciple() {
         >
           Municipality Details
         </Typography>
-        <DialogTitle>Add New Municipality</DialogTitle>
+        <DialogTitle>{editingMunicipality ? "Edit Municipality" : "Add New Municipality"}</DialogTitle>
         <form onSubmit={handleAddSubmit}>
           <DialogContent>
-            <TextField
-              autoFocus
-              margin="dense"
-              label="Municipality Official Name"
-              type="text"
-              fullWidth
-              required
-              value={formData.official_name}
-              onChange={(e) =>
-                setFormData({ ...formData, official_name: e.target.value })
-              }
-              sx={{ mb: 2 }}
-            />
             <FormControl fullWidth margin="dense" required sx={{ mb: 2 }}>
               <InputLabel>Province</InputLabel>
               <Select
                 value={formData.province}
                 label="Province"
                 onChange={(e) =>
-                  setFormData({ ...formData, province: e.target.value as string, district: "" })
+                  setFormData({ ...formData, province: e.target.value as string, district: "", municipality_type: "", official_name: "" })
                 }
               >
                 {PROVINCES.map((p) => (
@@ -358,7 +512,7 @@ export default function ManageMuniciple() {
                 value={formData.district}
                 label="District"
                 onChange={(e) =>
-                  setFormData({ ...formData, district: e.target.value as string })
+                  setFormData({ ...formData, district: e.target.value as string, municipality_type: "", official_name: "" })
                 }
               >
                 {formData.province && DISTRICTS_BY_PROVINCE[formData.province] ? (
@@ -367,6 +521,46 @@ export default function ManageMuniciple() {
                   ))
                 ) : (
                   <MenuItem value="" disabled>Select a province first</MenuItem>
+                )}
+              </Select>
+            </FormControl>
+            <FormControl fullWidth margin="dense" required sx={{ mb: 2 }} disabled={!formData.district}>
+              <InputLabel>Municipality Type</InputLabel>
+              <Select
+                value={formData.municipality_type}
+                label="Municipality Type"
+                onChange={(e) =>
+                  handleTypeChange(e.target.value as string)
+                }
+              >
+                {availableTypes.length > 0 ? (
+                  availableTypes.map((t) => (
+                    <MenuItem key={t} value={t}>
+                      {MUNICIPALITY_TYPE_LABELS[t] ?? t}
+                    </MenuItem>
+                  ))
+                ) : (
+                  <MenuItem value="" disabled>Select a district first</MenuItem>
+                )}
+              </Select>
+            </FormControl>
+            <FormControl fullWidth margin="dense" required sx={{ mb: 2 }} disabled={!formData.municipality_type}>
+              <InputLabel>Municipality / Rural Municipality</InputLabel>
+              <Select
+                value={formData.official_name}
+                label="Municipality / Rural Municipality"
+                onChange={(e) =>
+                  handleNameChange(e.target.value as string)
+                }
+              >
+                {filteredMunicipalities.length > 0 ? (
+                  filteredMunicipalities.map((m) => (
+                    <MenuItem key={m.name} value={m.name}>
+                      {m.name}
+                    </MenuItem>
+                  ))
+                ) : (
+                  <MenuItem value="" disabled>Select a type first</MenuItem>
                 )}
               </Select>
             </FormControl>
@@ -380,6 +574,8 @@ export default function ManageMuniciple() {
               onChange={(e) =>
                 setFormData({ ...formData, official_email: e.target.value })
               }
+              error={!!formErrors.official_email}
+              helperText={formErrors.official_email}
               sx={{ mb: 2 }}
             />
             <TextField
@@ -392,24 +588,57 @@ export default function ManageMuniciple() {
               onChange={(e) =>
                 setFormData({ ...formData, total_wards: parseInt(e.target.value) || 1 })
               }
+              error={!!formErrors.total_wards}
+              helperText={formErrors.total_wards}
               sx={{ mb: 2 }}
             />
-            <FormControl fullWidth margin="dense" required sx={{ mb: 3 }}>
-              <InputLabel>Municipality Type</InputLabel>
-              <Select
-                value={formData.municipality_type}
-                label="Municipality Type"
-                onChange={(e) =>
-                  setFormData({ ...formData, municipality_type: e.target.value as string })
-                }
-              >
-                {MUNICIPALITY_TYPES.map((type) => (
-                  <MenuItem key={type.value} value={type.value}>
-                    {type.label}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
+
+            <TextField
+              margin="dense"
+              label="Official Contact Number"
+              type="tel"
+              fullWidth
+              value={formData.official_contact_no}
+              onChange={(e) =>
+                setFormData({ ...formData, official_contact_no: e.target.value })
+              }
+              sx={{ mb: 2 }}
+            />
+            <TextField
+              margin="dense"
+              label="Mayor / Chairperson Name"
+              type="text"
+              fullWidth
+              value={formData.mayor_chairperson_name}
+              onChange={(e) =>
+                setFormData({ ...formData, mayor_chairperson_name: e.target.value })
+              }
+              sx={{ mb: 2 }}
+            />
+            <TextField
+              margin="dense"
+              label="Deputy Mayor / Vice Chairperson Name"
+              type="text"
+              fullWidth
+              value={formData.deputy_mayor_vice_chairperson_name}
+              onChange={(e) =>
+                setFormData({ ...formData, deputy_mayor_vice_chairperson_name: e.target.value })
+              }
+              sx={{ mb: 2 }}
+            />
+            <TextField
+              margin="dense"
+              label="About Description"
+              type="text"
+              fullWidth
+              multiline
+              rows={3}
+              value={formData.about_description}
+              onChange={(e) =>
+                setFormData({ ...formData, about_description: e.target.value })
+              }
+              sx={{ mb: 2 }}
+            />
 
             <Typography variant="h6" sx={{ mb: 1, fontWeight: "bold" }}>
               Municipality Head Details
@@ -424,6 +653,8 @@ export default function ManageMuniciple() {
               onChange={(e) =>
                 setFormData({ ...formData, head_name: e.target.value })
               }
+              error={!!formErrors.head_name}
+              helperText={formErrors.head_name}
               sx={{ mb: 2 }}
             />
             <TextField
@@ -436,19 +667,21 @@ export default function ManageMuniciple() {
               onChange={(e) =>
                 setFormData({ ...formData, head_email: e.target.value })
               }
+              error={!!formErrors.head_email}
+              helperText={formErrors.head_email}
               sx={{ mb: 2 }}
             />
           </DialogContent>
           <DialogActions sx={{ px: 3, pb: 3 }}>
             <Button
-              onClick={() => setIsModalOpen(false)}
+              onClick={handleCloseModal}
               color="inherit"
               disabled={isSubmitting}
             >
               Cancel
             </Button>
             <Button type="submit" variant="contained" disabled={isSubmitting}>
-              {isSubmitting ? "Saving..." : "Save Municipality"}
+              {isSubmitting ? "Saving..." : editingMunicipality ? "Update Municipality" : "Save Municipality"}
             </Button>
           </DialogActions>
         </form>

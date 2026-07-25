@@ -73,6 +73,7 @@ export default function ManageDept() {
   const [formData, setFormData] = useState(emptyForm);
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   // Delete confirm dialog
   const [deleteTarget, setDeleteTarget] = useState<Department | null>(null);
@@ -135,6 +136,7 @@ export default function ManageDept() {
     setEditTarget(null);
     setFormData(emptyForm);
     setFormError(null);
+    setFieldErrors({});
     setModalOpen(true);
   };
 
@@ -145,14 +147,29 @@ export default function ManageDept() {
       official_email: dept.official_email || "", 
       head_name: dept.head_name || "",
       head_email: dept.head_email || "",
-      head_contact_no: "" // Not stored directly on dept if it's in profile, or you can omit
+      head_contact_no: "",
+      department_category: dept.department_category || "other",
     });
     setFormError(null);
+    setFieldErrors({});
     setModalOpen(true);
+  };
+
+  const validateForm = (): boolean => {
+    const errors: Record<string, string> = {};
+    if (!formData.department_name) errors.department_name = "Department name is required";
+    if (!formData.official_email) errors.official_email = "Official email is required";
+    else if (!/\S+@\S+\.\S+/.test(formData.official_email)) errors.official_email = "Invalid email format";
+    if (!formData.head_name) errors.head_name = "Head name is required";
+    if (!formData.head_email) errors.head_email = "Head email is required";
+    else if (!/\S+@\S+\.\S+/.test(formData.head_email)) errors.head_email = "Invalid email format";
+    setFieldErrors(errors);
+    return Object.keys(errors).length === 0;
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!validateForm()) return;
     setSubmitting(true);
     setFormError(null);
     try {
@@ -354,6 +371,8 @@ export default function ManageDept() {
               required
               value={formData.department_name}
               onChange={(e) => setFormData({ ...formData, department_name: e.target.value })}
+              error={!!fieldErrors.department_name}
+              helperText={fieldErrors.department_name}
               sx={{ mb: 2 }}
             />
             <FormControl fullWidth sx={{ mb: 2 }} required>
@@ -385,6 +404,8 @@ export default function ManageDept() {
               required
               value={formData.official_email}
               onChange={(e) => setFormData({ ...formData, official_email: e.target.value })}
+              error={!!fieldErrors.official_email}
+              helperText={fieldErrors.official_email}
               sx={{ mb: 2 }}
             />
             <TextField
@@ -393,6 +414,8 @@ export default function ManageDept() {
               required
               value={formData.head_name}
               onChange={(e) => setFormData({ ...formData, head_name: e.target.value })}
+              error={!!fieldErrors.head_name}
+              helperText={fieldErrors.head_name}
               sx={{ mb: 2 }}
             />
             <TextField
@@ -402,6 +425,8 @@ export default function ManageDept() {
               required
               value={formData.head_email}
               onChange={(e) => setFormData({ ...formData, head_email: e.target.value })}
+              error={!!fieldErrors.head_email}
+              helperText={fieldErrors.head_email}
               sx={{ mb: 2 }}
             />
             <TextField

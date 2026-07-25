@@ -82,6 +82,59 @@ export class DepartmentController {
     }
   };
 
+  updateStaff = async (req: any, res: Response): Promise<void> => {
+    try {
+      const { staffId } = req.params;
+      const { full_name, email, phone, expertise, contact_number, employee_status, gender, date_of_birth, personal_address } = req.body;
+
+      if (!staffId) {
+        res.status(400).json({ success: false, error: "Staff ID is required." });
+        return;
+      }
+
+      // At least one field must be provided
+      const hasUpdate = [full_name, email, phone, expertise, contact_number, employee_status, gender, date_of_birth, personal_address].some(
+        (v) => v !== undefined && v !== null && v !== "",
+      );
+      if (!hasUpdate) {
+        res.status(400).json({ success: false, error: "No update fields provided." });
+        return;
+      }
+
+      const updated = await this.service.modifyStaff(staffId, req.departmentId, {
+        full_name,
+        email,
+        phone,
+        expertise,
+        contact_number,
+        employee_status,
+        gender,
+        date_of_birth,
+        personal_address,
+      });
+
+      res.status(200).json({ success: true, data: updated });
+    } catch (error: any) {
+      res.status(400).json({ success: false, error: error.message });
+    }
+  };
+
+  removeStaff = async (req: any, res: Response): Promise<void> => {
+    try {
+      const { staffId } = req.params;
+
+      if (!staffId) {
+        res.status(400).json({ success: false, error: "Staff ID is required." });
+        return;
+      }
+
+      await this.service.removeStaff(staffId, req.departmentId, req.user.id);
+      res.status(200).json({ success: true, message: "Staff member removed successfully." });
+    } catch (error: any) {
+      res.status(400).json({ success: false, error: error.message });
+    }
+  };
+
   getStaffRoster = async (req: any, res: Response): Promise<void> => {
     try {
       const roster = await this.service.listRoster(req.departmentId);
@@ -91,9 +144,18 @@ export class DepartmentController {
     }
   };
 
+  getDashboard = async (req: any, res: Response): Promise<void> => {
+    try {
+      const data = await this.service.getDashboard(req.departmentId);
+      res.status(200).json({ success: true, data });
+    } catch (error: any) {
+      res.status(500).json({ success: false, error: error.message });
+    }
+  };
+
   createStaff = async (req: any, res: Response): Promise<void> => {
     try {
-      const { email, password, full_name, phone } = req.body;
+      const { email, password, full_name, phone, expertise } = req.body;
 
       if (!email || !password || !full_name) {
         res.status(400).json({
@@ -119,7 +181,118 @@ export class DepartmentController {
         created_by: req.user.id,
       });
 
+      // The DB trigger creates the staff row — now update it with expertise
+      if (expertise) {
+        await this.service.setStaffExpertise(
+          profile.id,
+          req.departmentId,
+          expertise,
+        );
+      }
+
       res.status(201).json({ success: true, data: profile });
+    } catch (error: any) {
+      res.status(400).json({ success: false, error: error.message });
+    }
+  };
+
+  // ─── Team Management ─────────────────────────────────────────────────────────
+
+  getTeams = async (req: any, res: Response): Promise<void> => {
+    try {
+      const teams = await this.service.listTeams(req.departmentId);
+      res.status(200).json({ success: true, data: teams });
+    } catch (error: any) {
+      res.status(500).json({ success: false, error: error.message });
+    }
+  };
+
+  getTeamDetails = async (req: any, res: Response): Promise<void> => {
+    try {
+      const { teamName } = req.params;
+      if (!teamName) {
+        res.status(400).json({ success: false, error: "Team name is required." });
+        return;
+      }
+      const team = await this.service.getTeamDetails(
+        decodeURIComponent(teamName),
+        req.departmentId,
+      );
+      res.status(200).json({ success: true, data: team });
+    } catch (error: any) {
+      res.status(400).json({ success: false, error: error.message });
+    }
+  };
+
+  updateTeam = async (req: any, res: Response): Promise<void> => {
+    try {
+      const { teamName } = req.params;
+      const { team_name, description, is_active } = req.body;
+
+      if (!teamName) {
+        res.status(400).json({ success: false, error: "Team name is required." });
+        return;
+      }
+
+      const hasUpdate = [team_name, description, is_active].some(
+        (v) => v !== undefined && v !== null,
+      );
+      if (!hasUpdate) {
+        res.status(400).json({ success: false, error: "No update fields provided." });
+        return;
+      }
+
+      const updated = await this.service.updateTeamInfo(
+        decodeURIComponent(teamName),
+        req.departmentId,
+        { team_name, description, is_active },
+      );
+      res.status(200).json({ success: true, data: updated });
+    } catch (error: any) {
+      res.status(400).json({ success: false, error: error.message });
+    }
+  };
+
+  removeMember = async (req: any, res: Response): Promise<void> => {
+    try {
+      const { teamName, staffId } = req.params;
+      if (!teamName || !staffId) {
+        res.status(400).json({ success: false, error: "Team name and Staff ID are required." });
+        return;
+      }
+      await this.service.removeMemberFromTeam(
+        decodeURIComponent(teamName),
+        staffId,
+        req.departmentId,
+      );
+      res.status(200).json({ success: true, message: "Member removed from team." });
+    } catch (error: any) {
+      res.status(400).json({ success: false, error: error.message });
+    }
+  };
+
+  toggleLeader = async (req: any, res: Response): Promise<void> => {
+    try {
+      const { teamName, staffId } = req.params;
+      const { is_leader } = req.body;
+
+      if (!teamName || !staffId) {
+        res.status(400).json({ success: false, error: "Team name and Staff ID are required." });
+        return;
+      }
+
+      if (typeof is_leader !== "boolean") {
+        res.status(400).json({ success: false, error: "is_leader must be a boolean." });
+        return;
+      }
+
+      await this.service.setTeamLeader(
+        decodeURIComponent(teamName),
+        staffId,
+        req.departmentId,
+        is_leader,
+      );
+      res.status(200).json({ success: true, message: `Member ${is_leader ? "promoted to" : "demoted from"} leader.` });
     } catch (error: any) {
       res.status(400).json({ success: false, error: error.message });
     }

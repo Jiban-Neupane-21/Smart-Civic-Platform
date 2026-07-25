@@ -33,7 +33,7 @@ export const submitComplaint = async (
       category_id: body.category_id ?? null,
       status: "pending",
     } as any)
-    .select("id, title, status, submitted_date")
+    .select("co_uid, title, status, submitted_date")
     .single();
 
   if (error) throw new Error(error.message);
@@ -51,7 +51,7 @@ export const getMyComplaints = async (
     .from("complaints")
     .select(
       `
-      id, title, status, submitted_date, resolution_date, resolution_note,
+      co_uid, title, status, submitted_date, resolution_date, resolution_note,
       complaint_categories ( category_name ),
       departments ( department_name )
     `,
@@ -77,13 +77,13 @@ export const getComplaintDetail = async (
     .from("complaints")
     .select(
       `
-      id, title, description, status,
+      co_uid, title, description, status,
       submitted_date, resolution_date, resolution_note,
       complaint_categories ( category_name ),
       departments ( department_name )
     `,
     )
-    .eq("id", complaintId)
+    .eq("co_uid", complaintId)
     .eq("citizen_id", citizenId)
     .single();
 
@@ -100,8 +100,8 @@ export const getComplaintHistory = async (
 
   const { data: complaint } = await db
     .from("complaints")
-    .select("id")
-    .eq("id", complaintId)
+    .select("co_uid")
+    .eq("co_uid", complaintId)
     .eq("citizen_id", citizenId)
     .maybeSingle();
   if (!complaint) throw new Error("Complaint not found");
@@ -149,7 +149,7 @@ export const submitFeedback = async (
   const { data: complaint } = (await db
     .from("complaints")
     .select("status")
-    .eq("id", complaintId)
+    .eq("co_uid", complaintId)
     .eq("citizen_id", citizenId)
     .maybeSingle()) as {
     data: { status: ComplaintStatus } | null;
@@ -200,7 +200,7 @@ export const getDashboardData = async (
   // 1. Fetch complaints summary
   const { data: complaints, error: complaintsError } = await db
     .from("complaints")
-    .select("id, status, title, submitted_date")
+    .select("co_uid, status, title, submitted_date")
     .eq("citizen_id", citizenId)
     .order("submitted_date", { ascending: false });
 
@@ -211,7 +211,8 @@ export const getDashboardData = async (
   const pendingComplaints = complaints.filter((c: any) => c.status === "pending").length;
 
   const recentComplaints = complaints.slice(0, 5).map((c: any) => ({
-    id: c.id,
+    id: c.co_uid,
+    co_uid: c.co_uid,
     title: c.title,
     status: c.status,
     created_at: c.submitted_date,

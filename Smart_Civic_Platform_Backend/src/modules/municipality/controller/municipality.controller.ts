@@ -98,7 +98,9 @@ export class MunicipalityController {
   updateDepartment = async (req: any, res: Response): Promise<void> => {
     try {
       const { id } = req.params;
-      const dept = await this.service.updateDepartment(id, req.body);
+      // Strip profile-only fields that don't exist on the departments table
+      const { head_contact_no, ...cleanBody } = req.body;
+      const dept = await this.service.updateDepartment(id, cleanBody);
       res.status(200).json({ success: true, data: dept });
     } catch (error: any) {
       res.status(400).json({ success: false, error: error.message });
@@ -108,8 +110,28 @@ export class MunicipalityController {
   deleteDepartment = async (req: any, res: Response): Promise<void> => {
     try {
       const { id } = req.params;
+
+      // 1. Fetch the department to get the linked head profile ID
+      const department = await this.service.getDepartmentById(id);
+      const headProfileId = department?.head_profile_id;
+
+      if (headProfileId) {
+        // 2. Break the FK link first
+        await this.service.updateDepartment(id, { head_profile_id: null });
+
+        try {
+          // 3. Delete the profile row
+          await this.service.removeProfile(headProfileId);
+          // 4. Delete the Supabase Auth user
+          await this.service.removeAuthUser(headProfileId);
+        } catch (userError: any) {
+          console.error("Failed to clean up user on department delete:", userError.message);
+        }
+      }
+
+      // 5. Delete the department itself
       await this.service.deleteDepartment(id);
-      res.status(200).json({ success: true, message: "Department deleted successfully." });
+      res.status(200).json({ success: true, message: "Department and linked user deleted successfully." });
     } catch (error: any) {
       res.status(400).json({ success: false, error: error.message });
     }

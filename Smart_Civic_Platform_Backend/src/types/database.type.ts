@@ -193,7 +193,7 @@ export interface ComplaintCategoryRow {
 }
 
 export interface ComplaintRow {
-  id: string;
+  co_uid: string;
   citizen_id: string;
   municipality_id: string;
   category_id: string;

@@ -36,7 +36,7 @@ import { useAuth } from "../../hooks/useAuth";
 import { BASE_URL, fetchWithAuth } from "../../api";
 
 interface Complaint {
-  id: string;
+  co_uid: string;
   title: string;
   description: string;
   category: string;
@@ -149,7 +149,7 @@ export default function ComplainDetails() {
       if (updatedDept) body.departmentId = updatedDept;
 
       const res = await fetchWithAuth(
-        `${BASE_URL}/municipality/${municipalityId}/complaints/${selected.id}`,
+        `${BASE_URL}/municipality/${municipalityId}/complaints/${selected.co_uid}`,
         { method: "PATCH", body: JSON.stringify(body) }
       );
       const result = await res.json();
@@ -157,7 +157,7 @@ export default function ComplainDetails() {
 
       setComplaints((prev) =>
         prev.map((c) =>
-          c.id === selected.id
+          c.co_uid === selected.co_uid
             ? { ...c, status: updatedStatus, department_id: updatedDept }
             : c
         )
@@ -275,7 +275,7 @@ export default function ComplainDetails() {
                 </TableRow>
               ) : (
                 filtered.map((c) => (
-                  <TableRow key={c.id} sx={{ "&:hover": { bgcolor: "#f5f8ff" }, "&:last-child td": { border: 0 } }}>
+                  <TableRow key={c.co_uid} sx={{ "&:hover": { bgcolor: "#f5f8ff" }, "&:last-child td": { border: 0 } }}>
                     <TableCell>
                       <Typography fontWeight={600} noWrap sx={{ maxWidth: 220 }}>
                         {c.title}

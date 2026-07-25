@@ -177,6 +177,30 @@ CREATE TABLE staff (
 );
 
 -- ============================================================================================
+-- 8b. DELETED_STAFF — archive table for soft-deleted staff records (preserves full snapshot)
+-- ============================================================================================
+CREATE TABLE deleted_staff (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    original_staff_id UUID NOT NULL,
+    original_profile_id UUID NOT NULL,
+    full_name TEXT NOT NULL,
+    email TEXT NOT NULL,
+    phone TEXT,
+    employee_id TEXT,
+    expertise TEXT,
+    contact_number TEXT,
+    gender gender,
+    date_of_birth DATE,
+    personal_address TEXT,
+    employee_status TEXT,
+    primary_department_id UUID,
+    municipality_id UUID,
+    deleted_by UUID REFERENCES auth.users(id),
+    deleted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- ============================================================================================
 -- 9. CITIZENS
 -- ============================================================================================
 -- Trimmed the three redundant address fields down to current/permanent (Nepali government forms
@@ -215,7 +239,7 @@ CREATE TABLE complaint_categories (
 -- 11. COMPLAINTS
 -- ============================================================================================
 CREATE TABLE complaints (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    co_uid UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     citizen_id UUID NOT NULL REFERENCES citizens(id) ON DELETE CASCADE,
     municipality_id UUID NOT NULL REFERENCES municipalities(id) ON DELETE CASCADE,
     category_id UUID NOT NULL REFERENCES complaint_categories(id),
@@ -279,7 +303,7 @@ CREATE TABLE team_members (
 -- ============================================================================================
 CREATE TABLE complaint_assignments (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    complaint_id UUID NOT NULL REFERENCES complaints(id) ON DELETE CASCADE,
+    complaint_id UUID NOT NULL REFERENCES complaints(co_uid) ON DELETE CASCADE,
     team_id UUID REFERENCES teams(id) ON DELETE SET NULL,
     staff_id UUID REFERENCES staff(id) ON DELETE SET NULL,
     assigned_by UUID NOT NULL REFERENCES profiles(id),
@@ -300,7 +324,7 @@ CREATE TABLE complaint_assignments (
 -- ============================================================================================
 CREATE TABLE complaint_updates (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    complaint_id UUID NOT NULL REFERENCES complaints(id) ON DELETE CASCADE,
+    complaint_id UUID NOT NULL REFERENCES complaints(co_uid) ON DELETE CASCADE,
     author_id UUID NOT NULL REFERENCES profiles(id),
     note TEXT NOT NULL,
     is_internal BOOLEAN NOT NULL DEFAULT FALSE,
@@ -312,7 +336,7 @@ CREATE TABLE complaint_updates (
 -- ============================================================================================
 CREATE TABLE feedback (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    complaint_id UUID NOT NULL UNIQUE REFERENCES complaints(id) ON DELETE CASCADE,
+    complaint_id UUID NOT NULL UNIQUE REFERENCES complaints(co_uid) ON DELETE CASCADE,
     citizen_id UUID NOT NULL REFERENCES citizens(id) ON DELETE CASCADE,
     team_id UUID REFERENCES teams(id) ON DELETE SET NULL,
     staff_id UUID REFERENCES staff(id) ON DELETE SET NULL,
@@ -725,8 +749,8 @@ CREATE POLICY "team_members_write_department" ON team_members FOR ALL USING (
 CREATE POLICY "assignments_select" ON complaint_assignments FOR SELECT USING (
   auth_role() = 'superadmin'
   OR staff_id IN (SELECT id FROM staff WHERE profile_id = auth.uid())
-  OR complaint_id IN (SELECT id FROM complaints WHERE municipality_id = auth_municipality_id())
-  OR complaint_id IN (SELECT id FROM complaints WHERE citizen_id = auth.uid())
+  OR complaint_id IN (SELECT co_uid FROM complaints WHERE municipality_id = auth_municipality_id())
+  OR complaint_id IN (SELECT co_uid FROM complaints WHERE citizen_id = auth.uid())
 );
 CREATE POLICY "assignments_write_department" ON complaint_assignments FOR ALL USING (
   auth_role() = 'superadmin' OR auth_role() IN ('municipality_head', 'department_head')
@@ -734,7 +758,7 @@ CREATE POLICY "assignments_write_department" ON complaint_assignments FOR ALL US
 
 -- Complaint updates: internal notes hidden from citizens; public updates visible to all parties
 CREATE POLICY "updates_select_internal" ON complaint_updates FOR SELECT USING (
-  NOT is_internal AND complaint_id IN (SELECT id FROM complaints WHERE citizen_id = auth.uid())
+  NOT is_internal AND complaint_id IN (SELECT co_uid FROM complaints WHERE citizen_id = auth.uid())
 );
 CREATE POLICY "updates_select_staff" ON complaint_updates FOR SELECT USING (
   auth_role() IN ('superadmin', 'municipality_head', 'department_head', 'staff')

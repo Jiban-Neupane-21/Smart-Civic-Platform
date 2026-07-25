@@ -79,6 +79,31 @@ export class MunicipalityRepository {
     return data;
   }
 
+  async getDepartmentById(departmentId: string) {
+    const { data, error } = await this.supabaseAdmin
+      .from("departments")
+      .select("*")
+      .eq("d_uid", departmentId)
+      .single();
+
+    if (error) throw error;
+    return data;
+  }
+
+  async deleteProfileById(profileId: string) {
+    const { error } = await this.supabaseAdmin
+      .from("profiles")
+      .delete()
+      .eq("id", profileId);
+
+    if (error) throw error;
+  }
+
+  async deleteAuthUser(userId: string) {
+    const { error } = await this.supabaseAdmin.auth.admin.deleteUser(userId);
+    if (error) throw error;
+  }
+
   async updateDepartment(departmentId: string, departmentData: any) {
     const { data, error } = await this.supabaseAdmin
       .from("departments")
@@ -126,7 +151,7 @@ export class MunicipalityRepository {
     let query = this.supabaseAdmin
       .from("complaints")
       .select(
-        "id, title, status, submitted_date, assigned_department_id, category_id",
+        "co_uid, title, status, submitted_date, assigned_department_id, category_id",
       )
       .eq("municipality_id", municipalityId);
 

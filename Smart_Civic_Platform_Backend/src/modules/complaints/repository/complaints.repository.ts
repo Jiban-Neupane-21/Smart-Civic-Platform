@@ -24,7 +24,7 @@ export class ComplaintsRepository {
       .from("complaints")
       .select(
         `
-        id, title, description, status, submitted_date,
+        co_uid, title, description, status, submitted_date,
         assigned_department_id, resolution_note, rejection_reason
       `,
       )

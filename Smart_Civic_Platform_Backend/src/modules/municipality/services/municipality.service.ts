@@ -25,6 +25,18 @@ export class MunicipalityService {
     return await this.repo.updateDepartment(departmentId, data);
   }
 
+  async getDepartmentById(departmentId: string) {
+    return await this.repo.getDepartmentById(departmentId);
+  }
+
+  async removeProfile(profileId: string) {
+    return await this.repo.deleteProfileById(profileId);
+  }
+
+  async removeAuthUser(userId: string) {
+    return await this.repo.deleteAuthUser(userId);
+  }
+
   async deleteDepartment(departmentId: string) {
     return await this.repo.deleteDepartment(departmentId);
   }

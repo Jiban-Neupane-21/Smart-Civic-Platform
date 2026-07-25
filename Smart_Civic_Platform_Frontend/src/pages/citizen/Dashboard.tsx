@@ -306,7 +306,7 @@ export const CitizenDashboard: React.FC = () => {
                   </ListItem>
                 ) : (
                   recentComplaints.map((complaint) => (
-                    <ListItem key={complaint.id} divider>
+                    <ListItem key={complaint.co_uid} divider>
                       <ListItemText
                         primary={complaint.title}
                         secondary={new Date(
