@@ -8,6 +8,7 @@ export interface AuthUser {
   id: string;
   userId: string;
   email: string;
+  phone: string | null;
   role: string;
   municipality_id: string | null;
   municipalityId: string | null;
@@ -15,6 +16,7 @@ export interface AuthUser {
   departmentId: string | null;
   full_name: string;
   force_password_reset: boolean;
+  created_at: string;
 }
 
 declare global {
@@ -51,7 +53,7 @@ export const authenticate = async (
     const { data: profile, error: profileError } = await supabaseAdmin
       .from("profiles")
       .select(
-        "id, email, role, municipality_id, department_id, full_name, account_status, force_password_reset",
+        "id, email, phone, role, municipality_id, department_id, full_name, account_status, force_password_reset, created_at",
       )
       .eq("id", user.id)
       .single();

@@ -32,6 +32,10 @@ import {
   ListItemText,
   ListItemSecondaryAction,
   MenuItem,
+  Select,
+  FormControl,
+  InputLabel,
+  OutlinedInput,
 } from "@mui/material";
 import AddIcon from "@mui/icons-material/Add";
 import EditIcon from "@mui/icons-material/Edit";
@@ -121,7 +125,17 @@ export default function ManageTeam() {
   // Create / Edit team dialog
   const [teamModalOpen, setTeamModalOpen] = useState(false);
   const [editTeam, setEditTeam] = useState<Team | null>(null);
-  const [teamForm, setTeamForm] = useState({ team_name: "", description: "" });
+  const [teamForm, setTeamForm] = useState<{
+    team_name: string;
+    description: string;
+    selectedStaffIds: string[];
+    leaderStaffId: string;
+  }>({
+    team_name: "",
+    description: "",
+    selectedStaffIds: [],
+    leaderStaffId: "",
+  });
   const [teamSubmitting, setTeamSubmitting] = useState(false);
   const [teamFormError, setTeamFormError] = useState<string | null>(null);
 
@@ -150,7 +164,7 @@ export default function ManageTeam() {
         const data = await res.json().catch(() => ({}));
         setError(
           (data as Record<string, unknown>)?.error as string ||
-            "Failed to load teams"
+          "Failed to load teams"
         );
       }
     } catch {
@@ -199,7 +213,12 @@ export default function ManageTeam() {
 
   const openCreate = () => {
     setEditTeam(null);
-    setTeamForm({ team_name: "", description: "" });
+    setTeamForm({
+      team_name: "",
+      description: "",
+      selectedStaffIds: [],
+      leaderStaffId: "",
+    });
     setTeamFormError(null);
     setTeamModalOpen(true);
   };
@@ -209,6 +228,8 @@ export default function ManageTeam() {
     setTeamForm({
       team_name: team.team_name,
       description: team.description ?? "",
+      selectedStaffIds: [],
+      leaderStaffId: "",
     });
     setTeamFormError(null);
     setTeamModalOpen(true);
@@ -236,7 +257,7 @@ export default function ManageTeam() {
         if (!res.ok) {
           throw new Error(
             (result as Record<string, unknown>)?.error as string ||
-              "Update failed"
+            "Update failed"
           );
         }
       } else {
@@ -249,13 +270,15 @@ export default function ManageTeam() {
           body: JSON.stringify({
             team_name: teamForm.team_name.trim(),
             description: teamForm.description.trim() || undefined,
+            member_staff_ids: teamForm.selectedStaffIds,
+            leader_staff_id: teamForm.leaderStaffId || undefined,
           }),
         });
         const result = await res.json().catch(() => ({}));
         if (!res.ok) {
           throw new Error(
             (result as Record<string, unknown>)?.error as string ||
-              "Create failed"
+            "Create failed"
           );
         }
       }
@@ -301,7 +324,7 @@ export default function ManageTeam() {
       if (!res.ok) {
         throw new Error(
           (result as Record<string, unknown>)?.error as string ||
-            "Failed to add member"
+          "Failed to add member"
         );
       }
       // Refresh teams and re-open members dialog with updated data
@@ -338,7 +361,7 @@ export default function ManageTeam() {
       if (!res.ok) {
         throw new Error(
           (result as Record<string, unknown>)?.error as string ||
-            "Failed to update leader"
+          "Failed to update leader"
         );
       }
       await fetchTeams();
@@ -369,7 +392,7 @@ export default function ManageTeam() {
       if (!res.ok) {
         throw new Error(
           (result as Record<string, unknown>)?.error as string ||
-            "Failed to remove member"
+          "Failed to remove member"
         );
       }
       await fetchTeams();
@@ -406,7 +429,7 @@ export default function ManageTeam() {
       if (!res.ok) {
         throw new Error(
           (result as Record<string, unknown>)?.error as string ||
-            "Deactivate failed"
+          "Deactivate failed"
         );
       }
       setDeleteTarget(null);
@@ -662,6 +685,93 @@ export default function ManageTeam() {
                 rows={3}
                 placeholder="Optional description for this team"
               />
+
+              {!editTeam && (
+                <>
+                  <FormControl fullWidth>
+                    <InputLabel id="add-staff-members-label">Assign Staff Members</InputLabel>
+                    <Select
+                      labelId="add-staff-members-label"
+                      multiple
+                      value={teamForm.selectedStaffIds}
+                      onChange={(e) => {
+                        const val =
+                          typeof e.target.value === "string"
+                            ? e.target.value.split(",")
+                            : (e.target.value as string[]);
+                        setTeamForm((p) => ({
+                          ...p,
+                          selectedStaffIds: val,
+                          leaderStaffId: val.includes(p.leaderStaffId)
+                            ? p.leaderStaffId
+                            : "",
+                        }));
+                      }}
+                      input={<OutlinedInput label="Assign Staff Members" />}
+                      renderValue={(selected) => (
+                        <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.5 }}>
+                          {selected.map((staffId) => {
+                            const staff = staffRoster.find((s) => s.s_uid === staffId);
+                            return (
+                              <Chip
+                                key={staffId}
+                                label={staff?.profiles?.full_name ?? staffId}
+                                size="small"
+                              />
+                            );
+                          })}
+                        </Box>
+                      )}
+                    >
+                      {staffRoster.length === 0 ? (
+                        <MenuItem value="" disabled>
+                          No staff available in department
+                        </MenuItem>
+                      ) : (
+                        staffRoster.map((s) => (
+                          <MenuItem key={s.s_uid} value={s.s_uid}>
+                            {s.profiles?.full_name ?? "Unknown"}{" "}
+                            {s.expertise ? `(${s.expertise})` : ""}
+                          </MenuItem>
+                        ))
+                      )}
+                    </Select>
+                  </FormControl>
+
+                  {teamForm.selectedStaffIds.length > 0 && (
+                    <FormControl fullWidth>
+                      <InputLabel id="select-team-leader-label">
+                        Team Leader (Optional)
+                      </InputLabel>
+                      <Select
+                        labelId="select-team-leader-label"
+                        value={teamForm.leaderStaffId}
+                        label="Team Leader (Optional)"
+                        onChange={(e) =>
+                          setTeamForm((p) => ({
+                            ...p,
+                            leaderStaffId: e.target.value,
+                          }))
+                        }
+                      >
+                        <MenuItem value="">
+                          <em>None</em>
+                        </MenuItem>
+                        {teamForm.selectedStaffIds.map((staffId) => {
+                          const staff = staffRoster.find(
+                            (s) => s.s_uid === staffId
+                          );
+                          return (
+                            <MenuItem key={staffId} value={staffId}>
+                              {staff?.profiles?.full_name ?? "Unknown"}
+                            </MenuItem>
+                          );
+                        })}
+                      </Select>
+                    </FormControl>
+                  )}
+                </>
+              )}
             </Stack>
           </DialogContent>
           <DialogActions sx={{ px: 3, py: 2 }}>

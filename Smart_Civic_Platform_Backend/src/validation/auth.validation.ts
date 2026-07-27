@@ -1,13 +1,18 @@
 import { z } from "zod";
 
 export const registerSchema = z.object({
-  first_name:   z.string().min(1, "First name is required"),
-  last_name:    z.string().min(1, "Last name is required"),
-  email:        z.string().email("Invalid email address"),
-  password:     z.string().min(8, "Password must be at least 8 characters"),
-  phone:        z.string().optional(),
-  full_address: z.string().optional(),
-  gender:       z.string().optional(),
+  first_name:       z.string().min(1, "First name is required"),
+  middle_name:      z.string().optional().transform(val => val?.trim() || undefined),
+  last_name:        z.string().min(1, "Last name is required"),
+  email:            z.string().email("Invalid email address"),
+  password:         z.string().min(8, "Password must be at least 8 characters"),
+  phone:            z.string().optional().transform(val => val?.trim() || undefined),
+  full_address:     z.string().optional().transform(val => val?.trim() || undefined),
+  current_address:  z.string().optional().transform(val => val?.trim() || undefined),
+  gender:           z.preprocess(
+                      (val) => (typeof val === "string" && val.trim() === "" ? undefined : val),
+                      z.enum(['male', 'female', 'other', 'prefer_not_to_say']).optional()
+                    ),
   // Staff/admin accounts are created directly via role-specific API endpoints.
 });
 
@@ -50,6 +55,15 @@ export const forgotPasswordSchema = z.object({
 export const resetPasswordSchema = z.object({
   token: z.string().min(1),
   password: z.string().min(8),
+});
+
+export const changePasswordSchema = z.object({
+  current_password: z.string().min(1, "Current password is required"),
+  new_password: z.string()
+    .min(8, "Password must be at least 8 characters")
+    .regex(/[A-Z]/, "Must contain at least one uppercase letter")
+    .regex(/[a-z]/, "Must contain at least one lowercase letter")
+    .regex(/[0-9]/, "Must contain at least one number"),
 });
 
 export const refreshTokenSchema = z.object({

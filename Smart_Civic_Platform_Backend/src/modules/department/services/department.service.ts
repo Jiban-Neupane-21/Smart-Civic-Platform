@@ -2,22 +2,45 @@ import { DepartmentRepository } from "../repository/department.repository";
 import type { ComplaintStatus, Database } from "../../../types/database.type";
 
 export class DepartmentService {
-  constructor(private repo: DepartmentRepository) {}
+  constructor(private repo: DepartmentRepository) { }
 
   async buildDeploymentTeam(
     departmentId: string,
-    teamName: string
+    teamName: string,
+    description?: string,
+    memberStaffIds?: string[],
+    leaderStaffId?: string,
   ) {
-    return await this.repo.createTeam({
+    const team = await this.repo.createTeam({
       department_id: departmentId,
       team_name: teamName,
+      ...(description ? { description } : {}),
     });
+
+    const teamPk = this.repo.extractTeamPk(team);
+
+    if (teamPk && memberStaffIds && memberStaffIds.length > 0) {
+      for (const staffId of memberStaffIds) {
+        await this.repo.addTeamMember({
+          team_id: teamPk,
+          staff_id: staffId,
+          is_leader: staffId === leaderStaffId,
+        });
+      }
+    }
+
+    return team;
   }
 
   async assignStaffToSquad(
+    departmentId: string,
     data: Database["public"]["Tables"]["team_members"]["Insert"],
   ) {
-    return await this.repo.addTeamMember(data);
+    const teamPk = await this.repo.resolveTeamPk(data.team_id, departmentId);
+    return await this.repo.addTeamMember({
+      ...data,
+      team_id: teamPk,
+    });
   }
 
   async resolveGrievance(
@@ -52,6 +75,10 @@ export class DepartmentService {
 
   async getMunicipalityId(departmentId: string): Promise<string> {
     return await this.repo.getDepartmentMunicipalityId(departmentId);
+  }
+
+  async getDepartmentCategoryAndName(departmentId: string) {
+    return await this.repo.getDepartmentCategoryAndName(departmentId);
   }
 
   async modifyStaff(
@@ -120,6 +147,7 @@ export class DepartmentService {
 
     return {
       department_name: summary.department_name,
+      department_category: summary.department_category,
       totalComplaints,
       pending: counts.pending,
       under_review: counts.under_review,
@@ -134,7 +162,6 @@ export class DepartmentService {
         co_uid: c.co_uid,
         title: c.title,
         status: c.status,
-        priority: c.priority,
         submitted_date: c.submitted_date,
         category_id: c.category_id,
       })),

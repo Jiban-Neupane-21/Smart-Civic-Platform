@@ -90,6 +90,15 @@ export const submitFeedback = async (req: Request, res: Response) => {
   }
 };
 
+export const updateProfile = async (req: Request, res: Response) => {
+  try {
+    const data = await CitizenService.updateProfile(req.user!.id, req.body);
+    return sendSuccess(res, data, "Profile updated successfully");
+  } catch (e: any) {
+    return sendError(res, e.message, 400);
+  }
+};
+
 export const getDashboard = async (req: Request, res: Response) => {
   try {
     const data = await CitizenService.getDashboardData(

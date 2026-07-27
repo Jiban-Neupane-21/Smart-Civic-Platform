@@ -13,32 +13,51 @@ export const registerService = async (body: {
   email: string;
   password: string;
   first_name: string;
+  middle_name?: string;
   last_name: string;
   phone?: string;
   full_address?: string;
+  current_address?: string;
   gender?: string;
   role?: "citizen";
   municipality_id?: string;
   department_id?: string;
 }) => {
+  const fullName = body.middle_name?.trim()
+    ? `${body.first_name.trim()} ${body.middle_name.trim()} ${body.last_name.trim()}`
+    : `${body.first_name.trim()} ${body.last_name.trim()}`;
+
+  const sanitizedGender = body.gender && ['male', 'female', 'other', 'prefer_not_to_say'].includes(body.gender.toLowerCase())
+    ? body.gender.toLowerCase()
+    : null;
+
+  const uuidRegex = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
+  const municipalityId = body.municipality_id && uuidRegex.test(body.municipality_id) ? body.municipality_id : null;
+  const departmentId = body.department_id && uuidRegex.test(body.department_id) ? body.department_id : null;
+
   const { data, error } = await supabaseAdmin.auth.admin.createUser({
     email: body.email,
     password: body.password,
     email_confirm: true,
     user_metadata: {
-      full_name: `${body.first_name} ${body.last_name}`,
-      first_name: body.first_name,
-      last_name: body.last_name,
+      full_name: fullName,
+      first_name: body.first_name.trim(),
+      middle_name: body.middle_name?.trim() || null,
+      last_name: body.last_name.trim(),
       role: body.role ?? "citizen",
-      municipality_id: body.municipality_id || null,
-      department_id: body.department_id || null,
-      phone: body.phone || null,
-      full_address: body.full_address || null,
-      gender: body.gender || null
+      municipality_id: municipalityId,
+      department_id: departmentId,
+      phone: body.phone?.trim() || null,
+      full_address: body.full_address?.trim() || null,
+      current_address: body.current_address?.trim() || null,
+      gender: sanitizedGender
     },
   });
 
-  if (error) throw new Error(error.message);
+  if (error) {
+    console.error('[registerService] Supabase createUser error:', error);
+    throw new Error(error.message);
+  }
 
   return { id: data.user.id, email: data.user.email };
 };
@@ -50,18 +69,79 @@ export const loginService = async (email: string, password: string) => {
     email,
     password,
   });
-  if (error) throw new Error("Invalid email or password");
+  if (error) {
+    console.error("[loginService] signInWithPassword error:", error.message);
+    throw new Error(error.message || "Invalid email or password");
+  }
 
-  const { data: profile, error: profileError } = await supabaseAdmin
+  let { data: profile, error: profileError } = await supabaseAdmin
     .from("profiles")
     .select(
       "id, full_name, email, role, municipality_id, department_id, account_status, force_password_reset",
     )
     .eq("id", data.user.id)
-    .single();
+    .maybeSingle();
 
-  if (profileError || !profile) {
-    throw new Error("User profile not found. Please contact administrator.");
+  // Auto-healing fallback: If user authenticated successfully in auth.users,
+  // but their profiles row is missing (e.g. past DB trigger failure), auto-create it now.
+  if (!profile) {
+    console.warn(`[loginService] Profile missing for user ${data.user.id}. Attempting auto-heal from user_metadata.`);
+    const meta = data.user.user_metadata || {};
+    const userRole = (meta.role as UserRole) || "citizen";
+    const fullName = meta.full_name || data.user.email || "Unknown User";
+
+    const { error: insertProfileErr } = await supabaseAdmin.from("profiles").upsert({
+      id: data.user.id,
+      email: data.user.email!,
+      full_name: fullName,
+      phone: meta.phone || null,
+      role: userRole,
+      municipality_id: meta.municipality_id || null,
+      department_id: meta.department_id || null,
+      account_status: "active",
+    });
+
+    if (insertProfileErr) {
+      console.error("[loginService] Auto-heal profile creation failed:", insertProfileErr);
+      throw new Error("User profile not found. Please contact administrator.");
+    }
+
+    if (userRole === "citizen") {
+      const citizenData: any = {
+        first_name: meta.first_name || null,
+        middle_name: meta.middle_name || null,
+        last_name: meta.last_name || null,
+        current_address: meta.current_address || null,
+        permanent_address: meta.full_address || meta.permanent_address || null,
+        gender: meta.gender || null,
+      };
+
+      const { error: citErr } = await supabaseAdmin.from("citizens").upsert({
+        id: data.user.id,
+        ...citizenData,
+      });
+
+      if (citErr) {
+        await supabaseAdmin.from("citizens").upsert({
+          profile_id: data.user.id,
+          ...citizenData,
+        });
+      }
+    }
+
+    const { data: healedProfile, error: healedProfileErr } = await supabaseAdmin
+      .from("profiles")
+      .select(
+        "id, full_name, email, role, municipality_id, department_id, account_status, force_password_reset",
+      )
+      .eq("id", data.user.id)
+      .single();
+
+    if (healedProfileErr || !healedProfile) {
+      throw new Error("User profile not found. Please contact administrator.");
+    }
+
+    profile = healedProfile;
   }
 
   if (profile.account_status === "suspended") {
@@ -228,4 +308,33 @@ export const forgotPasswordService = async (email: string) => {
   });
   if (error) throw new Error(error.message);
   return { message: "Password reset email sent if the account exists." };
+};
+
+export const changePasswordService = async (
+  userId: string,
+  body: { current_password: string; new_password: string },
+) => {
+  const authClient = createAuthClient();
+
+  const { data: profile } = await supabaseAdmin
+    .from("profiles")
+    .select("email")
+    .eq("id", userId)
+    .single();
+
+  if (!profile) throw new Error("User not found");
+
+  const { error: loginErr } = await authClient.auth.signInWithPassword({
+    email: profile.email,
+    password: body.current_password,
+  });
+  if (loginErr) throw new Error("Current password is incorrect");
+
+  const { error: updateErr } = await supabaseAdmin.auth.admin.updateUserById(
+    userId,
+    { password: body.new_password },
+  );
+  if (updateErr) throw new Error(updateErr.message);
+
+  return { message: "Password changed successfully" };
 };

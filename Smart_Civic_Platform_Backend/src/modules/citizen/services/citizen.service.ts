@@ -254,3 +254,46 @@ export const getDashboardData = async (
   };
 };
 
+export const updateProfile = async (
+  profileId: string,
+  body: Record<string, unknown>,
+) => {
+  const profileFields: Record<string, unknown> = {};
+  const citizenFields: Record<string, unknown> = {};
+
+  if (body.first_name || body.middle_name || body.last_name) {
+    const firstName = (body.first_name as string) || "";
+    const middleName = (body.middle_name as string) || "";
+    const lastName = (body.last_name as string) || "";
+    profileFields.full_name = `${firstName}${middleName ? " " + middleName : ""}${lastName ? " " + lastName : ""}`.trim();
+  }
+  if (body.phone !== undefined) profileFields.phone = body.phone;
+
+  if (body.first_name !== undefined) citizenFields.first_name = body.first_name;
+  if (body.middle_name !== undefined) citizenFields.middle_name = body.middle_name || null;
+  if (body.last_name !== undefined) citizenFields.last_name = body.last_name;
+  if (body.gender !== undefined) citizenFields.gender = body.gender;
+  if (body.date_of_birth !== undefined) citizenFields.date_of_birth = body.date_of_birth;
+  if (body.current_address !== undefined) citizenFields.current_address = body.current_address;
+  if (body.permanent_address !== undefined) citizenFields.permanent_address = body.permanent_address;
+  if (body.notification_pref !== undefined) citizenFields.notification_pref = body.notification_pref;
+
+  if (Object.keys(profileFields).length > 0) {
+    const { error: profileErr } = await supabaseAdmin
+      .from("profiles")
+      .update(profileFields)
+      .eq("id", profileId);
+    if (profileErr) throw new Error(profileErr.message);
+  }
+
+  if (Object.keys(citizenFields).length > 0) {
+    const { error: citizenErr } = await supabaseAdmin
+      .from("citizens")
+      .update(citizenFields)
+      .eq("id", profileId);
+    if (citizenErr) throw new Error(citizenErr.message);
+  }
+
+  return { message: "Profile updated successfully" };
+};
+

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useMemo, useCallback } from "react";
 import { useFormik } from "formik";
 import {
   Box,
@@ -14,8 +14,57 @@ import {
   FormHelperText,
   Alert,
   Link,
+  Divider,
 } from "@mui/material";
 import { registerSchema } from "../../validation/auth.schema";
+import { PROVINCES } from "@data/lists/provinces";
+import { MUNICIPALITIES_BY_DISTRICT } from "@data/lists/municipalities";
+
+function splitFullName(fullName: string): {
+  firstName: string;
+  middleName: string;
+  lastName: string;
+} {
+  const parts = fullName.trim().split(/\s+/);
+  if (parts.length === 0 || (parts.length === 1 && parts[0] === "")) {
+    return { firstName: "", middleName: "", lastName: "" };
+  }
+  if (parts.length === 1) {
+    return { firstName: parts[0], middleName: "", lastName: parts[0] };
+  }
+  if (parts.length === 2) {
+    return { firstName: parts[0], middleName: "", lastName: parts[1] };
+  }
+  return {
+    firstName: parts[0],
+    middleName: parts.slice(1, -1).join(" "),
+    lastName: parts[parts.length - 1],
+  };
+}
+
+const PROVINCE_OPTIONS = PROVINCES.map((p) => ({ id: p.id, name: p.name }));
+
+function getDistrictsForProvince(provinceId: string): string[] {
+  const province = PROVINCES.find((p) => p.id === provinceId);
+  return province ? province.districts : [];
+}
+
+function getMunicipalitiesForDistrict(district: string) {
+  return MUNICIPALITIES_BY_DISTRICT[district] || [];
+}
+
+function composeAddress(
+  provinceName: string,
+  districtName: string,
+  municipalityName: string,
+  ward: string,
+): string {
+  let addr = `${municipalityName}, ${districtName}, ${provinceName}`;
+  if (ward.trim()) {
+    addr += ` - ${ward.trim()}`;
+  }
+  return addr;
+}
 
 export const Register: React.FC = () => {
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -29,9 +78,18 @@ export const Register: React.FC = () => {
       password: "",
       confirmPassword: "",
       firstName: "",
+      middleName: "",
       lastName: "",
       gender: "",
-      fullAddress: "",
+      permanentProvince: "",
+      permanentDistrict: "",
+      permanentMunicipality: "",
+      permanentWard: "",
+      tempSameAsPermanent: true,
+      tempProvince: "",
+      tempDistrict: "",
+      tempMunicipality: "",
+      tempWard: "",
       registrationCode: "",
       acceptTerms: false,
     },
@@ -40,22 +98,56 @@ export const Register: React.FC = () => {
       try {
         setSubmitError(null);
 
+        if (!values.lastName) {
+          const { firstName, middleName, lastName } = splitFullName(values.fullName);
+          values.firstName = firstName;
+          values.middleName = middleName;
+          values.lastName = lastName;
+        }
+
+        const permProvince = PROVINCES.find(
+          (p) => p.id === values.permanentProvince,
+        );
+        const permDistrict = values.permanentDistrict;
+        const permMunicipality = values.permanentMunicipality;
+        const fullAddress = composeAddress(
+          permProvince?.name || "",
+          permDistrict,
+          permMunicipality,
+          values.permanentWard,
+        );
+
+        let currentAddress = fullAddress;
+        if (!values.tempSameAsPermanent) {
+          const tempProvince = PROVINCES.find(
+            (p) => p.id === values.tempProvince,
+          );
+          currentAddress = composeAddress(
+            tempProvince?.name || "",
+            values.tempDistrict,
+            values.tempMunicipality,
+            values.tempWard,
+          );
+        }
+
+        const payload: Record<string, unknown> = {
+          first_name: values.firstName,
+          middle_name: values.middleName || undefined,
+          last_name: values.lastName,
+          email: values.email,
+          password: values.password,
+          phone: values.phone || undefined,
+          gender: values.gender || undefined,
+          full_address: fullAddress,
+          current_address: currentAddress,
+        };
+
         const response = await fetch(
           "http://localhost:3000/api/auth/register",
           {
             method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              first_name: values.firstName,
-              last_name: values.lastName,
-              email: values.email,
-              password: values.password,
-              phone: values.phone || undefined,
-              full_address: values.fullAddress || undefined,
-              gender: values.gender || undefined,
-            }),
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
           },
         );
 
@@ -77,6 +169,73 @@ export const Register: React.FC = () => {
       }
     },
   });
+
+  const handleFullNameBlur = useCallback(
+    (e: React.FocusEvent<HTMLInputElement>) => {
+      formik.handleBlur(e);
+      const { firstName, middleName, lastName } = splitFullName(
+        formik.values.fullName,
+      );
+      formik.setFieldValue("firstName", firstName);
+      formik.setFieldValue("middleName", middleName);
+      formik.setFieldValue("lastName", lastName);
+    },
+    [formik.values.fullName, formik.setFieldValue, formik.handleBlur],
+  );
+
+  const permDistrictOptions = useMemo(
+    () => getDistrictsForProvince(formik.values.permanentProvince),
+    [formik.values.permanentProvince],
+  );
+
+  const permMunicipalityOptions = useMemo(
+    () => getMunicipalitiesForDistrict(formik.values.permanentDistrict),
+    [formik.values.permanentDistrict],
+  );
+
+  const tempDistrictOptions = useMemo(
+    () => getDistrictsForProvince(formik.values.tempProvince),
+    [formik.values.tempProvince],
+  );
+
+  const tempMunicipalityOptions = useMemo(
+    () => getMunicipalitiesForDistrict(formik.values.tempDistrict),
+    [formik.values.tempDistrict],
+  );
+
+  const handlePermProvinceChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      formik.handleChange(e);
+      formik.setFieldValue("permanentDistrict", "");
+      formik.setFieldValue("permanentMunicipality", "");
+    },
+    [formik.handleChange, formik.setFieldValue],
+  );
+
+  const handlePermDistrictChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      formik.handleChange(e);
+      formik.setFieldValue("permanentMunicipality", "");
+    },
+    [formik.handleChange, formik.setFieldValue],
+  );
+
+  const handleTempProvinceChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      formik.handleChange(e);
+      formik.setFieldValue("tempDistrict", "");
+      formik.setFieldValue("tempMunicipality", "");
+    },
+    [formik.handleChange, formik.setFieldValue],
+  );
+
+  const handleTempDistrictChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      formik.handleChange(e);
+      formik.setFieldValue("tempMunicipality", "");
+    },
+    [formik.handleChange, formik.setFieldValue],
+  );
 
   if (isSuccess) {
     return (
@@ -137,14 +296,14 @@ export const Register: React.FC = () => {
 
           <form onSubmit={formik.handleSubmit}>
             <Grid container spacing={2}>
-              {/* --- Core Identity --- */}
+              {/* --- Personal Information --- */}
               <Grid size={{ xs: 12 }}>
                 <Typography
                   variant="subtitle2"
                   color="primary"
                   sx={{ fontWeight: "bold" }}
                 >
-                  Account Credentials
+                  Personal Information
                 </Typography>
               </Grid>
 
@@ -153,16 +312,33 @@ export const Register: React.FC = () => {
                   fullWidth
                   id="fullName"
                   name="fullName"
-                  label="Display Full Name"
+                  label="Full Name"
+                  placeholder="e.g. Ram Prasad Sharma"
                   value={formik.values.fullName}
                   onChange={formik.handleChange}
-                  onBlur={formik.handleBlur}
+                  onBlur={handleFullNameBlur}
                   error={
                     formik.touched.fullName && Boolean(formik.errors.fullName)
                   }
                   helperText={formik.touched.fullName && formik.errors.fullName}
                 />
               </Grid>
+
+              {formik.values.firstName && (
+                <Grid size={{ xs: 12 }}>
+                  <Typography variant="body2" color="text.secondary">
+                    Detected:{" "}
+                    <strong>
+                      {formik.values.firstName}
+                      {formik.values.middleName && ` ${formik.values.middleName}`}
+                      {formik.values.lastName && ` ${formik.values.lastName}`}
+                    </strong>
+                    {formik.values.middleName
+                      ? " (First · Middle · Last)"
+                      : " (First · Last)"}
+                  </Typography>
+                </Grid>
+              )}
 
               <Grid size={{ xs: 12, sm: 6 }}>
                 <TextField
@@ -174,7 +350,9 @@ export const Register: React.FC = () => {
                   value={formik.values.email}
                   onChange={formik.handleChange}
                   onBlur={formik.handleBlur}
-                  error={formik.touched.email && Boolean(formik.errors.email)}
+                  error={
+                    formik.touched.email && Boolean(formik.errors.email)
+                  }
                   helperText={formik.touched.email && formik.errors.email}
                 />
               </Grid>
@@ -188,9 +366,48 @@ export const Register: React.FC = () => {
                   value={formik.values.phone}
                   onChange={formik.handleChange}
                   onBlur={formik.handleBlur}
-                  error={formik.touched.phone && Boolean(formik.errors.phone)}
+                  error={
+                    formik.touched.phone && Boolean(formik.errors.phone)
+                  }
                   helperText={formik.touched.phone && formik.errors.phone}
                 />
+              </Grid>
+
+              <Grid size={{ xs: 12, sm: 6 }}>
+                <TextField
+                  select
+                  fullWidth
+                  id="gender"
+                  name="gender"
+                  label="Gender"
+                  value={formik.values.gender}
+                  onChange={formik.handleChange}
+                  onBlur={formik.handleBlur}
+                  error={
+                    formik.touched.gender && Boolean(formik.errors.gender)
+                  }
+                  helperText={formik.touched.gender && formik.errors.gender}
+                >
+                  <MenuItem value="">-- Select Gender --</MenuItem>
+                  <MenuItem value="male">Male</MenuItem>
+                  <MenuItem value="female">Female</MenuItem>
+                  <MenuItem value="other">Other</MenuItem>
+                  <MenuItem value="prefer_not_to_say">
+                    Prefer Not To Say
+                  </MenuItem>
+                </TextField>
+              </Grid>
+
+              {/* --- Account Credentials --- */}
+              <Grid size={{ xs: 12 }}>
+                <Divider sx={{ my: 1 }} />
+                <Typography
+                  variant="subtitle2"
+                  color="primary"
+                  sx={{ fontWeight: "bold" }}
+                >
+                  Account Credentials
+                </Typography>
               </Grid>
 
               <Grid size={{ xs: 12, sm: 6 }}>
@@ -204,9 +421,12 @@ export const Register: React.FC = () => {
                   onChange={formik.handleChange}
                   onBlur={formik.handleBlur}
                   error={
-                    formik.touched.password && Boolean(formik.errors.password)
+                    formik.touched.password &&
+                    Boolean(formik.errors.password)
                   }
-                  helperText={formik.touched.password && formik.errors.password}
+                  helperText={
+                    formik.touched.password && formik.errors.password
+                  }
                 />
               </Grid>
 
@@ -217,6 +437,7 @@ export const Register: React.FC = () => {
                   name="confirmPassword"
                   label="Confirm Password"
                   type="password"
+                  autoComplete="new-password"
                   value={formik.values.confirmPassword}
                   onChange={formik.handleChange}
                   onBlur={formik.handleBlur}
@@ -231,92 +452,249 @@ export const Register: React.FC = () => {
                 />
               </Grid>
 
-              {/* --- Structural Citizen Details --- */}
-              <Grid size={{ xs: 12 }} sx={{ mt: 1 }}>
-                {" "}
+              {/* --- Permanent Address --- */}
+              <Grid size={{ xs: 12 }}>
+                <Divider sx={{ my: 1 }} />
                 <Typography
                   variant="subtitle2"
                   color="primary"
                   sx={{ fontWeight: "bold" }}
                 >
-                  Demographic & Ward Information
+                  Permanent Address
                 </Typography>
               </Grid>
 
-              <Grid size={{ xs: 12, sm: 6 }}>
+              <Grid size={{ xs: 12, sm: 4 }}>
                 <TextField
+                  select
                   fullWidth
-                  id="firstName"
-                  name="firstName"
-                  label="First Name"
-                  value={formik.values.firstName}
-                  onChange={formik.handleChange}
+                  id="permanentProvince"
+                  name="permanentProvince"
+                  label="Province"
+                  value={formik.values.permanentProvince}
+                  onChange={handlePermProvinceChange}
                   onBlur={formik.handleBlur}
                   error={
-                    formik.touched.firstName && Boolean(formik.errors.firstName)
+                    formik.touched.permanentProvince &&
+                    Boolean(formik.errors.permanentProvince)
                   }
                   helperText={
-                    formik.touched.firstName && formik.errors.firstName
+                    formik.touched.permanentProvince &&
+                    formik.errors.permanentProvince
                   }
-                />
-              </Grid>
-
-              <Grid size={{ xs: 12, sm: 6 }}>
-                <TextField
-                  fullWidth
-                  id="lastName"
-                  name="lastName"
-                  label="Last Name"
-                  value={formik.values.lastName}
-                  onChange={formik.handleChange}
-                  onBlur={formik.handleBlur}
-                  error={
-                    formik.touched.lastName && Boolean(formik.errors.lastName)
-                  }
-                  helperText={formik.touched.lastName && formik.errors.lastName}
-                />
-              </Grid>
-
-              <Grid size={{ xs: 12, sm: 6 }}>
-                <TextField
-                  fullWidth
-                  select
-                  id="gender"
-                  name="gender"
-                  label="Gender"
-                  value={formik.values.gender}
-                  onChange={formik.handleChange}
-                  onBlur={formik.handleBlur}
-                  error={formik.touched.gender && Boolean(formik.errors.gender)}
-                  helperText={formik.touched.gender && formik.errors.gender}
                 >
-                  <MenuItem value="male">Male</MenuItem>
-                  <MenuItem value="female">Female</MenuItem>
-                  <MenuItem value="other">Other</MenuItem>
-                  <MenuItem value="prefer_not_to_say">
-                    Prefer Not To Say
-                  </MenuItem>
+                  <MenuItem value="">-- Select Province --</MenuItem>
+                  {PROVINCE_OPTIONS.map((p) => (
+                    <MenuItem key={p.id} value={p.id}>
+                      {p.name}
+                    </MenuItem>
+                  ))}
                 </TextField>
               </Grid>
 
-              <Grid size={{ xs: 12 }}>
+              <Grid size={{ xs: 12, sm: 4 }}>
                 <TextField
+                  select
                   fullWidth
-                  id="fullAddress"
-                  name="fullAddress"
-                  label="Full Address"
-                  value={formik.values.fullAddress}
-                  onChange={formik.handleChange}
+                  id="permanentDistrict"
+                  name="permanentDistrict"
+                  label="District"
+                  value={formik.values.permanentDistrict}
+                  onChange={handlePermDistrictChange}
                   onBlur={formik.handleBlur}
+                  disabled={!formik.values.permanentProvince}
                   error={
-                    formik.touched.fullAddress &&
-                    Boolean(formik.errors.fullAddress)
+                    formik.touched.permanentDistrict &&
+                    Boolean(formik.errors.permanentDistrict)
                   }
                   helperText={
-                    formik.touched.fullAddress && formik.errors.fullAddress
+                    formik.touched.permanentDistrict &&
+                    formik.errors.permanentDistrict
                   }
+                >
+                  <MenuItem value="">-- Select District --</MenuItem>
+                  {permDistrictOptions.map((d) => (
+                    <MenuItem key={d} value={d}>
+                      {d}
+                    </MenuItem>
+                  ))}
+                </TextField>
+              </Grid>
+
+              <Grid size={{ xs: 12, sm: 4 }}>
+                <TextField
+                  select
+                  fullWidth
+                  id="permanentMunicipality"
+                  name="permanentMunicipality"
+                  label="Municipality"
+                  value={formik.values.permanentMunicipality}
+                  onChange={formik.handleChange}
+                  onBlur={formik.handleBlur}
+                  disabled={!formik.values.permanentDistrict}
+                  error={
+                    formik.touched.permanentMunicipality &&
+                    Boolean(formik.errors.permanentMunicipality)
+                  }
+                  helperText={
+                    formik.touched.permanentMunicipality &&
+                    formik.errors.permanentMunicipality
+                  }
+                >
+                  <MenuItem value="">-- Select Municipality --</MenuItem>
+                  {permMunicipalityOptions.map((m) => (
+                    <MenuItem key={m.name} value={m.name}>
+                      {m.name} ({m.type.replace(/_/g, " ")})
+                    </MenuItem>
+                  ))}
+                </TextField>
+              </Grid>
+
+              <Grid size={{ xs: 12, sm: 6 }}>
+                <TextField
+                  fullWidth
+                  id="permanentWard"
+                  name="permanentWard"
+                  label="Ward / Tole (Optional)"
+                  placeholder="e.g. Ward 5"
+                  value={formik.values.permanentWard}
+                  onChange={formik.handleChange}
+                  onBlur={formik.handleBlur}
                 />
               </Grid>
+
+              {/* --- Temporary Address --- */}
+              <Grid size={{ xs: 12 }}>
+                <Divider sx={{ my: 1 }} />
+                <Typography
+                  variant="subtitle2"
+                  color="primary"
+                  sx={{ fontWeight: "bold" }}
+                >
+                  Temporary Address
+                </Typography>
+              </Grid>
+
+              <Grid size={{ xs: 12 }}>
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      id="tempSameAsPermanent"
+                      name="tempSameAsPermanent"
+                      color="primary"
+                      checked={formik.values.tempSameAsPermanent}
+                      onChange={formik.handleChange}
+                    />
+                  }
+                  label="Same as permanent address"
+                />
+              </Grid>
+
+              {!formik.values.tempSameAsPermanent && (
+                <>
+                  <Grid size={{ xs: 12, sm: 4 }}>
+                    <TextField
+                      select
+                      fullWidth
+                      id="tempProvince"
+                      name="tempProvince"
+                      label="Province"
+                      value={formik.values.tempProvince}
+                      onChange={handleTempProvinceChange}
+                      onBlur={formik.handleBlur}
+                      error={
+                        formik.touched.tempProvince &&
+                        Boolean(formik.errors.tempProvince)
+                      }
+                      helperText={
+                        formik.touched.tempProvince &&
+                        formik.errors.tempProvince
+                      }
+                    >
+                      <MenuItem value="">-- Select Province --</MenuItem>
+                      {PROVINCE_OPTIONS.map((p) => (
+                        <MenuItem key={p.id} value={p.id}>
+                          {p.name}
+                        </MenuItem>
+                      ))}
+                    </TextField>
+                  </Grid>
+
+                  <Grid size={{ xs: 12, sm: 4 }}>
+                    <TextField
+                      select
+                      fullWidth
+                      id="tempDistrict"
+                      name="tempDistrict"
+                      label="District"
+                      value={formik.values.tempDistrict}
+                      onChange={handleTempDistrictChange}
+                      onBlur={formik.handleBlur}
+                      disabled={!formik.values.tempProvince}
+                      error={
+                        formik.touched.tempDistrict &&
+                        Boolean(formik.errors.tempDistrict)
+                      }
+                      helperText={
+                        formik.touched.tempDistrict &&
+                        formik.errors.tempDistrict
+                      }
+                    >
+                      <MenuItem value="">-- Select District --</MenuItem>
+                      {tempDistrictOptions.map((d) => (
+                        <MenuItem key={d} value={d}>
+                          {d}
+                        </MenuItem>
+                      ))}
+                    </TextField>
+                  </Grid>
+
+                  <Grid size={{ xs: 12, sm: 4 }}>
+                    <TextField
+                      select
+                      fullWidth
+                      id="tempMunicipality"
+                      name="tempMunicipality"
+                      label="Municipality"
+                      value={formik.values.tempMunicipality}
+                      onChange={formik.handleChange}
+                      onBlur={formik.handleBlur}
+                      disabled={!formik.values.tempDistrict}
+                      error={
+                        formik.touched.tempMunicipality &&
+                        Boolean(formik.errors.tempMunicipality)
+                      }
+                      helperText={
+                        formik.touched.tempMunicipality &&
+                        formik.errors.tempMunicipality
+                      }
+                    >
+                      <MenuItem value="">-- Select Municipality --</MenuItem>
+                      {tempMunicipalityOptions.map((m) => (
+                        <MenuItem key={m.name} value={m.name}>
+                          {m.name} ({m.type.replace(/_/g, " ")})
+                        </MenuItem>
+                      ))}
+                    </TextField>
+                  </Grid>
+
+                  <Grid size={{ xs: 12, sm: 6 }}>
+            <TextField
+              fullWidth
+              id="password"
+              name="password"
+              label="Password"
+              type="password"
+              autoComplete="new-password"
+              value={formik.values.password}
+              onChange={formik.handleChange}
+              onBlur={formik.handleBlur}
+              error={formik.touched.password && Boolean(formik.errors.password)}
+              helperText={formik.touched.password && formik.errors.password}
+            />
+                  </Grid>
+                </>
+              )}
 
               <Grid size={{ xs: 12 }}>
                 <TextField
@@ -340,6 +718,7 @@ export const Register: React.FC = () => {
 
               {/* --- Legal Agreement --- */}
               <Grid size={{ xs: 12 }}>
+                <Divider sx={{ my: 1 }} />
                 <FormControlLabel
                   control={
                     <Checkbox
@@ -369,7 +748,7 @@ export const Register: React.FC = () => {
               sx={{ mt: 3, mb: 2, textTransform: "none", fontWeight: "bold" }}
             >
               {formik.isSubmitting
-                ? "Registering Structural Profile..."
+                ? "Registering..."
                 : "Complete Profile Setup"}
             </Button>
 

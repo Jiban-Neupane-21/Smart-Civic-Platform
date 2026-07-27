@@ -12,3 +12,15 @@ export const submitFeedbackSchema = z.object({
   comment: z.string().optional(),
   is_anonymous: z.boolean().optional(),
 });
+
+export const updateProfileSchema = z.object({
+  first_name: z.string().min(1, "First name is required").optional(),
+  middle_name: z.string().optional(),
+  last_name: z.string().min(1, "Last name is required").optional(),
+  phone: z.string().optional(),
+  gender: z.enum(["male", "female", "other", "prefer_not_to_say"]).optional(),
+  date_of_birth: z.string().optional(),
+  current_address: z.string().optional(),
+  permanent_address: z.string().optional(),
+  notification_pref: z.enum(["email", "sms", "both", "none"]).optional(),
+});

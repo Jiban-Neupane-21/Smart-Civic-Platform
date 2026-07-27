@@ -6,6 +6,8 @@ export interface UserProfile {
   email: string;
   role: UserRole;
   full_name: string;
+  municipality_id?: string;
+  municipalityId?: string;
 }
 
 interface AuthContextType {

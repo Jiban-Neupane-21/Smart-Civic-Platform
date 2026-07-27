@@ -6,6 +6,7 @@ import { validateBody } from "../../../middleware/validateBody";
 import {
   submitComplaintSchema,
   submitFeedbackSchema,
+  updateProfileSchema,
 } from "../../../validation/citizen.validation";
 
 const router = Router();
@@ -215,6 +216,31 @@ router.post(
   "/complaints/:id/feedback",
   validateBody(submitFeedbackSchema),
   C.submitFeedback,
+);
+
+/**
+ * @swagger
+ * /api/citizen/profile:
+ *   put:
+ *     tags: [Citizen API]
+ *     summary: Update citizen profile (name, address, phone, etc.)
+ *     security: [{ BearerAuth: [] }]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/UpdateProfileRequest'
+ *     responses:
+ *       200:
+ *         description: Profile updated
+ *       400:
+ *         description: Validation error
+ */
+router.put(
+  "/profile",
+  validateBody(updateProfileSchema),
+  C.updateProfile,
 );
 
 export default router;

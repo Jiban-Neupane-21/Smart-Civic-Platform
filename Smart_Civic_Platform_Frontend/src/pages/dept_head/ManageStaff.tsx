@@ -98,6 +98,13 @@ function getInitials(name?: string | null): string {
     .slice(0, 2);
 }
 
+function formatCategory(category?: string | null): string {
+  if (!category) return "";
+  return category
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (l) => l.toUpperCase());
+}
+
 function normalizeStaffList(data: unknown): StaffMember[] {
   if (!data) return [];
   const d = data as Record<string, unknown>;
@@ -141,8 +148,9 @@ export default function ManageStaff() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Department name for auto-expertise
+  // Department name & category for auto-expertise
   const [departmentName, setDepartmentName] = useState("");
+  const [departmentCategory, setDepartmentCategory] = useState("");
 
   // Create / Edit modal
   const [modalOpen, setModalOpen] = useState(false);
@@ -185,15 +193,14 @@ export default function ManageStaff() {
     }
   }, []);
 
-  const fetchDepartmentName = useCallback(async () => {
+  const fetchDepartmentInfo = useCallback(async () => {
     try {
       const res = await fetchWithAuth(`${BASE_URL}/department/dashboard`);
       if (res.ok) {
-        const data = await res.json();
-        const name = (data as Record<string, unknown>)?.data
-          ? ((data as Record<string, unknown>).data as Record<string, unknown>)?.department_name as string
-          : undefined;
-        if (name) setDepartmentName(name);
+        const response = await res.json();
+        const data = (response as Record<string, unknown>)?.data as Record<string, unknown> | undefined;
+        if (data?.department_name) setDepartmentName(data.department_name as string);
+        if (data?.department_category) setDepartmentCategory(data.department_category as string);
       }
     } catch {
       // Silently fail — expertise just won't be auto-filled
@@ -202,8 +209,8 @@ export default function ManageStaff() {
 
   useEffect(() => {
     fetchStaff();
-    fetchDepartmentName();
-  }, [fetchStaff, fetchDepartmentName]);
+    fetchDepartmentInfo();
+  }, [fetchStaff, fetchDepartmentInfo]);
 
   // ─── Client-side filtering ──────────────────────────────────────────────────
 
@@ -223,9 +230,10 @@ export default function ManageStaff() {
 
   const openCreate = () => {
     setEditTarget(null);
+    const autoExpertise = formatCategory(departmentCategory) || departmentName;
     setFormData({
       ...emptyForm,
-      expertise: departmentName, // Auto-fill expertise with department name
+      expertise: autoExpertise, // Auto-fill expertise with department category
     });
     setFormError(null);
     setModalOpen(true);
@@ -293,7 +301,7 @@ export default function ManageStaff() {
           full_name: formData.full_name,
           email: formData.email,
           password: generatedPassword,
-          expertise: departmentName,
+          expertise: formData.expertise || formatCategory(departmentCategory) || departmentName,
         };
 
         const res = await fetchWithAuth(
@@ -552,14 +560,14 @@ export default function ManageStaff() {
               onChange={(e) => setFormData({ ...formData, email: e.target.value })}
             />
 
-            {/* ── Create mode: only expertise ── */}
+            {/* ── Create mode: auto-filled expertise ── */}
             {!editTarget && (
               <TextField
                 label="Expertise"
                 fullWidth
                 value={formData.expertise}
-                InputProps={{ readOnly: true }}
-                helperText={`Auto-filled from your department: ${departmentName || "N/A"}`}
+                onChange={(e) => setFormData({ ...formData, expertise: e.target.value })}
+                helperText={`Auto-filled from department category (${formatCategory(departmentCategory) || departmentName || "N/A"}). You can customize this before saving.`}
               />
             )}
 

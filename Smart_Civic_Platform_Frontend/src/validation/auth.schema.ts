@@ -1,6 +1,5 @@
 import * as Yup from 'yup';
 
-// --- LOGIN SCHEMA ---
 export const loginSchema = Yup.object().shape({
   email: Yup.string()
     .email('Invalid email address')
@@ -10,9 +9,7 @@ export const loginSchema = Yup.object().shape({
     .required('Password is required'),
 });
 
-// --- REGISTER SCHEMA ---
 export const registerSchema = Yup.object().shape({
-  // Base Profile Fields
   fullName: Yup.string()
     .min(3, 'Name is too short')
     .required('Full Name is required'),
@@ -31,19 +28,39 @@ export const registerSchema = Yup.object().shape({
   confirmPassword: Yup.string()
     .oneOf([Yup.ref('password')], 'Passwords must match')
     .required('Please confirm your password'),
-  
-  // Citizen Details (Matches the 'citizens' table requirements)
-  firstName: Yup.string().required('First Name is required'),
-  lastName: Yup.string().required('Last Name is required'),
+
+  firstName: Yup.string().required('First name is required'),
+  middleName: Yup.string().optional(),
+  lastName: Yup.string().required('Last name is required'),
+
   gender: Yup.string()
     .oneOf(['male', 'female', 'other', 'prefer_not_to_say'])
     .required('Gender selection is required'),
-  fullAddress: Yup.string().required('Full Address is required'),
-  
-  // Optional field mapping to your municipality registration rules
+
+  permanentProvince: Yup.string().required('Province is required'),
+  permanentDistrict: Yup.string().required('District is required'),
+  permanentMunicipality: Yup.string().required('Municipality is required'),
+  permanentWard: Yup.string().optional(),
+
+  tempSameAsPermanent: Yup.boolean(),
+  tempProvince: Yup.string().when('tempSameAsPermanent', {
+    is: false,
+    then: (s) => s.required('Province is required'),
+    otherwise: (s) => s.optional(),
+  }),
+  tempDistrict: Yup.string().when('tempSameAsPermanent', {
+    is: false,
+    then: (s) => s.required('District is required'),
+    otherwise: (s) => s.optional(),
+  }),
+  tempMunicipality: Yup.string().when('tempSameAsPermanent', {
+    is: false,
+    then: (s) => s.required('Municipality is required'),
+    otherwise: (s) => s.optional(),
+  }),
+  tempWard: Yup.string().optional(),
+
   registrationCode: Yup.string().optional(),
-  
-  // Terms and conditions UI placeholder
   acceptTerms: Yup.boolean()
     .oneOf([true], 'You must accept the terms and conditions')
     .required(),

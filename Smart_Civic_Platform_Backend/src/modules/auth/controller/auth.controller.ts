@@ -7,7 +7,10 @@ export const register = async (req: Request, res: Response) => {
   try {
     const data = await AuthService.registerService(req.body);
     return sendSuccess(res, data, 'Registration successful. You can now log in.', 201);
-  } catch (e: any) { return sendError(res, e.message, 400); }
+  } catch (e: any) {
+    console.error('[Register] Error:', e);
+    return sendError(res, e.message, 400);
+  }
 };
 
 export const login = async (req: Request, res: Response) => {
@@ -39,6 +42,15 @@ export const forgotPassword = async (req: Request, res: Response) => {
   } catch (e: any) { return sendError(res, e.message, 400); }
 };
 
+export const changePassword = async (req: Request, res: Response) => {
+  try {
+    const data = await AuthService.changePasswordService(req.user!.id, req.body);
+    return sendSuccess(res, data, "Password changed successfully");
+  } catch (e: any) {
+    return sendError(res, e.message, 400);
+  }
+};
+
 export const getMe = async (req: Request, res: Response) => {
   try {
     const user = req.user!;
@@ -49,7 +61,7 @@ export const getMe = async (req: Request, res: Response) => {
         .from('citizens')
         .select('first_name, middle_name, last_name, date_of_birth, gender, current_address, permanent_address, ward_id, notification_pref')
         .eq('id', user.id)
-        .single();
+        .maybeSingle();
 
       return sendSuccess(res, {
         ...user,

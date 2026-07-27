@@ -8,6 +8,7 @@ import {
   loginSchema,
   forgotPasswordSchema,
   refreshTokenSchema,
+  changePasswordSchema,
 } from "../../../validation/auth.validation";
 
 const router = Router();
@@ -158,7 +159,31 @@ router.post(
  */
 router.get("/me", authenticate, AuthController.getMe);
 
-
+/**
+ * @swagger
+ * /api/auth/change-password:
+ *   patch:
+ *     tags: [Auth]
+ *     summary: Change password (requires current password)
+ *     security: [{ BearerAuth: [] }]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/ChangePasswordRequest'
+ *     responses:
+ *       200:
+ *         description: Password changed
+ *       400:
+ *         description: Current password incorrect or validation error
+ */
+router.patch(
+  "/change-password",
+  authenticate,
+  validateBody(changePasswordSchema),
+  AuthController.changePassword,
+);
 
 /**
  * @swagger

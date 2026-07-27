@@ -3,11 +3,11 @@ import { DepartmentService } from "../services/department.service";
 import { createUserService } from "../../auth/services/auth.service";
 
 export class DepartmentController {
-  constructor(private service: DepartmentService) {}
+  constructor(private service: DepartmentService) { }
 
   setupTeam = async (req: any, res: Response): Promise<void> => {
     try {
-      const { team_name } = req.body;
+      const { team_name, description, member_staff_ids, leader_staff_id } = req.body;
       if (!team_name) {
         res
           .status(400)
@@ -21,7 +21,10 @@ export class DepartmentController {
 
       const team = await this.service.buildDeploymentTeam(
         req.departmentId,
-        team_name
+        team_name,
+        description,
+        Array.isArray(member_staff_ids) ? member_staff_ids : [],
+        leader_staff_id,
       );
       res.status(201).json({ success: true, data: team });
     } catch (error: any) {
@@ -43,11 +46,14 @@ export class DepartmentController {
         return;
       }
 
-      const assignment = await this.service.assignStaffToSquad({
-        team_id,
-        staff_id,
-        is_leader: !!is_leader,
-      });
+      const assignment = await this.service.assignStaffToSquad(
+        req.departmentId,
+        {
+          team_id,
+          staff_id,
+          is_leader: !!is_leader,
+        },
+      );
       res.status(201).json({ success: true, data: assignment });
     } catch (error: any) {
       res.status(400).json({ success: false, error: error.message });
@@ -181,12 +187,21 @@ export class DepartmentController {
         created_by: req.user.id,
       });
 
+      // Resolve expertise: use passed expertise, or fallback to department category/name
+      let resolvedExpertise = expertise;
+      if (!resolvedExpertise) {
+        const dept = await this.service.getDepartmentCategoryAndName(req.departmentId);
+        resolvedExpertise = dept.department_category
+          ? dept.department_category.replace(/_/g, " ").replace(/\b\w/g, (c: string) => c.toUpperCase())
+          : dept.department_name;
+      }
+
       // The DB trigger creates the staff row — now update it with expertise
-      if (expertise) {
+      if (resolvedExpertise) {
         await this.service.setStaffExpertise(
           profile.id,
           req.departmentId,
-          expertise,
+          resolvedExpertise,
         );
       }
 

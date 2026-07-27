@@ -31,8 +31,13 @@ export function createMunicipalityRouter(
 ): Router {
   const router = Router();
 
-  // Enforce global route authentication and contextual verification
+  // Enforce global route authentication
   router.use(requireAuth(supabaseAdminClient));
+
+  // Department categories can be read by any authenticated user (e.g., citizens filing complaints)
+  router.get("/departments/categories", controller.getDepartmentCategories);
+
+  // Enforce contextual verification for Municipality Head privileges for remaining routes
   router.use(verifyMunicipalityHeadContext(supabaseAdminClient));
 
   /**
@@ -91,7 +96,6 @@ export function createMunicipalityRouter(
   router.post("/departments/create", controller.provisionDepartment);
 
   // New CRUD endpoints expected by frontend: /api/municipality/:municipalityId/departments
-  router.get("/departments/categories", controller.getDepartmentCategories);
   router.get("/:municipalityId/departments", controller.getDepartments);
   router.get("/departments", controller.getDepartments);
   router.post("/:municipalityId/departments", controller.provisionDepartment);

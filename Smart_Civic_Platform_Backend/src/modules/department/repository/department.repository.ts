@@ -77,12 +77,12 @@ export class DepartmentRepository {
     ] = await Promise.all([
       this.supabaseAdmin
         .from("departments")
-        .select("department_name")
+        .select("department_name, department_category")
         .eq("d_uid", departmentId)
         .single(),
       this.supabaseAdmin
         .from("complaints")
-        .select("co_uid, title, status, priority, submitted_date, category_id", {
+        .select("co_uid, title, status, submitted_date, category_id", {
           count: "exact",
         })
         .eq("assigned_department_id", departmentId)
@@ -107,6 +107,7 @@ export class DepartmentRepository {
 
     return {
       department_name: departmentResult.data?.department_name ?? "Department",
+      department_category: departmentResult.data?.department_category ?? null,
       complaints: complaintsResult.data ?? [],
       totalComplaints: complaintsResult.count ?? 0,
       totalStaff: staffResult.count ?? 0,
@@ -270,6 +271,18 @@ export class DepartmentRepository {
     return data.municipality_id;
   }
 
+  // Fetches category and name for a department
+  async getDepartmentCategoryAndName(departmentId: string) {
+    const { data, error } = await this.supabaseAdmin
+      .from("departments")
+      .select("department_name, department_category")
+      .eq("d_uid", departmentId)
+      .single();
+
+    if (error || !data) throw new Error("Department not found");
+    return data;
+  }
+
   // ─── Team Management ─────────────────────────────────────────────────────────
 
   // List all teams in a department with full member details
@@ -333,16 +346,43 @@ export class DepartmentRepository {
     return data;
   }
 
-  // Resolve a team's actual PK value by team_name (needed for team_members FK ops)
-  private async resolveTeamPk(
-    teamName: string,
+  // Safely extracts the primary key UUID from a team record
+  extractTeamPk(team: any): string {
+    if (!team) return "";
+    if (typeof team === "string") return team;
+    if (team.id) return team.id;
+    if (team.team_id) return team.team_id;
+    if (team.t_uid) return team.t_uid;
+
+    const cols = Object.keys(team);
+    const uuidCols = cols.filter(
+      (c) =>
+        !["department_id", "created_at", "updated_at", "team_name", "description"].includes(c) &&
+        typeof (team as Record<string, unknown>)[c] === "string" &&
+        ((team as Record<string, unknown>)[c] as string).includes("-"),
+    );
+    if (uuidCols.length > 0) return (team as Record<string, unknown>)[uuidCols[0]] as string;
+    return "";
+  }
+
+  // Resolve a team's actual PK value by team_name or UUID
+  async resolveTeamPk(
+    teamIdentifier: string,
     departmentId: string,
   ): Promise<string> {
+    if (!teamIdentifier) throw new Error("Team identifier is required.");
+
+    // If already a valid UUID (36 chars with hyphens), return directly
+    const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (uuidPattern.test(teamIdentifier)) {
+      return teamIdentifier;
+    }
+
     // Get any team_member row for this team — team_id holds the actual PK value
     const { data: member, error: mErr } = await this.supabaseAdmin
       .from("team_members")
       .select("team_id, teams!inner(team_name, department_id)")
-      .eq("teams.team_name", teamName)
+      .eq("teams.team_name", teamIdentifier)
       .eq("teams.department_id", departmentId)
       .limit(1)
       .maybeSingle();
@@ -351,31 +391,20 @@ export class DepartmentRepository {
       return (member as Record<string, unknown>).team_id as string;
     }
 
-    // Fallback: insert a temp team_member to discover the PK, then delete it
-    // Actually, just get the team row with * and find the PK
+    // Fallback: get team by team_name and resolve PK column
     const { data: team } = await this.supabaseAdmin
       .from("teams")
       .select("*")
-      .eq("team_name", teamName)
+      .eq("team_name", teamIdentifier)
       .eq("department_id", departmentId)
       .single();
 
     if (!team) throw new Error("Team not found.");
 
-    // The PK is whatever column team_members.team_id references
-    // Get it from an existing member or from the raw team data
-    const cols = Object.keys(team);
-    // UUID columns that aren't standard data columns are likely the PK
-    const uuidCols = cols.filter(
-      (c) =>
-        !["department_id", "created_at", "updated_at", "team_name", "description"].includes(c) &&
-        typeof (team as Record<string, unknown>)[c] === "string" &&
-        ((team as Record<string, unknown>)[c] as string).includes("-"),
-    );
+    const pk = this.extractTeamPk(team);
+    if (pk) return pk;
 
-    if (uuidCols.length === 1) return (team as Record<string, unknown>)[uuidCols[0]] as string;
-
-    throw new Error("Cannot resolve team primary key for team: " + teamName);
+    throw new Error("Cannot resolve team primary key for team: " + teamIdentifier);
   }
 
   // Remove a staff member from a team
