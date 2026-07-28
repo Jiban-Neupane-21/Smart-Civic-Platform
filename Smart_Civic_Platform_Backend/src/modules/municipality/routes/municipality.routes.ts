@@ -5,11 +5,8 @@ import { SupabaseClient } from "@supabase/supabase-js";
 
 const requireAuth =
   (supabase: SupabaseClient) => async (req: any, res: any, next: any) => {
-    console.log("requireAuth: incoming request to", req.originalUrl);
-    console.log("requireAuth: headers received:", req.headers);
     const authHeader = req.headers.authorization;
     if (!authHeader) {
-      console.log("requireAuth: Authorization header absent.");
       return res.status(401).json({ error: "Authorization header absent." });
     }
 
@@ -31,56 +28,50 @@ export function createMunicipalityRouter(
 ): Router {
   const router = Router();
 
-  // Enforce global route authentication
   router.use(requireAuth(supabaseAdminClient));
 
-  // Department categories can be read by any authenticated user (e.g., citizens filing complaints)
+  /**
+   * @swagger
+   * /api/municipality/departments/categories:
+   *   get:
+   *     summary: List system department categories
+   *     tags: [Municipality API]
+   *     security: [{ BearerAuth: [] }]
+   *     responses:
+   *       200:
+   *         description: Department categories list.
+   */
   router.get("/departments/categories", controller.getDepartmentCategories);
 
-  // Enforce contextual verification for Municipality Head privileges for remaining routes
   router.use(verifyMunicipalityHeadContext(supabaseAdminClient));
 
   /**
-   * @openapi
-   * /api/v1/municipality/analytics:
+   * @swagger
+   * /api/municipality/analytics:
    *   get:
-   *     summary: Fetch local municipal performance data
-   *     description: Extracts complaint counts and resolution rates for the managed municipality.
+   *     summary: Municipality operational analytics dashboard metrics
    *     tags: [Municipality API]
-   *     security:
-   *       - BearerAuth: []
+   *     security: [{ BearerAuth: [] }]
    *     responses:
    *       200:
-   *         description: Municipal metrics loaded successfully.
-   *         content:
-   *           application/json:
-   *             schema:
-   *               type: object
-   *               properties:
-   *                 success: { type: boolean, example: true }
-   *                 data:
-   *                   type: object
-   *                   properties:
-   *                     municipality_id: { type: string, format: uuid }
-   *                     official_name: { type: string, example: "Lalitpur Metropolitan City" }
-   *                     pending_count: { type: integer, example: 5 }
-   *                     ongoing_count: { type: integer, example: 12 }
-   *                     resolved_count: { type: integer, example: 45 }
-   *                     rejected_count: { type: integer, example: 2 }
-   *                     total_complaints: { type: integer, example: 64 }
-   *                     dynamic_resolution_rate: { type: number, example: 70.31 }
+   *         description: Analytics summary loaded.
    */
   router.get("/analytics", controller.getAnalytics);
 
   /**
-   * @openapi
-   * /api/v1/municipality/departments/create:
-   *   post:
-   *     summary: Register an internal operational department
-   *     description: Deploys a new specialized division (e.g., Waste Management, Infrastructure Development) within this municipality.
+   * @swagger
+   * /api/municipality/departments:
+   *   get:
+   *     summary: List departments in municipality
    *     tags: [Municipality API]
-   *     security:
-   *       - BearerAuth: []
+   *     security: [{ BearerAuth: [] }]
+   *     responses:
+   *       200:
+   *         description: Departments list.
+   *   post:
+   *     summary: Provision a new department and generate department head invite
+   *     tags: [Municipality API]
+   *     security: [{ BearerAuth: [] }]
    *     requestBody:
    *       required: true
    *       content:
@@ -89,83 +80,233 @@ export function createMunicipalityRouter(
    *             $ref: '#/components/schemas/ProvisionDepartmentRequest'
    *     responses:
    *       201:
-   *         description: Department entity successfully registered.
-   *       400:
-   *         description: Data entry constraint failure.
+   *         description: Department provisioned and invite generated.
    */
+  router.get("/departments", controller.getDepartments);
+  router.post("/departments", controller.provisionDepartment);
   router.post("/departments/create", controller.provisionDepartment);
 
-  // New CRUD endpoints expected by frontend: /api/municipality/:municipalityId/departments
-  router.get("/:municipalityId/departments", controller.getDepartments);
-  router.get("/departments", controller.getDepartments);
-  router.post("/:municipalityId/departments", controller.provisionDepartment);
-  router.patch("/:municipalityId/departments/:id", controller.updateDepartment);
-  router.patch("/departments/:id", controller.updateDepartment);
-  router.delete("/:municipalityId/departments/:id", controller.deleteDepartment);
-  router.delete("/departments/:id", controller.deleteDepartment);
-
   /**
-   * @openapi
-   * /api/v1/municipality/staff/onboard:
-   *   post:
-   *     summary: Enboard professional municipal personnel
-   *     description: Attaches a base profile directly to a specific department within the municipality's staff register.
-   *     tags: [Municipality API]
-   *     security:
-   *       - BearerAuth: []
-   *     requestBody:
-   *       required: true
-   *       content:
-   *         application/json:
-   *           schema:
-   *             $ref: '#/components/schemas/OnboardStaffRequest'
-   *     responses:
-   *       201:
-   *         description: Personnel successfully onboarded to the target department.
-   */
-  router.post("/staff/onboard", controller.onboardStaffProfile);
-
-  /**
-   * @openapi
-   * /api/v1/municipality/complaints:
+   * @swagger
+   * /api/municipality/departments/{id}:
    *   get:
-   *     summary: Fetch regional grievance log
-   *     description: Returns a list of citizens' complaints filed under this specific regional jurisdiction.
+   *     summary: Get department details
    *     tags: [Municipality API]
-   *     security:
-   *       - BearerAuth: []
+   *     security: [{ BearerAuth: [] }]
    *     parameters:
-   *       - in: query
-   *         name: status
-   *         schema: { type: string, enum: [pending, ongoing, resolved, rejected] }
-   *         description: Optional status filter.
+   *       - in: path
+   *         name: id
+   *         required: true
+   *         schema:
+   *           type: string
+   *           format: uuid
    *     responses:
    *       200:
-   *         description: Regional logging array returned cleanly.
+   *         description: Department details.
+   *   patch:
+   *     summary: Update department configuration
+   *     tags: [Municipality API]
+   *     security: [{ BearerAuth: [] }]
+   *     parameters:
+   *       - in: path
+   *         name: id
+   *         required: true
+   *         schema:
+   *           type: string
+   *           format: uuid
+   *     responses:
+   *       200:
+   *         description: Department updated.
+   *   delete:
+   *     summary: Delete department
+   *     tags: [Municipality API]
+   *     security: [{ BearerAuth: [] }]
+   *     parameters:
+   *       - in: path
+   *         name: id
+   *         required: true
+   *         schema:
+   *           type: string
+   *           format: uuid
+   *     responses:
+   *       200:
+   *         description: Department deleted.
+   */
+  router.get("/departments/:id", controller.getDepartmentDetail);
+  router.patch("/departments/:id", controller.updateDepartment);
+  router.delete("/departments/:id", controller.deleteDepartment);
+  router.post("/departments/:id/replace-head", controller.replaceDepartmentHead);
+
+  router.get("/:municipalityId/departments", controller.getDepartments);
+  router.post("/:municipalityId/departments", controller.provisionDepartment);
+  router.get("/:municipalityId/departments/:id", controller.getDepartmentDetail);
+  router.patch("/:municipalityId/departments/:id", controller.updateDepartment);
+  router.delete("/:municipalityId/departments/:id", controller.deleteDepartment);
+
+  /**
+   * @swagger
+   * /api/municipality/staff:
+   *   get:
+   *     summary: List staff profiles in municipality
+   *     tags: [Municipality API]
+   *     security: [{ BearerAuth: [] }]
+   *     responses:
+   *       200:
+   *         description: Staff list.
+   *   post:
+   *     summary: Dispatch staff role invitation
+   *     tags: [Municipality API]
+   *     security: [{ BearerAuth: [] }]
+   *     responses:
+   *       201:
+   *         description: Invitation created.
+   */
+  router.get("/staff", controller.listStaff);
+  router.post("/staff", controller.createStaff);
+  router.post("/staff/onboard", controller.onboardStaffProfile);
+  router.patch("/staff/:staffId", controller.updateStaff);
+  router.delete("/staff/:staffId", controller.deleteStaff);
+  router.patch("/staff/:staffId/status", controller.updateStaffStatus);
+  router.post("/staff/:staffId/reset-password", controller.resetStaffPassword);
+
+  router.get("/:municipalityId/staff", controller.listStaff);
+  router.post("/:municipalityId/staff", controller.createStaff);
+  router.patch("/:municipalityId/staff/:staffId", controller.updateStaff);
+  router.delete("/:municipalityId/staff/:staffId", controller.deleteStaff);
+  router.patch("/:municipalityId/staff/:staffId/status", controller.updateStaffStatus);
+  router.post("/:municipalityId/staff/:staffId/reset-password", controller.resetStaffPassword);
+
+  /**
+   * @swagger
+   * /api/municipality/complaints:
+   *   get:
+   *     summary: List all complaints across municipality
+   *     tags: [Municipality API]
+   *     security: [{ BearerAuth: [] }]
+   *     responses:
+   *       200:
+   *         description: Complaints list.
    */
   router.get("/complaints", controller.getComplaints);
 
   /**
-   * @openapi
-   * /api/municipality/users/create:
-   *   post:
-   *     summary: Create a department head or staff user account
-   *     description: Directly creates a new user with department_head or staff role under this municipality. The user is created with force_password_reset enabled.
+   * @swagger
+   * /api/municipality/kyc-pending:
+   *   get:
+   *     summary: List citizens awaiting identity verification (KYC review)
    *     tags: [Municipality API]
-   *     security:
-   *       - BearerAuth: []
+   *     security: [{ BearerAuth: [] }]
+   *     responses:
+   *       200:
+   *         description: Pending KYC list.
+   */
+  router.get("/kyc-pending", controller.getPendingKycList);
+  router.get("/kyc-pending/:citizenId", controller.getKycCitizenDetail);
+
+  /**
+   * @swagger
+   * /api/municipality/kyc-pending/{citizenId}:
+   *   patch:
+   *     summary: Review citizen KYC application (verify or reject)
+   *     tags: [Municipality API]
+   *     security: [{ BearerAuth: [] }]
+   *     parameters:
+   *       - in: path
+   *         name: citizenId
+   *         required: true
+   *         schema:
+   *           type: string
+   *           format: uuid
    *     requestBody:
    *       required: true
    *       content:
    *         application/json:
    *           schema:
-   *             $ref: '#/components/schemas/CreateUserRequest'
+   *             $ref: '#/components/schemas/KycReviewRequest'
+   *     responses:
+   *       200:
+   *         description: KYC status updated.
+   */
+  router.patch("/kyc-pending/:citizenId", controller.reviewKyc);
+
+  router.get("/:municipalityId/kyc-pending", controller.getPendingKycList);
+  router.get("/:municipalityId/kyc-pending/:citizenId", controller.getKycCitizenDetail);
+  router.patch("/:municipalityId/kyc-pending/:citizenId", controller.reviewKyc);
+
+  /**
+   * @swagger
+   * /api/municipality/teams:
+   *   get:
+   *     summary: List cross-department emergency task force teams
+   *     tags: [Municipality API]
+   *     security: [{ BearerAuth: [] }]
+   *     responses:
+   *       200:
+   *         description: Teams list.
+   *   post:
+   *     summary: Provision a cross-department emergency task force team
+   *     tags: [Municipality API]
+   *     security: [{ BearerAuth: [] }]
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             $ref: '#/components/schemas/CreateCrossDeptTeamRequest'
    *     responses:
    *       201:
-   *         description: User account created successfully.
-   *       400:
-   *         description: Validation error or duplicate email.
+   *         description: Cross-dept team created.
    */
+  router.get("/teams", controller.getCrossDeptTeams);
+  router.post("/teams", controller.createCrossDeptTeam);
+  router.delete("/teams/:teamId", controller.deactivateCrossDeptTeam);
+
+  router.get("/:municipalityId/teams", controller.getCrossDeptTeams);
+  router.post("/:municipalityId/teams", controller.createCrossDeptTeam);
+  router.delete("/:municipalityId/teams/:teamId", controller.deactivateCrossDeptTeam);
+
+  /**
+   * @swagger
+   * /api/municipality/complaints/escalated:
+   *   get:
+   *     summary: Get SLA Level 2 escalated grievances feed
+   *     tags: [Municipality API]
+   *     security: [{ BearerAuth: [] }]
+   *     responses:
+   *       200:
+   *         description: Escalated complaints feed.
+   */
+  router.get("/complaints/escalated", controller.getEscalatedComplaints);
+
+  /**
+   * @swagger
+   * /api/municipality/complaints/{id}/intervene:
+   *   post:
+   *     summary: Municipality Head administrative intervention on escalated complaint
+   *     tags: [Municipality API]
+   *     security: [{ BearerAuth: [] }]
+   *     parameters:
+   *       - in: path
+   *         name: id
+   *         required: true
+   *         schema:
+   *           type: string
+   *           format: uuid
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             $ref: '#/components/schemas/InterveneComplaintRequest'
+   *     responses:
+   *       200:
+   *         description: Intervention executed.
+   */
+  router.post("/complaints/:id/intervene", controller.interveneInComplaint);
+
+  router.get("/:municipalityId/complaints/escalated", controller.getEscalatedComplaints);
+  router.post("/:municipalityId/complaints/:id/intervene", controller.interveneInComplaint);
+
   router.post("/users/create", controller.createUser);
 
   return router;

@@ -25,25 +25,35 @@ export const verifyDepartmentHeadContext = (supabase: SupabaseClient) => {
         .eq("id", userId)
         .single();
 
-      if (
-        profileError ||
-        !profile ||
-        profile.account_status !== "active" ||
-        profile.role !== "department_head"
-      ) {
-        res
-          .status(403)
-          .json({
-            success: false,
-            error: "Access Denied: Requires active Department Head privileges.",
-          });
+      if (profileError || !profile) {
+        res.status(403).json({ success: false, error: "Access Denied: Requires active Department Head privileges." });
+        return;
+      }
+
+      if (profile.account_status === "suspended") {
+        res.status(403).json({ success: false, error: "Account suspended. Contact platform administrator." });
+        return;
+      }
+
+      if (profile.account_status === "invited") {
+        res.status(403).json({ success: false, error: "Invitation not accepted yet. Accept your invitation link first." });
+        return;
+      }
+
+      if (profile.account_status === "pending_onboarding" && !req.path?.startsWith("/onboarding")) {
+        res.status(403).json({ success: false, error: "Onboarding incomplete. Complete your profile activation wizard first." });
+        return;
+      }
+
+      if (profile.role !== "department_head" && profile.role !== "superadmin") {
+        res.status(403).json({ success: false, error: "Access Denied: Requires Department Head privileges." });
         return;
       }
 
       // Find the specific department managed by this user
       const { data: department, error: deptError } = await supabase
         .from("departments")
-        .select("d_uid")
+        .select("id")
         .eq("head_profile_id", userId)
         .single();
 
@@ -58,7 +68,7 @@ export const verifyDepartmentHeadContext = (supabase: SupabaseClient) => {
       }
 
       // Append the verified department ID directly to the request object
-      req.departmentId = department.d_uid;
+      req.departmentId = department.id;
       next();
     } catch (err: any) {
       res

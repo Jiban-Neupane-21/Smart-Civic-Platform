@@ -9,6 +9,9 @@ import {
   forgotPasswordSchema,
   refreshTokenSchema,
   changePasswordSchema,
+  sendOtpSchema,
+  verifyOtpSchema,
+  loginMobileSchema,
 } from "../../../validation/auth.validation";
 
 const router = Router();
@@ -68,6 +71,66 @@ router.post("/register", validateBody(registerSchema), AuthController.register);
  *               $ref: '#/components/schemas/ErrorResponse'
  */
 router.post("/login", validateBody(loginSchema), AuthController.login);
+
+/**
+ * @swagger
+ * /api/auth/send-otp:
+ *   post:
+ *     tags: [Auth]
+ *     summary: Send OTP code via SMS for mobile authentication or password reset
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/SendOtpRequest'
+ *     responses:
+ *       200:
+ *         description: OTP code generated and dispatched cleanly.
+ *       400:
+ *         description: Validation error or phone format failure.
+ */
+router.post("/send-otp", validateBody(sendOtpSchema), AuthController.sendOtp);
+
+/**
+ * @swagger
+ * /api/auth/verify-otp:
+ *   post:
+ *     tags: [Auth]
+ *     summary: Verify SMS OTP code
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/VerifyOtpRequest'
+ *     responses:
+ *       200:
+ *         description: OTP code verified successfully.
+ *       400:
+ *         description: Invalid or expired OTP code.
+ */
+router.post("/verify-otp", validateBody(verifyOtpSchema), AuthController.verifyOtp);
+
+/**
+ * @swagger
+ * /api/auth/login-mobile:
+ *   post:
+ *     tags: [Auth]
+ *     summary: Mobile phone OTP passwordless login
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/MobileLoginRequest'
+ *     responses:
+ *       200:
+ *         description: Mobile login successful. Access & refresh tokens generated.
+ *       400:
+ *         description: OTP verification failure or user record absent.
+ */
+router.post("/login-mobile", validateBody(loginMobileSchema), AuthController.loginMobile);
 
 /**
  * @swagger

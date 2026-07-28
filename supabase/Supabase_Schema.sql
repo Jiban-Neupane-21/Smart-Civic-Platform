@@ -1702,4 +1702,56 @@ INSERT INTO notification_templates (trigger_event, title_template, body_template
   ('sla_escalation', 'SLA escalation', 'Ticket #{{tracking_id}} has been escalated to municipality head due to SLA breach.', '{in_app,email}'),
   ('handoff_initiated', 'Ticket handed off', 'Ticket #{{tracking_id}} has been handed off from {{from_staff}} to {{to_staff}}. Reason: {{reason}}.', '{in_app,push}');
 
+-- ============================================================================================
+-- 46. VIEWS FOR SUPERADMIN & MUNICIPALITY MANAGEMENT
+-- ============================================================================================
+
+DROP VIEW IF EXISTS v_active_municipalities CASCADE;
+CREATE VIEW v_active_municipalities AS
+SELECT 
+    m.*,
+    d.name AS district_name,
+    p.name AS province_name,
+    p.id AS province_id
+FROM municipalities m
+JOIN districts d ON m.district_id = d.id
+JOIN provinces p ON d.province_id = p.id
+WHERE m.is_active = TRUE;
+
+DROP VIEW IF EXISTS v_inactive_municipalities CASCADE;
+CREATE VIEW v_inactive_municipalities AS
+SELECT 
+    m.*,
+    d.name AS district_name,
+    p.name AS province_name,
+    p.id AS province_id
+FROM municipalities m
+JOIN districts d ON m.district_id = d.id
+JOIN provinces p ON d.province_id = p.id
+WHERE m.is_active = FALSE;
+
+DROP VIEW IF EXISTS v_municipality_detail CASCADE;
+CREATE VIEW v_municipality_detail AS
+SELECT 
+    m.*,
+    d.name AS district_name,
+    p.name AS province_name,
+    p.id AS province_id
+FROM municipalities m
+JOIN districts d ON m.district_id = d.id
+JOIN provinces p ON d.province_id = p.id;
+
+DROP VIEW IF EXISTS v_superadmin_analytics CASCADE;
+CREATE VIEW v_superadmin_analytics AS
+SELECT
+    (SELECT COUNT(*) FROM municipalities WHERE is_active = TRUE)::BIGINT AS total_municipalities,
+    (SELECT COUNT(*) FROM departments WHERE is_active = TRUE)::BIGINT AS total_departments,
+    (SELECT COUNT(*) FROM staff WHERE employee_status = 'active' AND is_deleted = FALSE)::BIGINT AS total_staff,
+    (SELECT COUNT(*) FROM profiles WHERE role = 'citizen' AND is_deleted = FALSE)::BIGINT AS total_citizens,
+    (SELECT COUNT(*) FROM profiles WHERE account_status = 'active' AND is_deleted = FALSE)::BIGINT AS total_active_users,
+    (SELECT COUNT(*) FROM profiles WHERE account_status = 'suspended' AND is_deleted = FALSE)::BIGINT AS total_suspended_users,
+    (SELECT COUNT(*) FROM complaints WHERE status IN ('pending', 'under_review', 'in_progress', 'assigned'))::BIGINT AS total_pending_complaints,
+    (SELECT COUNT(*) FROM complaints WHERE status = 'resolved')::BIGINT AS total_resolved_complaints;
+
 NOTIFY pgrst, 'reload schema';
+

@@ -1,5 +1,7 @@
 import { DepartmentRepository } from "../repository/department.repository";
 import type { ComplaintStatus, Database } from "../../../types/database.type";
+import { CollaborationService } from "../../../service/collaboration.service";
+import { ExportService } from "../../../service/export.service";
 
 export class DepartmentService {
   constructor(private repo: DepartmentRepository) { }
@@ -7,13 +9,41 @@ export class DepartmentService {
   async buildDeploymentTeam(
     departmentId: string,
     teamName: string,
+    startDate: string,
+    endDate: string,
+    createdBy?: string,
     description?: string,
     memberStaffIds?: string[],
     leaderStaffId?: string,
+    isEmergencyOverride = false,
+    overrideReason?: string
   ) {
+    const startMs = Date.parse(startDate);
+    const endMs = Date.parse(endDate);
+    if (isNaN(startMs) || isNaN(endMs) || startMs >= endMs) {
+      throw new Error("Invalid team duration. start_date must be before end_date.");
+    }
+
+    // Schedule conflict checking (unless emergency override)
+    if (memberStaffIds && memberStaffIds.length > 0 && !isEmergencyOverride) {
+      const { ScheduleService } = require("../../../service/schedule.service");
+      const scheduleService = new ScheduleService((this.repo as any).supabaseAdmin);
+      const availResults = await scheduleService.checkBulkAvailability(memberStaffIds, startDate, endDate);
+
+      const conflicts = availResults.filter((r: any) => !r.is_available);
+      if (conflicts.length > 0) {
+        const names = conflicts.map((c: any) => `${c.staff_id} (assigned to ${c.conflicting_team_name})`).join(", ");
+        throw new Error(`Schedule conflict detected for staff member(s): ${names}. Use emergency override if required.`);
+      }
+    }
+
     const team = await this.repo.createTeam({
       department_id: departmentId,
       team_name: teamName,
+      team_type: "single_department",
+      start_date: startDate,
+      end_date: endDate,
+      created_by: createdBy || null,
       ...(description ? { description } : {}),
     });
 
@@ -25,6 +55,17 @@ export class DepartmentService {
           team_id: teamPk,
           staff_id: staffId,
           is_leader: staffId === leaderStaffId,
+        });
+
+        // Insert staff_assignments row
+        await (this.repo as any).supabaseAdmin.from("staff_assignments").insert({
+          staff_id: staffId,
+          team_id: teamPk,
+          assigned_by: createdBy || null,
+          start_date: startDate,
+          end_date: endDate,
+          is_emergency_override: isEmergencyOverride,
+          override_reason: overrideReason || null,
         });
       }
     }
@@ -49,7 +90,6 @@ export class DepartmentService {
     action: Exclude<ComplaintStatus, "pending">,
     notes: { resolution_note?: string; rejection_reason?: string },
   ) {
-    // Section 16: Enforce constraints based on status changes
     const updatePayload: any = { status: action };
 
     if (action === "resolved") {
@@ -111,12 +151,24 @@ export class DepartmentService {
     );
   }
 
+  async checkEmailExists(email: string): Promise<boolean> {
+    return await this.repo.checkEmailExists(email);
+  }
+
   async removeStaff(staffId: string, departmentId: string, deletedBy: string) {
     return await this.repo.archiveAndDeleteStaff(
       staffId,
       departmentId,
       deletedBy,
     );
+  }
+
+  async updateStaffAccountStatus(staffId: string, departmentId: string, status: string) {
+    return await this.repo.updateStaffAccountStatus(staffId, departmentId, status);
+  }
+
+  async resetStaffPassword(staffId: string, departmentId: string, newPassword: string) {
+    return await this.repo.resetStaffPassword(staffId, departmentId, newPassword);
   }
 
   async getDashboard(departmentId: string) {
@@ -168,6 +220,57 @@ export class DepartmentService {
     };
   }
 
+  // ===== MULTI-DEPARTMENT & COLLABORATION METHODS =====
+
+  async getDepartmentQueue(departmentId: string, statusFilter?: string) {
+    return await this.repo.getDepartmentComplaintsQueue(departmentId, statusFilter);
+  }
+
+  async getCollaborations(departmentId: string) {
+    return await this.repo.getCollaborationRequests(departmentId);
+  }
+
+  async requestCollaboration(
+    departmentId: string,
+    complaintId: string,
+    supportingDeptId: string,
+    initiatedBy: string,
+    inspectionNote?: string
+  ) {
+    const collabService = new CollaborationService((this.repo as any).supabaseAdmin);
+    return await collabService.requestStaffEscalation(
+      complaintId,
+      departmentId,
+      supportingDeptId,
+      initiatedBy,
+      inspectionNote
+    );
+  }
+
+  async submitSignOff(
+    departmentId: string,
+    complaintId: string,
+    signedBy: string,
+    roleAtTime: string,
+    decision: "approved" | "rejected",
+    note?: string
+  ) {
+    const collabService = new CollaborationService((this.repo as any).supabaseAdmin);
+    return await collabService.recordSignOff(
+      complaintId,
+      departmentId,
+      signedBy,
+      roleAtTime,
+      decision,
+      note
+    );
+  }
+
+  async exportComplaintsCsv(departmentId: string) {
+    const exportService = new ExportService((this.repo as any).supabaseAdmin);
+    return await exportService.exportDepartmentComplaintsCsv(departmentId);
+  }
+
   // ─── Team Management ─────────────────────────────────────────────────────────
 
   async listTeams(departmentId: string) {
@@ -206,5 +309,23 @@ export class DepartmentService {
       departmentId,
       isLeader,
     );
+  }
+
+  async assignComplaintToTeam(
+    departmentId: string,
+    teamName: string,
+    complaintId: string,
+    assignedBy: string,
+    notes?: string
+  ) {
+    const team = await this.repo.getTeamByName(teamName, departmentId);
+    if (!team) throw new Error("Team not found in department.");
+    return await this.repo.assignComplaintToTeam(complaintId, team.id, assignedBy, notes);
+  }
+
+  async getTeamComplaints(departmentId: string, teamName: string) {
+    const team = await this.repo.getTeamByName(teamName, departmentId);
+    if (!team) throw new Error("Team not found in department.");
+    return await this.repo.getTeamComplaints(team.id);
   }
 }

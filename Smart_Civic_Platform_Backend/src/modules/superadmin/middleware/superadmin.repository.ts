@@ -2,6 +2,9 @@ import { SupabaseClient } from "@supabase/supabase-js";
 import type {
   AccountStatus,
   UserRole,
+  ProvinceRow,
+  DistrictRow,
+  WardRow,
 } from "../../../types/database.type";
 
 export class SuperadminRepository {
@@ -31,11 +34,11 @@ export class SuperadminRepository {
   }
 
   // Update municipality's head_profile_id after user creation
-  async updateMunicipalityHead(m_uid: string, profile_id: string) {
+  async updateMunicipalityHead(id: string, profile_id: string) {
     const { data, error } = await this.supabaseAdmin
       .from("municipalities")
       .update({ head_profile_id: profile_id })
-      .eq("m_uid", m_uid)
+      .eq("id", id)
       .select()
       .single();
 
@@ -106,12 +109,12 @@ export class SuperadminRepository {
     return data;
   }
 
-  // Get all municipalities
+  // Get active municipalities with joined province & district details
   async getMunicipalities() {
     const { data, error } = await this.supabaseAdmin
-      .from("municipalities")
+      .from("v_active_municipalities")
       .select("*")
-      .order("registered_at", { ascending: false });
+      .order("official_name", { ascending: true });
 
     if (error) throw error;
     return data;
@@ -122,7 +125,7 @@ export class SuperadminRepository {
     const { data, error } = await this.supabaseAdmin
       .from("municipalities")
       .select("*")
-      .eq("m_uid", id)
+      .eq("id", id)
       .single();
 
     if (error) throw error;
@@ -150,7 +153,7 @@ export class SuperadminRepository {
     const { data: result, error } = await this.supabaseAdmin
       .from("municipalities")
       .update(data)
-      .eq("m_uid", id)
+      .eq("id", id)
       .select()
       .single();
 
@@ -163,11 +166,124 @@ export class SuperadminRepository {
     const { data, error } = await this.supabaseAdmin
       .from("municipalities")
       .delete()
-      .eq("m_uid", id)
+      .eq("id", id)
       .select()
       .single();
 
     if (error) throw error;
     return data;
+  }
+
+  // Reference Data API — Get all provinces
+  async getProvinces(): Promise<ProvinceRow[]> {
+    const { data, error } = await this.supabaseAdmin
+      .from("provinces")
+      .select("*")
+      .order("name", { ascending: true });
+
+    if (error) throw error;
+    return data || [];
+  }
+
+  // Reference Data API — Get districts (optionally filtered by province_id)
+  async getDistricts(provinceId?: string): Promise<DistrictRow[]> {
+    let query = this.supabaseAdmin
+      .from("districts")
+      .select("*")
+      .order("name", { ascending: true });
+
+    if (provinceId) {
+      query = query.eq("province_id", provinceId);
+    }
+
+    const { data, error } = await query;
+    if (error) throw error;
+    return data || [];
+  }
+
+  // Reference Data API — Get reference municipalities for cascading dropdowns
+  async getReferenceMunicipalities(
+    districtId?: string,
+    isActive?: boolean
+  ): Promise<any[]> {
+    let query = this.supabaseAdmin
+      .from("municipalities")
+      .select("id, official_name, local_level_type, total_wards, district_id, is_active")
+      .order("official_name", { ascending: true });
+
+    if (districtId) {
+      query = query.eq("district_id", districtId);
+    }
+    if (isActive !== undefined) {
+      query = query.eq("is_active", isActive);
+    }
+
+    const { data, error } = await query;
+    if (error) throw error;
+    return data || [];
+  }
+
+  // Reference Data API — Get full municipality detail with province & district names
+  async getMunicipalityDetail(id: string) {
+    const { data, error } = await this.supabaseAdmin
+      .from("v_municipality_detail")
+      .select("*")
+      .eq("id", id)
+      .single();
+
+    if (error) throw error;
+    return data;
+  }
+
+  // Reference Data API — Get wards for a municipality
+  async getWards(municipalityId: string): Promise<WardRow[]> {
+    const { data, error } = await this.supabaseAdmin
+      .from("wards")
+      .select("*")
+      .eq("municipality_id", municipalityId)
+      .order("ward_no", { ascending: true });
+
+    if (error) throw error;
+    return data || [];
+  }
+
+  // Activate pre-seeded municipality and assign head profile
+  async activateMunicipality(
+    id: string,
+    headProfileId: string,
+    headName: string,
+    headEmail: string
+  ) {
+    const { data, error } = await this.supabaseAdmin
+      .from("municipalities")
+      .update({
+        is_active: true,
+        head_profile_id: headProfileId,
+        head_name: headName,
+        head_email: headEmail,
+        registered_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", id)
+      .eq("is_active", false)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  }
+
+  // Auto-create wards (1 to total_wards) upon activation
+  async createWards(municipalityId: string, count: number): Promise<void> {
+    const wardRows = Array.from({ length: count }, (_, i) => ({
+      municipality_id: municipalityId,
+      ward_no: i + 1,
+    }));
+
+    const { error } = await this.supabaseAdmin
+      .from("wards")
+      .insert(wardRows);
+
+    if (error) throw error;
   }
 }

@@ -69,3 +69,19 @@ export const changePasswordSchema = z.object({
 export const refreshTokenSchema = z.object({
   refresh_token: z.string().min(1),
 });
+
+export const sendOtpSchema = z.object({
+  phone: z.string().min(10, "Phone number must be at least 10 digits"),
+  purpose: z.enum(["registration", "login", "reset_password"]).optional(),
+});
+
+export const verifyOtpSchema = z.object({
+  phone: z.string().min(10, "Phone number must be at least 10 digits"),
+  otp_code: z.string().length(6, "OTP code must be exactly 6 digits"),
+  purpose: z.enum(["registration", "login", "reset_password"]).optional(),
+});
+
+export const loginMobileSchema = z.object({
+  phone: z.string().min(10, "Phone number must be at least 10 digits"),
+  otp_code: z.string().length(6, "OTP code must be exactly 6 digits"),
+});

@@ -36,9 +36,11 @@ export const ROLE_HIERARCHY = [
 // ===============================
 
 export const ACCOUNT_STATUS = {
+  INVITED: 'invited',
+  PENDING_ONBOARDING: 'pending_onboarding',
   ACTIVE: 'active',
+  EXPIRED: 'expired',
   SUSPENDED: 'suspended',
-  INACTIVE:  'inactive',   // matches DB enum: account_status('active','inactive','suspended')
 } as const;
 
 // ===============================

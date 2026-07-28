@@ -24,3 +24,23 @@ export const updateProfileSchema = z.object({
   permanent_address: z.string().optional(),
   notification_pref: z.enum(["email", "sms", "both", "none"]).optional(),
 });
+
+const addressSectionSchema = z.object({
+  province_id: z.string().uuid().optional(),
+  district_id: z.string().uuid().optional(),
+  municipality_id: z.string().uuid().optional(),
+  ward_id: z.string().uuid().optional(),
+  tole: z.string().optional(),
+});
+
+export const addressSchema = z.object({
+  permanent: addressSectionSchema.optional(),
+  current: addressSectionSchema.optional(),
+});
+
+export const identityUploadSchema = z.object({
+  identity_type: z.enum(["citizenship", "national_id", "passport", "driving_license", "voter_id"]),
+  identity_number: z.string().min(3, "Identity number must be at least 3 characters"),
+  front_image: z.string().optional(),
+  back_image: z.string().optional(),
+});

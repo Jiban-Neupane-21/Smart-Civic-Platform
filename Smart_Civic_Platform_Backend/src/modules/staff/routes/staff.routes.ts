@@ -27,65 +27,213 @@ export function createStaffRouter(
 ): Router {
   const router = Router();
 
-  // Enforce session presence and inject structural staff parameters automatically
   router.use(requireAuth(supabaseAdminClient));
   router.use(verifyStaffContext(supabaseAdminClient));
 
   /**
-   * @openapi
-   * /api/v1/staff/my-assignments:
+   * @swagger
+   * /api/staff/profile:
    *   get:
-   *     summary: Fetch my active field team deployments
-   *     description: Returns a scannable listing of all operational task forces the authenticated staff member has been assigned to help complete.
+   *     summary: Fetch my staff employment profile & department metadata
    *     tags: [Staff API]
-   *     security:
-   *       - BearerAuth: []
+   *     security: [{ BearerAuth: [] }]
    *     responses:
    *       200:
-   *         description: Assigned work records compiled cleanly.
-   *         content:
-   *           application/json:
-   *             schema:
-   *               type: object
-   *               properties:
-   *                 success: { type: boolean, example: true }
-   *                 data:
-   *                   type: array
-   *                   items:
-   *                     type: object
-   *                     properties:
-   *                       tm_id: { type: string, format: uuid }
-   *                       is_leader: { type: boolean, example: false }
-   *                       joined_at: { type: string, format: date-time }
-   *                       teams:
-   *                         type: object
-   *                         properties:
-   *                           team_id: { type: string, format: uuid }
-   *                           team_name: { type: string, example: "Emergency Road Repair Crew" }
-   *                           is_active: { type: boolean, example: true }
-   *                           complaints:
-   *                             type: object
-   *                             properties:
-   *                               id: { type: string, format: uuid }
-   *                               title: { type: string, example: "Main St Sinkhole Hazard" }
-   *                               status: { type: string, example: "ongoing" }
+   *         description: Profile loaded.
+   *   patch:
+   *     summary: Update my contact number or expertise
+   *     tags: [Staff API]
+   *     security: [{ BearerAuth: [] }]
+   *     responses:
+   *       200:
+   *         description: Profile updated.
+   */
+  router.get("/profile", controller.getMyProfile);
+  router.patch("/profile", controller.updateMyProfile);
+
+  /**
+   * @swagger
+   * /api/staff/my-department:
+   *   get:
+   *     summary: Fetch my primary department details
+   *     tags: [Staff API]
+   *     security: [{ BearerAuth: [] }]
+   *     responses:
+   *       200:
+   *         description: Department details.
+   */
+  router.get("/my-department", controller.getMyDepartment);
+
+  /**
+   * @swagger
+   * /api/staff/my-assignments:
+   *   get:
+   *     summary: List operational team assignments bound to staff profile
+   *     tags: [Staff API]
+   *     security: [{ BearerAuth: [] }]
+   *     responses:
+   *       200:
+   *         description: Assignments list.
    */
   router.get("/my-assignments", controller.getMyTeams);
 
   /**
-   * @openapi
-   * /api/v1/staff/department-queue:
+   * @swagger
+   * /api/staff/schedule:
    *   get:
-   *     summary: Fetch department level unresolved grievance queue
-   *     description: Exposes the list of incoming unassigned citizen complaints routed directly to the staff member's primary department registry.
+   *     summary: Get my field work schedule calendar and task timeline
    *     tags: [Staff API]
-   *     security:
-   *       - BearerAuth: []
+   *     security: [{ BearerAuth: [] }]
    *     responses:
    *       200:
-   *         description: Department general backlog array rendered successfully.
+   *         description: Schedule items.
+   */
+  router.get("/schedule", controller.getMySchedule);
+
+  /**
+   * @swagger
+   * /api/staff/department-queue:
+   *   get:
+   *     summary: View department complaint queue
+   *     tags: [Staff API]
+   *     security: [{ BearerAuth: [] }]
+   *     responses:
+   *       200:
+   *         description: Department queue.
    */
   router.get("/department-queue", controller.getDepartmentQueue);
+
+  /**
+   * @swagger
+   * /api/staff/assignments/{assignmentId}/acknowledge:
+   *   patch:
+   *     summary: Acknowledge assignment receipt
+   *     tags: [Staff API]
+   *     security: [{ BearerAuth: [] }]
+   *     parameters:
+   *       - in: path
+   *         name: assignmentId
+   *         required: true
+   *         schema:
+   *           type: string
+   *           format: uuid
+   *     responses:
+   *       200:
+   *         description: Acknowledged.
+   */
+  router.patch("/assignments/:assignmentId/acknowledge", controller.acknowledgeAssignment);
+
+  /**
+   * @swagger
+   * /api/staff/assignments/{assignmentId}/accept:
+   *   post:
+   *     summary: Step 1 of assignment flow — Accept ticket assignment
+   *     tags: [Staff API]
+   *     security: [{ BearerAuth: [] }]
+   *     parameters:
+   *       - in: path
+   *         name: assignmentId
+   *         required: true
+   *         schema:
+   *           type: string
+   *           format: uuid
+   *     responses:
+   *       200:
+   *         description: Accepted. Status set to assigned.
+   */
+  router.post("/assignments/:assignmentId/accept", controller.acceptAssignment);
+
+  /**
+   * @swagger
+   * /api/staff/assignments/{assignmentId}/start:
+   *   post:
+   *     summary: Step 2 of assignment flow — Start active field work
+   *     tags: [Staff API]
+   *     security: [{ BearerAuth: [] }]
+   *     parameters:
+   *       - in: path
+   *         name: assignmentId
+   *         required: true
+   *         schema:
+   *           type: string
+   *           format: uuid
+   *     responses:
+   *       200:
+   *         description: Field work started. Status set to in_progress.
+   */
+  router.post("/assignments/:assignmentId/start", controller.startAssignment);
+
+  /**
+   * @swagger
+   * /api/staff/assignments/{assignmentId}/complete:
+   *   post:
+   *     summary: Step 3 of assignment flow — Complete resolution work
+   *     tags: [Staff API]
+   *     security: [{ BearerAuth: [] }]
+   *     parameters:
+   *       - in: path
+   *         name: assignmentId
+   *         required: true
+   *         schema:
+   *           type: string
+   *           format: uuid
+   *     responses:
+   *       200:
+   *         description: Work completed. Status set to resolved.
+   */
+  router.post("/assignments/:assignmentId/complete", controller.completeAssignment);
+
+  /**
+   * @swagger
+   * /api/staff/assignments/{id}/transfer:
+   *   post:
+   *     summary: Peer-to-peer staff handoff — Transfer complaint to colleague
+   *     tags: [Staff API]
+   *     security: [{ BearerAuth: [] }]
+   *     parameters:
+   *       - in: path
+   *         name: id
+   *         required: true
+   *         schema:
+   *           type: string
+   *           format: uuid
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             $ref: '#/components/schemas/TransferAssignmentRequest'
+   *     responses:
+   *       200:
+   *         description: Complaint transferred cleanly to peer.
+   */
+  router.post("/assignments/:id/transfer", controller.transferAssignment);
+
+  /**
+   * @swagger
+   * /api/staff/assignments/{id}/return-to-dept:
+   *   post:
+   *     summary: Return complaint to Department Head for reassignment
+   *     tags: [Staff API]
+   *     security: [{ BearerAuth: [] }]
+   *     parameters:
+   *       - in: path
+   *         name: id
+   *         required: true
+   *         schema:
+   *           type: string
+   *           format: uuid
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             $ref: '#/components/schemas/ReturnAssignmentRequest'
+   *     responses:
+   *       200:
+   *         description: Complaint returned to Department Head. Status set to under_review.
+   */
+  router.post("/assignments/:id/return-to-dept", controller.returnAssignmentToDeptHead);
 
   return router;
 }

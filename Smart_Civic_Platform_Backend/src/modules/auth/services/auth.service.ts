@@ -338,3 +338,69 @@ export const changePasswordService = async (
 
   return { message: "Password changed successfully" };
 };
+
+export const loginWithMobileService = async (phone: string, otpCode: string) => {
+  const sanitizedPhone = phone.trim().replace(/^\+977/, "");
+
+  const { OTPService } = require("../../../service/otp.service");
+  const otpService = new OTPService(supabaseAdmin);
+  const isValid = await otpService.verifyOTP(sanitizedPhone, otpCode, "login");
+  if (!isValid) throw new Error("Invalid or expired OTP code.");
+
+  const { data: profile, error } = await supabaseAdmin
+    .from("profiles")
+    .select("id, email, full_name, role, municipality_id, department_id, account_status, force_password_reset")
+    .eq("phone", sanitizedPhone)
+    .maybeSingle();
+
+  if (error || !profile) {
+    throw new Error("No citizen account found associated with this mobile number.");
+  }
+
+  if (profile.account_status === "suspended") {
+    throw new Error("Account is suspended");
+  }
+
+  // Generate magic link token from Supabase admin
+  const { data: linkData, error: linkErr } = await supabaseAdmin.auth.admin.generateLink({
+    type: "magiclink",
+    email: profile.email,
+  });
+
+  if (linkErr || !linkData.properties?.hashed_token) {
+    throw new Error("Failed to generate session for mobile user.");
+  }
+
+  // Exchange hashed token for active session
+  const authClient = createAuthClient();
+  const { data: sessionData, error: sessionErr } = await authClient.auth.verifyOtp({
+    token_hash: linkData.properties.hashed_token,
+    type: "magiclink",
+  });
+
+  if (sessionErr || !sessionData.session) {
+    throw new Error("Failed to authenticate session: " + sessionErr?.message);
+  }
+
+  await supabaseAdmin
+    .from("profiles")
+    .update({ last_login_at: new Date().toISOString() })
+    .eq("id", profile.id);
+
+  const tokenHash = crypto
+    .createHash("sha256")
+    .update(sessionData.session.refresh_token)
+    .digest("hex");
+  await supabaseAdmin.from("refresh_tokens").insert({
+    profile_id: profile.id,
+    token_hash: tokenHash,
+    expires_at: new Date(Date.now() + REFRESH_TOKEN_TTL_MS).toISOString(),
+  });
+
+  return {
+    access_token: sessionData.session.access_token,
+    refresh_token: sessionData.session.refresh_token,
+    expires_in: sessionData.session.expires_in,
+    profile,
+  };
+};

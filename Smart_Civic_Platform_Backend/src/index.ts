@@ -130,8 +130,24 @@ app.get("/", (_req, res) => {
   });
 });
 
+import publicRoutes from "./modules/public/routes/public.routes";
+
+import { createOnboardingRouter } from "./modules/onboarding/routes/onboarding.routes";
+import { OnboardingController } from "./modules/onboarding/controller/onboarding.controller";
+import { OnboardingService } from "./modules/onboarding/service/onboarding.service";
+import { OnboardingRepository } from "./modules/onboarding/repository/onboarding.repository";
+
+const onboardingRouter = createOnboardingRouter(
+  supabaseAdmin,
+  new OnboardingController(
+    new OnboardingService(new OnboardingRepository(supabaseAdmin))
+  )
+);
+
 app.use("/health", healthRoutes);
+app.use("/api/public", publicRoutes);
 app.use("/api/auth", authRoutes);
+app.use("/api/onboarding", onboardingRouter);
 app.use("/api/superadmin", superadminRouter);
 app.use("/api/municipality", municipalityRouter);
 app.use("/api/department", departmentRouter);

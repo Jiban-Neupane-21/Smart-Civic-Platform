@@ -76,12 +76,15 @@ const swaggerDefinition: swaggerJsdoc.Options["definition"] = {
   ],
   tags: [
     { name: "Health", description: "Server health" },
-    { name: "Auth", description: "Registration, login, tokens, profiles" },
+    { name: "Public API", description: "Public location cascade, grievance tracking & role invite acceptance" },
+    { name: "Auth", description: "Registration, login, OTP, mobile auth, tokens, profiles" },
+    { name: "Onboarding API", description: "First-login activation wizard" },
     { name: "Superadmin API", description: "Platform-wide administration" },
-    { name: "Municipality API", description: "Municipality head operations" },
-    { name: "Department API", description: "Department head operations" },
-    { name: "Staff API", description: "Staff complaint handling" },
-    { name: "Citizen API", description: "Citizen complaints and feedback" },
+    { name: "Municipality API", description: "Municipality head operations & cross-department teams" },
+    { name: "Department API", description: "Department head operations, queue & sign-offs" },
+    { name: "Staff API", description: "Staff complaint handling, schedule & handoffs" },
+    { name: "Citizen API", description: "Citizen complaints, structured address & feedback" },
+    { name: "Notifications API", description: "Inbound notification feed & targeted broadcasts" },
   ],
   components: {
     securitySchemes: {
@@ -113,6 +116,135 @@ const swaggerDefinition: swaggerJsdoc.Options["definition"] = {
         properties: {
           email: { type: "string", format: "email" },
           password: { type: "string" },
+        },
+      },
+      SendOtpRequest: {
+        type: "object",
+        required: ["phone"],
+        properties: {
+          phone: { type: "string", example: "+9779800000000" },
+          purpose: { type: "string", enum: ["login", "register", "password_reset"], default: "login" },
+        },
+      },
+      VerifyOtpRequest: {
+        type: "object",
+        required: ["phone", "otp"],
+        properties: {
+          phone: { type: "string", example: "+9779800000000" },
+          otp: { type: "string", example: "123456" },
+        },
+      },
+      MobileLoginRequest: {
+        type: "object",
+        required: ["phone", "otp"],
+        properties: {
+          phone: { type: "string", example: "+9779800000000" },
+          otp: { type: "string", example: "123456" },
+        },
+      },
+      RoleInviteAcceptanceRequest: {
+        type: "object",
+        required: ["token", "password", "full_name"],
+        properties: {
+          token: { type: "string" },
+          password: { type: "string", minLength: 8 },
+          full_name: { type: "string" },
+          phone: { type: "string" },
+        },
+      },
+      OnboardingStep1Request: {
+        type: "object",
+        properties: {
+          password: { type: "string" },
+          mfa_enabled: { type: "boolean" },
+        },
+      },
+      OnboardingStep2Request: {
+        type: "object",
+        properties: {
+          alternate_phone: { type: "string" },
+          designation: { type: "string" },
+          employee_id: { type: "string" },
+        },
+      },
+      OnboardingStep3Request: {
+        type: "object",
+        required: ["identity_type", "identity_number"],
+        properties: {
+          identity_type: { type: "string", enum: ["citizenship", "national_id", "official_id", "staff_badge"] },
+          identity_number: { type: "string" },
+          identity_document_url: { type: "string" },
+        },
+      },
+      CreateCrossDeptTeamRequest: {
+        type: "object",
+        required: ["team_name", "start_date", "end_date"],
+        properties: {
+          team_name: { type: "string" },
+          description: { type: "string" },
+          start_date: { type: "string", format: "date-time" },
+          end_date: { type: "string", format: "date-time" },
+          member_staff_ids: { type: "array", items: { type: "string", format: "uuid" } },
+          leader_staff_id: { type: "string", format: "uuid" },
+          is_emergency_override: { type: "boolean", default: false },
+          override_reason: { type: "string" },
+        },
+      },
+      InterveneComplaintRequest: {
+        type: "object",
+        required: ["action"],
+        properties: {
+          action: { type: "string", enum: ["reassign", "resolve", "reject"] },
+          note: { type: "string" },
+        },
+      },
+      KycReviewRequest: {
+        type: "object",
+        required: ["status"],
+        properties: {
+          status: { type: "string", enum: ["verified", "rejected"] },
+          rejection_reason: { type: "string" },
+        },
+      },
+      AssignComplaintToTeamRequest: {
+        type: "object",
+        required: ["complaint_id"],
+        properties: {
+          complaint_id: { type: "string", format: "uuid" },
+          notes: { type: "string" },
+        },
+      },
+      DepartmentCollaborationRequest: {
+        type: "object",
+        required: ["supporting_dept_id", "inspection_note"],
+        properties: {
+          supporting_dept_id: { type: "string", format: "uuid" },
+          inspection_note: { type: "string" },
+        },
+      },
+      DepartmentSignOffRequest: {
+        type: "object",
+        required: ["decision"],
+        properties: {
+          decision: { type: "string", enum: ["approved", "rejected"] },
+          note: { type: "string" },
+        },
+      },
+      TransferAssignmentRequest: {
+        type: "object",
+        required: ["to_staff_id", "reason"],
+        properties: {
+          to_staff_id: { type: "string", format: "uuid" },
+          reason: { type: "string" },
+          note: { type: "string" },
+        },
+      },
+      ReturnAssignmentRequest: {
+        type: "object",
+        required: ["reason"],
+        properties: {
+          reason: { type: "string" },
+          note: { type: "string" },
         },
       },
       RegisterRequest: {

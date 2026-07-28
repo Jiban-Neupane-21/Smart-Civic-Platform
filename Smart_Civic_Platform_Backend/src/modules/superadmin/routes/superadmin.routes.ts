@@ -56,43 +56,111 @@ export function createSuperadminRouter(
    * /api/v1/superadmin/analytics:
    *   get:
    *     summary: Fetch system-wide macro metrics
-   *     description: Returns aggregated, high-level operational metrics across all registered municipalities.
    *     tags: [Superadmin API]
    *     security:
    *       - BearerAuth: []
    *     responses:
    *       200:
    *         description: Macro metrics loaded successfully.
-   *         content:
-   *           application/json:
-   *             schema:
-   *               type: object
-   *               properties:
-   *                 success: { type: boolean, example: true }
-   *                 data:
-   *                   type: object
-   *                   properties:
-   *                     total_municipalities: { type: integer, example: 14 }
-   *                     total_departments: { type: integer, example: 56 }
-   *                     total_staff: { type: integer, example: 320 }
-   *                     total_citizens: { type: integer, example: 12450 }
-   *                     total_active_users: { type: integer, example: 12700 }
-   *                     total_suspended_users: { type: integer, example: 12 }
-   *                     total_pending_complaints: { type: integer, example: 145 }
-   *                     total_resolved_complaints: { type: integer, example: 1890 }
-   *       401:
-   *         description: Unauthorized or session expired.
-   *       403:
-   *         description: Forbidden. Insufficient roles.
    */
   router.get("/analytics", controller.getMetrics);
 
   /**
    * @openapi
+   * /api/v1/superadmin/provinces:
+   *   get:
+   *     summary: Fetch all provinces
+   *     tags: [Superadmin Reference Data]
+   *     security:
+   *       - BearerAuth: []
+   *     responses:
+   *       200:
+   *         description: List of provinces retrieved successfully.
+   */
+  router.get("/provinces", controller.getProvinces);
+
+  /**
+   * @openapi
+   * /api/v1/superadmin/districts:
+   *   get:
+   *     summary: Fetch districts (optionally filtered by province_id)
+   *     tags: [Superadmin Reference Data]
+   *     security:
+   *       - BearerAuth: []
+   *     parameters:
+   *       - in: query
+   *         name: province_id
+   *         schema: { type: string, format: uuid }
+   *     responses:
+   *       200:
+   *         description: List of districts.
+   */
+  router.get("/districts", controller.getDistricts);
+
+  /**
+   * @openapi
+   * /api/v1/superadmin/municipalities/reference:
+   *   get:
+   *     summary: Fetch reference municipalities for cascading dropdowns
+   *     tags: [Superadmin Reference Data]
+   *     security:
+   *       - BearerAuth: []
+   *     parameters:
+   *       - in: query
+   *         name: district_id
+   *         schema: { type: string, format: uuid }
+   *       - in: query
+   *         name: is_active
+   *         schema: { type: boolean }
+   *     responses:
+   *       200:
+   *         description: Reference municipalities list.
+   */
+  router.get("/municipalities/reference", controller.getReferenceMunicipalities);
+
+  /**
+   * @openapi
+   * /api/v1/superadmin/municipalities/{id}/detail:
+   *   get:
+   *     summary: Fetch full municipality detail
+   *     tags: [Superadmin Reference Data]
+   *     security:
+   *       - BearerAuth: []
+   *     parameters:
+   *       - in: path
+   *         name: id
+   *         required: true
+   *         schema: { type: string, format: uuid }
+   *     responses:
+   *       200:
+   *         description: Full municipality detail with province & district names.
+   */
+  router.get("/municipalities/:id/detail", controller.getMunicipalityDetail);
+
+  /**
+   * @openapi
+   * /api/v1/superadmin/wards/{municipality_id}:
+   *   get:
+   *     summary: Fetch wards for a municipality
+   *     tags: [Superadmin Reference Data]
+   *     security:
+   *       - BearerAuth: []
+   *     parameters:
+   *       - in: path
+   *         name: municipality_id
+   *         required: true
+   *         schema: { type: string, format: uuid }
+   *     responses:
+   *       200:
+   *         description: List of wards.
+   */
+  router.get("/wards/:municipality_id", controller.getWards);
+
+  /**
+   * @openapi
    * /api/v1/superadmin/municipalities/provision:
    *   post:
-   *     summary: Provision a new municipality entity
-   *     description: Registers a new regional municipal jurisdiction alongside its executive administrative profile.
+   *     summary: Provision and activate pre-seeded municipality entity
    *     tags: [Superadmin API]
    *     security:
    *       - BearerAuth: []
@@ -101,12 +169,16 @@ export function createSuperadminRouter(
    *       content:
    *         application/json:
    *           schema:
-   *             $ref: '#/components/schemas/ProvisionMunicipalityRequest'
+   *             type: object
+   *             required: [municipality_id, head_name, head_email]
+   *             properties:
+   *               municipality_id: { type: string, format: uuid }
+   *               head_name: { type: string }
+   *               head_email: { type: string }
+   *               head_password: { type: string }
    *     responses:
    *       201:
    *         description: Municipality infrastructure successfully provisioned.
-   *       400:
-   *         description: Malformed structural payload or regex criteria failure.
    */
   router.post("/municipalities/provision", controller.provisionMunicipality);
 
@@ -115,21 +187,12 @@ export function createSuperadminRouter(
    * /api/v1/superadmin/users/assign-role:
    *   patch:
    *     summary: Elevate or alter systemic authorization roles
-   *     description: Wraps access directly to the isolated schema RPC trigger to safely update target profile designations.
    *     tags: [Superadmin API]
    *     security:
    *       - BearerAuth: []
-   *     requestBody:
-   *       required: true
-   *       content:
-   *         application/json:
-   *           schema:
-   *             $ref: '#/components/schemas/AssignRoleRequest'
    *     responses:
    *       200:
-   *         description: Core account role elevated and audited successfully.
-   *       400:
-   *         description: Processing error or attempt to demote the last remaining Superadmin.
+   *         description: Core account role elevated.
    */
   router.patch("/users/assign-role", controller.changeUserRole);
 
@@ -138,19 +201,12 @@ export function createSuperadminRouter(
    * /api/v1/superadmin/users/manage-status:
    *   patch:
    *     summary: Enforce account lifecycle status transitions
-   *     description: Instantly flips status flags to suspend or reactivate individual platform profiles.
    *     tags: [Superadmin API]
    *     security:
    *       - BearerAuth: []
-   *     requestBody:
-   *       required: true
-   *       content:
-   *         application/json:
-   *           schema:
-   *             $ref: '#/components/schemas/ManageStatusRequest'
    *     responses:
    *       200:
-   *         description: Profile successfully placed into target lifecycle phase.
+   *         description: Profile status updated.
    */
   router.patch("/users/manage-status", controller.restrictUserAccess);
 
@@ -159,22 +215,12 @@ export function createSuperadminRouter(
    * /api/v1/superadmin/audit-logs:
    *   get:
    *     summary: Query the system immutable audit logging stream
-   *     description: Reads data records out of the read-only infrastructure audit trail.
    *     tags: [Superadmin API]
    *     security:
    *       - BearerAuth: []
-   *     parameters:
-   *       - in: query
-   *         name: page
-   *         schema: { type: integer, default: 1 }
-   *         description: Target page block context.
-   *       - in: query
-   *         name: limit
-   *         schema: { type: integer, default: 20 }
-   *         description: Total records per block query execution.
    *     responses:
    *       200:
-   *         description: Audit records retrieved smoothly.
+   *         description: Audit records retrieved.
    */
   router.get("/audit-logs", controller.getSystemAudits);
 
@@ -183,21 +229,12 @@ export function createSuperadminRouter(
    * /api/superadmin/users/create:
    *   post:
    *     summary: Create a municipality head user account
-   *     description: Directly creates a new user with the municipality_head role. The user is created with force_password_reset enabled.
    *     tags: [Superadmin API]
    *     security:
    *       - BearerAuth: []
-   *     requestBody:
-   *       required: true
-   *       content:
-   *         application/json:
-   *           schema:
-   *             $ref: '#/components/schemas/CreateUserRequest'
    *     responses:
    *       201:
-   *         description: User account created successfully.
-   *       400:
-   *         description: Validation error or duplicate email.
+   *         description: User account created.
    */
   router.post("/users/create", controller.createUser);
 
@@ -205,37 +242,25 @@ export function createSuperadminRouter(
    * @openapi
    * /api/v1/superadmin/municipalities:
    *   get:
-   *     summary: Fetch all municipalities
-   *     description: Returns a list of all registered municipalities in the system.
+   *     summary: Fetch all active municipalities with joined province & district details
    *     tags: [Superadmin API]
    *     security:
    *       - BearerAuth: []
    *     responses:
    *       200:
-   *         description: Municipalities retrieved successfully.
+   *         description: Active municipalities retrieved successfully.
    */
   router.get("/municipalities", controller.getMunicipalities);
 
   /**
    * @openapi
    * /api/v1/superadmin/municipalities/{id}:
+   *   put:
+   *     summary: Update a municipality
+   *     tags: [Superadmin API]
    *   delete:
    *     summary: Delete a municipality
-   *     description: Deletes a municipality by its ID.
    *     tags: [Superadmin API]
-   *     security:
-   *       - BearerAuth: []
-   *     parameters:
-   *       - in: path
-   *         name: id
-   *         required: true
-   *         schema:
-   *           type: string
-   *           format: uuid
-   *         description: The UUID of the municipality.
-   *     responses:
-   *       200:
-   *         description: Municipality deleted successfully.
    */
   router.put("/municipalities/:id", controller.updateMunicipality);
   router.delete("/municipalities/:id", controller.deleteMunicipality);

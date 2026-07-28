@@ -9,7 +9,12 @@ export type UserRole =
   | "staff"
   | "citizen";
 
-export type AccountStatus = "active" | "inactive" | "suspended";
+export type AccountStatus =
+  | "invited"
+  | "pending_onboarding"
+  | "active"
+  | "expired"
+  | "suspended";
 export type EmployeeStatus = "active" | "inactive" | "suspended" | "terminated";
 export type Gender = "male" | "female" | "other" | "prefer_not_to_say";
 export type NotificationPref = "email" | "sms" | "both" | "none";
@@ -34,11 +39,22 @@ export type DepartmentCategory =
 export type RecordType = "complaint" | "request" | "inquiry";
 export type ComplaintStatus =
   | "pending"
+  | "assigned"
   | "under_review"
   | "in_progress"
   | "resolved"
   | "rejected"
-  | "closed";
+  | "closed"
+  | "escalated"
+  | "reopened"
+  | "cross_dept_pending";
+export type SeverityLevel = "low" | "medium" | "high" | "urgent";
+export type CrossDeptStatus =
+  | "none"
+  | "pending_collaboration"
+  | "in_collaboration"
+  | "joint_signoff";
+export type LocationSource = "registered_address" | "gps" | "manual";
 export type AssignmentStatus =
   | "pending"
   | "accepted"
@@ -46,6 +62,87 @@ export type AssignmentStatus =
   | "completed"
   | "cancelled"
   | "reassigned";
+
+export interface ComplaintCategoryRow {
+  id: string;
+  category_name: string;
+  department_category: DepartmentCategory;
+  department_id: string | null;
+  default_priority: Priority;
+  default_sla_hours: number;
+  created_at: string;
+}
+
+export interface ComplaintRow {
+  co_uid: string;
+  tracking_id: string;
+  citizen_id: string;
+  municipality_id: string;
+  category_id: string;
+  secondary_category_id: string | null;
+  assigned_department_id: string | null;
+  lead_department_id: string | null;
+  cross_dept_status: CrossDeptStatus;
+  ticket_type: RecordType;
+  title: string;
+  description: string;
+  priority: Priority;
+  severity_level: SeverityLevel;
+  status: ComplaintStatus;
+
+  location_source: LocationSource | null;
+  latitude: number | null;
+  longitude: number | null;
+  ward_number: number | null;
+  ward_id: string | null;
+  submission_step_completed: number;
+
+  current_staff_id: string | null;
+  current_team_id: string | null;
+
+  rejection_reason: string | null;
+  resolution_note: string | null;
+  sla_level: number;
+  sla_due_at: string | null;
+  sla_breached: boolean;
+  sla_breached_at: string | null;
+
+  escalated_to_munic_head: boolean;
+  escalated_at: string | null;
+  handoff_count: number;
+
+  submitted_date: string;
+  resolution_date: string | null;
+  updated_at: string;
+}
+
+export interface ComplaintCollaborationRow {
+  id: string;
+  complaint_id: string;
+  primary_dept_id: string;
+  supporting_dept_id: string;
+  initiated_by: string;
+  initiation_method: string;
+  inspection_note: string | null;
+  primary_sign_off: boolean;
+  supporting_sign_off: boolean;
+  primary_signed_at: string | null;
+  supporting_signed_at: string | null;
+  status: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ComplaintSignOffRow {
+  id: string;
+  complaint_id: string;
+  department_id: string;
+  signed_by: string;
+  role_at_time: UserRole;
+  decision: string;
+  note: string | null;
+  signed_at: string;
+}
 export type Priority = "low" | "medium" | "high" | "urgent";
 export type AudienceScope =
   | "individual"
@@ -102,6 +199,23 @@ export interface MunicipalityRow {
   updated_at: string;
 }
 
+export interface MunicipalityJoinedRow extends MunicipalityRow {
+  district_name: string;
+  province_name: string;
+  province_id: string;
+}
+
+export interface SuperadminAnalyticsRow {
+  total_municipalities: number;
+  total_departments: number;
+  total_staff: number;
+  total_citizens: number;
+  total_active_users: number;
+  total_suspended_users: number;
+  total_pending_complaints: number;
+  total_resolved_complaints: number;
+}
+
 export interface WardRow {
   id: string;
   municipality_id: string;
@@ -138,10 +252,51 @@ export interface ProfileRow {
   municipality_id: string | null;
   department_id: string | null;
   force_password_reset: boolean;
+  alternate_phone: string | null;
+  designation: string | null;
+  employee_id: string | null;
+  onboarding_wizard_completed: boolean;
+  onboarding_completed_at: string | null;
+  identity_type: string | null;
+  identity_number: string | null;
+  identity_document_url: string | null;
+  identity_verified_at: string | null;
   created_by: string | null;
   last_login_at: string | null;
   is_deleted: boolean;
   deleted_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface RoleInviteRow {
+  id: string;
+  email: string;
+  phone: string | null;
+  token: string;
+  role: UserRole;
+  municipality_id: string | null;
+  department_id: string | null;
+  staff_role: string | null;
+  additional_data: Record<string, unknown> | null;
+  invited_by: string | null;
+  expires_at: string;
+  used_at: string | null;
+  is_used: boolean;
+  is_revoked: boolean;
+  revoked_at: string | null;
+  created_at: string;
+}
+
+export interface OnboardingWizardProgressRow {
+  id: string;
+  profile_id: string;
+  current_step: number;
+  step1_completed: boolean;
+  step2_completed: boolean;
+  step3_completed: boolean;
+  step4_completed: boolean;
+  wizard_completed_at: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -165,6 +320,14 @@ export interface StaffRow {
   updated_at: string;
 }
 
+export type KycStatus = "unverified" | "pending" | "verified" | "rejected";
+export type IdentityType =
+  | "citizenship"
+  | "national_id"
+  | "passport"
+  | "driving_license"
+  | "voter_id";
+
 export interface CitizenRow {
   id: string;
   first_name: string | null;
@@ -176,11 +339,46 @@ export interface CitizenRow {
   profile_picture: string | null;
   current_address: string | null;
   permanent_address: string | null;
+
+  // Structured permanent address
+  permanent_province_id: string | null;
+  permanent_district_id: string | null;
+  permanent_municipality_id: string | null;
+  permanent_ward_id: string | null;
+  permanent_tole: string | null;
+
+  // Structured current address
+  current_province_id: string | null;
+  current_district_id: string | null;
+  current_municipality_id: string | null;
+  current_ward_id: string | null;
+  current_tole: string | null;
+
+  // Identity & KYC fields
+  identity_type: IdentityType | string | null;
+  identity_number: string | null;
+  identity_front_image_url: string | null;
+  identity_back_image_url: string | null;
+  kyc_status: KycStatus;
+  kyc_verified_by: string | null;
+  kyc_verified_at: string | null;
+  kyc_rejection_reason: string | null;
+
   ward_id: string | null;
   contact_number: string | null;
   notification_pref: NotificationPref;
   registered_at: string;
   updated_at: string;
+}
+
+export interface OtpCodeRow {
+  id: string;
+  phone: string;
+  otp_code: string;
+  purpose: string;
+  is_used: boolean;
+  expires_at: string;
+  created_at: string;
 }
 
 export interface ComplaintCategoryRow {
@@ -211,6 +409,8 @@ export interface ComplaintRow {
   updated_at: string;
 }
 
+export type TeamType = "single_department" | "cross_departmental";
+
 export interface MediaRow {
   id: string;
   context: MediaContext;
@@ -222,9 +422,14 @@ export interface MediaRow {
 
 export interface TeamRow {
   id: string;
-  department_id: string;
+  department_id: string | null;
+  municipality_id: string | null;
   team_name: string;
   description: string | null;
+  team_type: TeamType;
+  start_date: string | null;
+  end_date: string | null;
+  created_by: string | null;
   is_active: boolean;
   created_at: string;
   updated_at: string;
@@ -236,6 +441,21 @@ export interface TeamMemberRow {
   staff_id: string;
   is_leader: boolean;
   joined_at: string;
+  acknowledged_at: string | null;
+}
+
+export interface StaffAssignmentRow {
+  id: string;
+  staff_id: string;
+  team_id: string;
+  assigned_by: string | null;
+  start_date: string;
+  end_date: string;
+  is_emergency_override: boolean;
+  override_reason: string | null;
+  released_at: string | null;
+  release_reason: string | null;
+  created_at: string;
 }
 
 export interface ComplaintAssignmentRow {
@@ -297,16 +517,35 @@ export interface AnnouncementRow {
   updated_at: string;
 }
 
+export type NotificationType =
+  | "system"
+  | "complaint_update"
+  | "team_assignment"
+  | "handoff"
+  | "sla_warning"
+  | "sla_escalation"
+  | "broadcast";
+
+export type NotificationChannel = "in_app" | "push" | "sms" | "email";
+
 export interface NotificationRow {
   id: string;
   sender_id: string;
-  audience: AudienceScope;
+  type: NotificationType;
+  audience: AudienceScope | "ward_citizens";
   target_municipality_id: string | null;
   target_department_id: string | null;
   target_team_id: string | null;
+  target_ward_id: string | null;
   target_profile_id: string | null;
+  complaint_id: string | null;
   title: string;
   body: string;
+  channels: NotificationChannel[];
+  is_urgent: boolean;
+  scheduled_for: string | null;
+  sent_at: string | null;
+  delivery_status: Record<string, unknown> | null;
   created_at: string;
 }
 
@@ -314,7 +553,95 @@ export interface NotificationReadRow {
   id: string;
   notification_id: string;
   profile_id: string;
+  is_seen: boolean;
+  is_clicked: boolean;
   read_at: string;
+}
+
+export interface NotificationLogRow {
+  id: string;
+  notification_id: string;
+  profile_id: string;
+  channel: NotificationChannel;
+  status: "pending" | "sent" | "delivered" | "failed";
+  error_message: string | null;
+  sent_at: string | null;
+  delivered_at: string | null;
+  created_at: string;
+}
+
+export interface NotificationPreferenceRow {
+  id: string;
+  profile_id: string;
+  channel: NotificationChannel;
+  is_enabled: boolean;
+  disabled_types: NotificationType[];
+  quiet_hours_start: string | null;
+  quiet_hours_end: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface NotificationTemplateRow {
+  id: string;
+  trigger_event: string;
+  title_template: string;
+  body_template: string;
+  channels: NotificationChannel[];
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export type HandoffType = "peer_reassign" | "return_to_dept_head";
+
+export interface ComplaintHandoffRow {
+  id: string;
+  complaint_id: string;
+  from_staff_id: string | null;
+  to_staff_id: string | null;
+  to_department_head: boolean;
+  handoff_type: HandoffType;
+  handoff_reason: string;
+  handoff_note: string | null;
+  initiated_by: string | null;
+  created_at: string;
+}
+
+export interface SlaEventRow {
+  id: string;
+  complaint_id: string;
+  sla_level: number;
+  triggered_at: string;
+  status_at_time: ComplaintStatus;
+  notified_staff: boolean;
+  notified_dept_head: boolean;
+  notified_munic_head: boolean;
+  resolved_at: string | null;
+}
+
+export interface DepartmentPerformanceScoreRow {
+  id: string;
+  department_id: string;
+  municipality_id: string;
+  month: string;
+  total_complaints: number;
+  resolved_count: number;
+  sla_breach_count: number;
+  avg_resolution_hours: number | null;
+  avg_rating: number | null;
+  handoff_count: number;
+  escalation_count: number;
+  performance_score: number | null;
+  computed_at: string;
+}
+
+export interface PushTokenRow {
+  id: string;
+  profile_id: string;
+  token: string;
+  platform: "android" | "ios" | "web";
+  created_at: string;
 }
 
 export interface SystemSettingRow {
@@ -462,6 +789,18 @@ export interface Database {
         Update: any;
         Relationships: any[];
       };
+      complaint_collaborations: {
+        Row: ComplaintCollaborationRow;
+        Insert: any;
+        Update: any;
+        Relationships: any[];
+      };
+      complaint_sign_offs: {
+        Row: ComplaintSignOffRow;
+        Insert: any;
+        Update: any;
+        Relationships: any[];
+      };
       media: {
         Row: MediaRow;
         Insert: any;
@@ -476,6 +815,12 @@ export interface Database {
       };
       team_members: {
         Row: TeamMemberRow;
+        Insert: any;
+        Update: any;
+        Relationships: any[];
+      };
+      staff_assignments: {
+        Row: StaffAssignmentRow;
         Insert: any;
         Update: any;
         Relationships: any[];
@@ -504,6 +849,12 @@ export interface Database {
         Update: any;
         Relationships: any[];
       };
+      otp_codes: {
+        Row: OtpCodeRow;
+        Insert: any;
+        Update: any;
+        Relationships: any[];
+      };
       notifications: {
         Row: NotificationRow;
         Insert: any;
@@ -512,6 +863,48 @@ export interface Database {
       };
       notification_reads: {
         Row: NotificationReadRow;
+        Insert: any;
+        Update: any;
+        Relationships: any[];
+      };
+      notification_logs: {
+        Row: NotificationLogRow;
+        Insert: any;
+        Update: any;
+        Relationships: any[];
+      };
+      notification_preferences: {
+        Row: NotificationPreferenceRow;
+        Insert: any;
+        Update: any;
+        Relationships: any[];
+      };
+      notification_templates: {
+        Row: NotificationTemplateRow;
+        Insert: any;
+        Update: any;
+        Relationships: any[];
+      };
+      push_tokens: {
+        Row: PushTokenRow;
+        Insert: any;
+        Update: any;
+        Relationships: any[];
+      };
+      complaint_handoffs: {
+        Row: ComplaintHandoffRow;
+        Insert: any;
+        Update: any;
+        Relationships: any[];
+      };
+      sla_events: {
+        Row: SlaEventRow;
+        Insert: any;
+        Update: any;
+        Relationships: any[];
+      };
+      department_performance_scores: {
+        Row: DepartmentPerformanceScoreRow;
         Insert: any;
         Update: any;
         Relationships: any[];
@@ -534,9 +927,44 @@ export interface Database {
         Update: any;
         Relationships: any[];
       };
+      role_invites: {
+        Row: RoleInviteRow;
+        Insert: any;
+        Update: any;
+        Relationships: any[];
+      };
+      onboarding_wizard_progress: {
+        Row: OnboardingWizardProgressRow;
+        Insert: any;
+        Update: any;
+        Relationships: any[];
+      };
     };
     Views: {
-      [_ in never]: never;
+      v_active_municipalities: {
+        Row: MunicipalityJoinedRow;
+        Insert: any;
+        Update: any;
+        Relationships: any[];
+      };
+      v_inactive_municipalities: {
+        Row: MunicipalityJoinedRow;
+        Insert: any;
+        Update: any;
+        Relationships: any[];
+      };
+      v_municipality_detail: {
+        Row: MunicipalityJoinedRow;
+        Insert: any;
+        Update: any;
+        Relationships: any[];
+      };
+      v_superadmin_analytics: {
+        Row: SuperadminAnalyticsRow;
+        Insert: any;
+        Update: any;
+        Relationships: any[];
+      };
     };
     Functions: {
       admin_set_user_role: {
@@ -563,6 +991,9 @@ export interface Database {
       audit_action: AuditAction;
       severity: Severity;
       media_context: MediaContext;
+      handoff_type: HandoffType;
+      notification_type: NotificationType;
+      notification_channel: NotificationChannel;
     };
     CompositeTypes: {
       [_ in never]: never;

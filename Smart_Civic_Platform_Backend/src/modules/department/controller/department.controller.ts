@@ -1,4 +1,5 @@
 import { Response } from "express";
+import crypto from "crypto";
 import { DepartmentService } from "../services/department.service";
 import { createUserService } from "../../auth/services/auth.service";
 
@@ -7,24 +8,36 @@ export class DepartmentController {
 
   setupTeam = async (req: any, res: Response): Promise<void> => {
     try {
-      const { team_name, description, member_staff_ids, leader_staff_id } = req.body;
-      if (!team_name) {
-        res
-          .status(400)
-          .json({
-            success: false,
-            error:
-              "Team designation name is required.",
-          });
+      const {
+        team_name,
+        description,
+        start_date,
+        end_date,
+        member_staff_ids,
+        leader_staff_id,
+        is_emergency_override,
+        override_reason,
+      } = req.body;
+
+      if (!team_name || !start_date || !end_date) {
+        res.status(400).json({
+          success: false,
+          error: "team_name, start_date, and end_date are required fields.",
+        });
         return;
       }
 
       const team = await this.service.buildDeploymentTeam(
         req.departmentId,
         team_name,
+        start_date,
+        end_date,
+        req.user?.id,
         description,
         Array.isArray(member_staff_ids) ? member_staff_ids : [],
         leader_staff_id,
+        is_emergency_override ?? false,
+        override_reason
       );
       res.status(201).json({ success: true, data: team });
     } catch (error: any) {
@@ -163,49 +176,86 @@ export class DepartmentController {
     try {
       const { email, password, full_name, phone, expertise } = req.body;
 
-      if (!email || !password || !full_name) {
+      if (!email || !full_name) {
         res.status(400).json({
           success: false,
-          error: "Missing required fields: email, password, full_name.",
+          error: "Missing required fields: email, full_name.",
         });
         return;
       }
 
-      // Resolve the parent municipality_id from the department
-      const municipalityId = await this.service.getMunicipalityId(
-        req.departmentId,
-      );
+      // Department head can ONLY create staff role accounts
+      if (req.body.role && req.body.role !== "staff") {
+        res.status(403).json({
+          success: false,
+          error: "Department head can only create staff role accounts.",
+        });
+        return;
+      }
 
-      const profile = await createUserService({
+      // Check duplicate email
+      const emailExists = await this.service.checkEmailExists(email);
+      if (emailExists) {
+        res.status(409).json({
+          success: false,
+          error: "A user with this email already exists.",
+        });
+        return;
+      }
+
+      const municipalityId = await this.service.getMunicipalityId(req.departmentId);
+
+      const { RoleInviteService } = require("../../../service/role-invite.service");
+      const inviteService = new RoleInviteService((this.service as any).repo.supabaseAdmin);
+
+      const invite = await inviteService.createInvite({
+        invited_by: req.user.id,
         email,
-        password,
-        full_name,
+        phone,
         role: "staff",
         municipality_id: municipalityId,
         department_id: req.departmentId,
-        phone,
-        created_by: req.user.id,
+        additional_data: { full_name, expertise },
       });
 
-      // Resolve expertise: use passed expertise, or fallback to department category/name
-      let resolvedExpertise = expertise;
-      if (!resolvedExpertise) {
-        const dept = await this.service.getDepartmentCategoryAndName(req.departmentId);
-        resolvedExpertise = dept.department_category
-          ? dept.department_category.replace(/_/g, " ").replace(/\b\w/g, (c: string) => c.toUpperCase())
-          : dept.department_name;
-      }
+      res.status(201).json({
+        success: true,
+        message: "Staff role invitation dispatched successfully.",
+        data: {
+          invite_id: invite.id,
+          email: invite.email,
+          role: invite.role,
+          invite_token: invite.token,
+          expires_at: invite.expires_at,
+          invite_link: `/accept-invite?token=${invite.token}`,
+        },
+      });
+    } catch (error: any) {
+      res.status(400).json({ success: false, error: error.message });
+    }
+  };
 
-      // The DB trigger creates the staff row — now update it with expertise
-      if (resolvedExpertise) {
-        await this.service.setStaffExpertise(
-          profile.id,
-          req.departmentId,
-          resolvedExpertise,
-        );
+  updateStaffStatus = async (req: any, res: Response): Promise<void> => {
+    try {
+      const { staffId } = req.params;
+      const { status } = req.body;
+      if (!status || !["active", "inactive", "suspended"].includes(status)) {
+        res.status(400).json({ success: false, error: "Status must be active, inactive, or suspended." });
+        return;
       }
+      await this.service.updateStaffAccountStatus(staffId, req.departmentId, status);
+      res.status(200).json({ success: true, message: "Staff account status updated successfully." });
+    } catch (error: any) {
+      res.status(400).json({ success: false, error: error.message });
+    }
+  };
 
-      res.status(201).json({ success: true, data: profile });
+  resetStaffPassword = async (req: any, res: Response): Promise<void> => {
+    try {
+      const { staffId } = req.params;
+      const newPassword = crypto.randomBytes(6).toString("hex");
+      await this.service.resetStaffPassword(staffId, req.departmentId, newPassword);
+      res.status(200).json({ success: true, data: { temp_password: newPassword } });
     } catch (error: any) {
       res.status(400).json({ success: false, error: error.message });
     }
@@ -310,6 +360,136 @@ export class DepartmentController {
       res.status(200).json({ success: true, message: `Member ${is_leader ? "promoted to" : "demoted from"} leader.` });
     } catch (error: any) {
       res.status(400).json({ success: false, error: error.message });
+    }
+  };
+
+  // ===== MULTI-DEPARTMENT & COLLABORATION HANDLERS =====
+
+  getQueue = async (req: any, res: Response): Promise<void> => {
+    try {
+      const statusFilter = req.query.status as string | undefined;
+      const data = await this.service.getDepartmentQueue(req.departmentId, statusFilter);
+      res.status(200).json({ success: true, data });
+    } catch (error: any) {
+      res.status(500).json({ success: false, error: error.message });
+    }
+  };
+
+  getCollaborations = async (req: any, res: Response): Promise<void> => {
+    try {
+      const data = await this.service.getCollaborations(req.departmentId);
+      res.status(200).json({ success: true, data });
+    } catch (error: any) {
+      res.status(500).json({ success: false, error: error.message });
+    }
+  };
+
+  requestCollaboration = async (req: any, res: Response): Promise<void> => {
+    try {
+      const { complaintId } = req.params;
+      const { supporting_department_id, inspection_note } = req.body;
+
+      if (!supporting_department_id) {
+        res.status(400).json({ success: false, error: "supporting_department_id is required." });
+        return;
+      }
+
+      const data = await this.service.requestCollaboration(
+        req.departmentId,
+        complaintId,
+        supporting_department_id,
+        req.user.id,
+        inspection_note
+      );
+
+      res.status(201).json({
+        success: true,
+        message: "Multi-department collaboration requested.",
+        data,
+      });
+    } catch (error: any) {
+      res.status(400).json({ success: false, error: error.message });
+    }
+  };
+
+  submitSignOff = async (req: any, res: Response): Promise<void> => {
+    try {
+      const { complaintId } = req.params;
+      const { decision, note } = req.body;
+
+      if (!decision || !["approved", "rejected"].includes(decision)) {
+        res.status(400).json({ success: false, error: "decision must be 'approved' or 'rejected'." });
+        return;
+      }
+
+      const result = await this.service.submitSignOff(
+        req.departmentId,
+        complaintId,
+        req.user.id,
+        req.user.role || "department_head",
+        decision,
+        note
+      );
+
+      res.status(200).json({
+        success: true,
+        message: "Sign-off recorded successfully.",
+        data: result,
+      });
+    } catch (error: any) {
+      res.status(400).json({ success: false, error: error.message });
+    }
+  };
+
+  exportComplaintsCsv = async (req: any, res: Response): Promise<void> => {
+    try {
+      const csvData = await this.service.exportComplaintsCsv(req.departmentId);
+      res.setHeader("Content-Type", "text/csv");
+      res.setHeader("Content-Disposition", `attachment; filename="department_complaints.csv"`);
+      res.status(200).send(csvData);
+    } catch (error: any) {
+      res.status(500).json({ success: false, error: error.message });
+    }
+  };
+
+  assignComplaintToTeam = async (req: any, res: Response): Promise<void> => {
+    try {
+      const { teamName } = req.params;
+      const { complaint_id, notes } = req.body;
+
+      if (!complaint_id) {
+        res.status(400).json({ success: false, error: "complaint_id is required." });
+        return;
+      }
+
+      const data = await this.service.assignComplaintToTeam(
+        req.departmentId,
+        decodeURIComponent(teamName),
+        complaint_id,
+        req.user.id,
+        notes
+      );
+
+      res.status(201).json({
+        success: true,
+        message: "Grievance ticket assigned to operational team.",
+        data,
+      });
+    } catch (error: any) {
+      res.status(400).json({ success: false, error: error.message });
+    }
+  };
+
+  getTeamComplaints = async (req: any, res: Response): Promise<void> => {
+    try {
+      const { teamName } = req.params;
+      const data = await this.service.getTeamComplaints(
+        req.departmentId,
+        decodeURIComponent(teamName)
+      );
+      res.status(200).json({ success: true, data });
+    } catch (error: any) {
+      res.status(500).json({ success: false, error: error.message });
     }
   };
 }

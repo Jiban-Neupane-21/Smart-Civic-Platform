@@ -25,26 +25,35 @@ export const verifyMunicipalityHeadContext = (supabase: SupabaseClient) => {
         .eq("id", userId)
         .single();
         
-      if (
-        profileError ||
-        !profile ||
-        profile.account_status !== "active" ||
-        profile.role !== "municipality_head"
-      ) {
-        res
-          .status(403)
-          .json({
-            success: false,
-            error:
-              "Access Denied: Requires active Municipality Head privileges.",
-          });
+      if (profileError || !profile) {
+        res.status(403).json({ success: false, error: "Access Denied: Requires active Municipality Head privileges." });
+        return;
+      }
+
+      if (profile.account_status === "suspended") {
+        res.status(403).json({ success: false, error: "Account suspended. Contact platform administrator." });
+        return;
+      }
+
+      if (profile.account_status === "invited") {
+        res.status(403).json({ success: false, error: "Invitation not accepted yet. Accept your invitation link first." });
+        return;
+      }
+
+      if (profile.account_status === "pending_onboarding" && !req.path?.startsWith("/onboarding")) {
+        res.status(403).json({ success: false, error: "Onboarding incomplete. Complete your profile activation wizard first." });
+        return;
+      }
+
+      if (profile.role !== "municipality_head" && profile.role !== "superadmin") {
+        res.status(403).json({ success: false, error: "Access Denied: Requires Municipality Head privileges." });
         return;
       }
 
       // Find the specific municipality managed by this user
       const { data: municipality, error: muniError } = await supabase
         .from("municipalities")
-        .select("m_uid")
+        .select("id")
         .eq("head_profile_id", userId)
         .single();
 
@@ -60,7 +69,7 @@ export const verifyMunicipalityHeadContext = (supabase: SupabaseClient) => {
       }
 
       // Append the verified municipality ID directly to the request object
-      req.municipalityId = municipality.m_uid;
+      req.municipalityId = municipality.id;
       next();
     } catch (err: any) {
       res

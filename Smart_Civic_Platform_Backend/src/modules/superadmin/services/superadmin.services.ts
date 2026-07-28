@@ -33,8 +33,8 @@ export class SuperadminService {
     return await this.repo.getProfileIdByEmail(email);
   }
 
-  async updateMunicipalityHead(m_uid: string, profile_id: string) {
-    return await this.repo.updateMunicipalityHead(m_uid, profile_id);
+  async updateMunicipalityHead(id: string, profile_id: string) {
+    return await this.repo.updateMunicipalityHead(id, profile_id);
   }
 
   async adjustUserAuthorization(targetUserId: string, targetRole: UserRole) {
@@ -107,6 +107,69 @@ export class SuperadminService {
       return await this.repo.deleteMunicipality(id);
     } catch (error: any) {
       throw new Error(`Failed to delete municipality: ${error.message}`);
+    }
+  }
+
+  // ===== NEW REFERENCE & PROVISIONING METHODS =====
+
+  async getProvinces() {
+    try {
+      return await this.repo.getProvinces();
+    } catch (error: any) {
+      throw new Error(`Failed to fetch provinces: ${error.message}`);
+    }
+  }
+
+  async getDistricts(provinceId?: string) {
+    try {
+      return await this.repo.getDistricts(provinceId);
+    } catch (error: any) {
+      throw new Error(`Failed to fetch districts: ${error.message}`);
+    }
+  }
+
+  async getReferenceMunicipalities(districtId?: string, isActive?: boolean) {
+    try {
+      return await this.repo.getReferenceMunicipalities(districtId, isActive);
+    } catch (error: any) {
+      throw new Error(`Failed to fetch reference municipalities: ${error.message}`);
+    }
+  }
+
+  async getMunicipalityDetail(id: string) {
+    try {
+      return await this.repo.getMunicipalityDetail(id);
+    } catch (error: any) {
+      throw new Error(`Failed to fetch municipality detail: ${error.message}`);
+    }
+  }
+
+  async getWards(municipalityId: string) {
+    try {
+      return await this.repo.getWards(municipalityId);
+    } catch (error: any) {
+      throw new Error(`Failed to fetch wards: ${error.message}`);
+    }
+  }
+
+  async activateMunicipality(
+    id: string,
+    headProfileId: string,
+    headName: string,
+    headEmail: string
+  ) {
+    try {
+      return await this.repo.activateMunicipality(id, headProfileId, headName, headEmail);
+    } catch (error: any) {
+      throw new Error(`Failed to activate municipality: ${error.message}`);
+    }
+  }
+
+  async createWards(municipalityId: string, count: number) {
+    try {
+      return await this.repo.createWards(municipalityId, count);
+    } catch (error: any) {
+      throw new Error(`Failed to auto-create wards: ${error.message}`);
     }
   }
 }

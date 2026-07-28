@@ -56,11 +56,22 @@ export class DepartmentRepository {
     return data;
   }
 
+  async checkEmailExists(email: string): Promise<boolean> {
+    const { data, error } = await this.supabaseAdmin
+      .from("profiles")
+      .select("id")
+      .eq("email", email)
+      .maybeSingle();
+
+    if (error) throw error;
+    return !!data;
+  }
+
   // Section 8: Lists all staff profiles operating under this department
   async getDepartmentStaff(departmentId: string) {
     const { data, error } = await this.supabaseAdmin
       .from("staff")
-      .select("s_uid, employee_id, expertise, profiles(full_name, email)")
+      .select("id, employee_id, expertise, profiles(full_name, email)")
       .eq("primary_department_id", departmentId);
 
     if (error) throw error;
@@ -78,7 +89,7 @@ export class DepartmentRepository {
       this.supabaseAdmin
         .from("departments")
         .select("department_name, department_category")
-        .eq("d_uid", departmentId)
+        .eq("id", departmentId)
         .single(),
       this.supabaseAdmin
         .from("complaints")
@@ -135,7 +146,7 @@ export class DepartmentRepository {
     const { data: staffRecord, error: fetchError } = await this.supabaseAdmin
       .from("staff")
       .select("profile_id, primary_department_id")
-      .eq("s_uid", staffId)
+      .eq("id", staffId)
       .eq("primary_department_id", departmentId)
       .single();
 
@@ -173,7 +184,7 @@ export class DepartmentRepository {
       const { data, error: staffError } = await this.supabaseAdmin
         .from("staff")
         .update(staffUpdates)
-        .eq("s_uid", staffId)
+        .eq("id", staffId)
         .eq("primary_department_id", departmentId)
         .select()
         .single();
@@ -210,12 +221,12 @@ export class DepartmentRepository {
     const { data: staffRecord, error: fetchError } = await this.supabaseAdmin
       .from("staff")
       .select(
-        `s_uid, profile_id, employee_id, expertise, contact_number,
+        `id, profile_id, employee_id, expertise, contact_number,
          gender, date_of_birth, personal_address, employee_status,
          primary_department_id, municipality_id,
          profiles(full_name, email, phone)`,
       )
-      .eq("s_uid", staffId)
+      .eq("id", staffId)
       .eq("primary_department_id", departmentId)
       .single();
 
@@ -259,12 +270,51 @@ export class DepartmentRepository {
     return { success: true };
   }
 
+  async updateStaffAccountStatus(staffId: string, departmentId: string, status: string) {
+    const { data: staff, error: fetchErr } = await this.supabaseAdmin
+      .from("staff")
+      .select("profile_id")
+      .eq("id", staffId)
+      .eq("primary_department_id", departmentId)
+      .single();
+
+    if (fetchErr || !staff) throw new Error("Staff record not found in this department.");
+
+    const { error } = await this.supabaseAdmin
+      .from("profiles")
+      .update({ account_status: status as any, updated_at: new Date().toISOString() })
+      .eq("id", staff.profile_id);
+
+    if (error) throw error;
+  }
+
+  async resetStaffPassword(staffId: string, departmentId: string, newPassword: string) {
+    const { data: staff, error: fetchErr } = await this.supabaseAdmin
+      .from("staff")
+      .select("profile_id")
+      .eq("id", staffId)
+      .eq("primary_department_id", departmentId)
+      .single();
+
+    if (fetchErr || !staff) throw new Error("Staff record not found in this department.");
+
+    const { error: authErr } = await this.supabaseAdmin.auth.admin.updateUserById(staff.profile_id, {
+      password: newPassword,
+    });
+    if (authErr) throw authErr;
+
+    await this.supabaseAdmin
+      .from("profiles")
+      .update({ force_password_reset: true, updated_at: new Date().toISOString() })
+      .eq("id", staff.profile_id);
+  }
+
   // Resolves the parent municipality_id for a given department
   async getDepartmentMunicipalityId(departmentId: string): Promise<string> {
     const { data, error } = await this.supabaseAdmin
       .from("departments")
       .select("municipality_id")
-      .eq("d_uid", departmentId)
+      .eq("id", departmentId)
       .single();
 
     if (error || !data) throw new Error("Department not found");
@@ -276,7 +326,7 @@ export class DepartmentRepository {
     const { data, error } = await this.supabaseAdmin
       .from("departments")
       .select("department_name, department_category")
-      .eq("d_uid", departmentId)
+      .eq("id", departmentId)
       .single();
 
     if (error || !data) throw new Error("Department not found");
@@ -285,16 +335,16 @@ export class DepartmentRepository {
 
   // ─── Team Management ─────────────────────────────────────────────────────────
 
-  // List all teams in a department with full member details
+  // List all teams in a department with full member details and time-bound metadata
   async getDepartmentTeams(departmentId: string) {
     const { data, error } = await this.supabaseAdmin
       .from("teams")
       .select(`
         *,
         team_members (
-          staff_id, is_leader, joined_at,
+          staff_id, is_leader, joined_at, acknowledged_at,
           staff (
-            s_uid, employee_id, expertise,
+            id, employee_id, expertise,
             profiles ( full_name, email )
           )
         )
@@ -303,7 +353,26 @@ export class DepartmentRepository {
       .order("created_at", { ascending: false });
 
     if (error) throw error;
-    return data;
+
+    const now = new Date();
+    return (data || []).map((t: any) => {
+      let daysRemaining: number | null = null;
+      let isExpired = false;
+
+      if (t.end_date) {
+        const endDate = new Date(t.end_date);
+        const diffMs = endDate.getTime() - now.getTime();
+        daysRemaining = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+        isExpired = diffMs <= 0;
+      }
+
+      return {
+        ...t,
+        days_remaining: daysRemaining,
+        is_expired: isExpired,
+        member_count: t.team_members?.length || 0,
+      };
+    });
   }
 
   // Get a single team by team_name (unique per department)
@@ -315,7 +384,7 @@ export class DepartmentRepository {
         team_members (
           staff_id, is_leader, joined_at,
           staff (
-            s_uid, employee_id, expertise,
+            id, employee_id, expertise,
             profiles ( full_name, email, phone )
           )
         )
@@ -433,7 +502,6 @@ export class DepartmentRepository {
   ) {
     const teamPk = await this.resolveTeamPk(teamName, departmentId);
 
-    // If setting as leader, remove existing leader first
     if (isLeader) {
       await this.supabaseAdmin
         .from("team_members")
@@ -449,5 +517,129 @@ export class DepartmentRepository {
       .eq("staff_id", staffId);
 
     if (error) throw error;
+  }
+
+  // ===== MULTI-DEPARTMENT QUEUE & COLLABORATION METHODS =====
+
+  async getDepartmentComplaintsQueue(departmentId: string, statusFilter?: string) {
+    // 1. Primary assigned / lead complaints
+    let query = this.supabaseAdmin
+      .from("complaints")
+      .select(`
+        co_uid, tracking_id, title, description, status, priority, severity_level,
+        cross_dept_status, location_source, ward_number, submitted_date, sla_due_at, sla_breached,
+        complaint_categories ( category_name ),
+        citizens ( first_name, last_name, contact_number )
+      `)
+      .or(`assigned_department_id.eq.${departmentId},lead_department_id.eq.${departmentId}`);
+
+    if (statusFilter) query = query.eq("status", statusFilter);
+
+    const { data: primaryData, error: primaryErr } = await query.order("submitted_date", { ascending: false });
+    if (primaryErr) throw primaryErr;
+
+    // 2. Supporting department complaints via collaborations
+    const { data: collabs } = await this.supabaseAdmin
+      .from("complaint_collaborations")
+      .select("complaint_id")
+      .eq("supporting_dept_id", departmentId)
+      .eq("status", "active");
+
+    let supportingData: any[] = [];
+    if (collabs && collabs.length > 0) {
+      const collabIds = collabs.map((c) => c.complaint_id);
+      let suppQuery = this.supabaseAdmin
+        .from("complaints")
+        .select(`
+          co_uid, tracking_id, title, description, status, priority, severity_level,
+          cross_dept_status, location_source, ward_number, submitted_date, sla_due_at, sla_breached,
+          complaint_categories ( category_name ),
+          citizens ( first_name, last_name, contact_number )
+        `)
+        .in("co_uid", collabIds);
+
+      if (statusFilter) suppQuery = suppQuery.eq("status", statusFilter);
+
+      const { data: suppList } = await suppQuery;
+      if (suppList) supportingData = suppList;
+    }
+
+    // Merge and deduplicate by co_uid
+    const mergedMap = new Map<string, any>();
+    [...(primaryData || []), ...supportingData].forEach((item) => mergedMap.set(item.co_uid, item));
+
+    return Array.from(mergedMap.values());
+  }
+
+  async getCollaborationRequests(departmentId: string) {
+    const { data, error } = await this.supabaseAdmin
+      .from("complaint_collaborations")
+      .select(`
+        id, complaint_id, initiation_method, inspection_note,
+        primary_sign_off, supporting_sign_off, status, created_at,
+        complaint:complaints!complaint_id(co_uid, tracking_id, title, status, severity_level),
+        primary_department:departments!primary_dept_id(department_name),
+        supporting_department:departments!supporting_dept_id(department_name)
+      `)
+      .or(`primary_dept_id.eq.${departmentId},supporting_dept_id.eq.${departmentId}`)
+      .order("created_at", { ascending: false });
+
+    if (error) throw error;
+    return data || [];
+  }
+
+  // ===== COMPLAINT-TEAM ASSIGNMENT METHODS =====
+
+  async assignComplaintToTeam(
+    complaintId: string,
+    teamId: string,
+    assignedBy: string,
+    notes?: string
+  ) {
+    await this.supabaseAdmin
+      .from("complaint_assignments")
+      .update({ is_current: false })
+      .eq("complaint_id", complaintId);
+
+    const { data, error } = await this.supabaseAdmin
+      .from("complaint_assignments")
+      .insert({
+        complaint_id: complaintId,
+        team_id: teamId,
+        assigned_by: assignedBy,
+        status: "pending",
+        is_current: true,
+        notes: notes || null,
+        assigned_at: new Date().toISOString(),
+      })
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    await this.supabaseAdmin
+      .from("complaints")
+      .update({
+        status: "assigned",
+        current_team_id: teamId,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("co_uid", complaintId);
+
+    return data;
+  }
+
+  async getTeamComplaints(teamId: string) {
+    const { data, error } = await this.supabaseAdmin
+      .from("complaint_assignments")
+      .select(`
+        id, status, notes, assigned_at,
+        complaint:complaints!complaint_id(co_uid, tracking_id, title, description, status, priority, severity_level, sla_due_at)
+      `)
+      .eq("team_id", teamId)
+      .eq("is_current", true);
+
+    if (error) throw error;
+    return data || [];
   }
 }

@@ -27,36 +27,126 @@ export function createDepartmentRouter(
 ): Router {
   const router = Router();
 
-  // Route Wide Protection Components
   router.use(requireAuth(supabaseAdminClient));
   router.use(verifyDepartmentHeadContext(supabaseAdminClient));
 
   /**
-   * @openapi
-   * /api/v1/department/dashboard:
+   * @swagger
+   * /api/department/dashboard:
    *   get:
-   *     summary: Fetch the department operational summary
-   *     description: Aggregates complaint status counts, resolution rate, staff roster size, active teams, and the most recent complaints for the authenticated department head's department.
+   *     summary: Department Operational Dashboard KPI Metrics
    *     tags: [Department API]
-   *     security:
-   *       - BearerAuth: []
+   *     security: [{ BearerAuth: [] }]
    *     responses:
    *       200:
-   *         description: Department dashboard summary retrieved successfully.
-   *       403:
-   *         description: Caller is not an active department head.
+   *         description: Metrics loaded.
    */
   router.get("/dashboard", controller.getDashboard);
 
   /**
-   * @openapi
-   * /api/v1/department/teams/create:
-   *   post:
-   *     summary: Create an incident response team
-   *     description: Instantiates an internal field squad within the department to handle a specific grievance.
+   * @swagger
+   * /api/department/queue:
+   *   get:
+   *     summary: Department complaint triage queue
    *     tags: [Department API]
-   *     security:
-   *       - BearerAuth: []
+   *     security: [{ BearerAuth: [] }]
+   *     responses:
+   *       200:
+   *         description: Queue items.
+   */
+  router.get("/queue", controller.getQueue);
+
+  /**
+   * @swagger
+   * /api/department/collaborations:
+   *   get:
+   *     summary: List cross-department collaboration requests
+   *     tags: [Department API]
+   *     security: [{ BearerAuth: [] }]
+   *     responses:
+   *       200:
+   *         description: Collaborations list.
+   */
+  router.get("/collaborations", controller.getCollaborations);
+
+  /**
+   * @swagger
+   * /api/department/complaints/export:
+   *   get:
+   *     summary: Export department complaints as CSV dataset
+   *     tags: [Department API]
+   *     security: [{ BearerAuth: [] }]
+   *     responses:
+   *       200:
+   *         description: CSV file generated.
+   */
+  router.get("/complaints/export", controller.exportComplaintsCsv);
+
+  /**
+   * @swagger
+   * /api/department/complaints/{complaintId}/collaborate:
+   *   post:
+   *     summary: Initiate cross-department collaboration request
+   *     tags: [Department API]
+   *     security: [{ BearerAuth: [] }]
+   *     parameters:
+   *       - in: path
+   *         name: complaintId
+   *         required: true
+   *         schema:
+   *           type: string
+   *           format: uuid
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             $ref: '#/components/schemas/DepartmentCollaborationRequest'
+   *     responses:
+   *       200:
+   *         description: Collaboration requested.
+   */
+  router.post(
+    "/complaints/:complaintId/collaborate",
+    controller.requestCollaboration
+  );
+
+  /**
+   * @swagger
+   * /api/department/complaints/{complaintId}/sign-off:
+   *   post:
+   *     summary: Submit supporting department inspection sign-off decision
+   *     tags: [Department API]
+   *     security: [{ BearerAuth: [] }]
+   *     parameters:
+   *       - in: path
+   *         name: complaintId
+   *         required: true
+   *         schema:
+   *           type: string
+   *           format: uuid
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             $ref: '#/components/schemas/DepartmentSignOffRequest'
+   *     responses:
+   *       200:
+   *         description: Sign-off recorded.
+   */
+  router.post(
+    "/complaints/:complaintId/sign-off",
+    controller.submitSignOff
+  );
+
+  /**
+   * @swagger
+   * /api/department/teams/create:
+   *   post:
+   *     summary: Provision internal operational team
+   *     tags: [Department API]
+   *     security: [{ BearerAuth: [] }]
    *     requestBody:
    *       required: true
    *       content:
@@ -65,72 +155,71 @@ export function createDepartmentRouter(
    *             $ref: '#/components/schemas/CreateTeamRequest'
    *     responses:
    *       201:
-   *         description: Response team registered and active.
+   *         description: Team created.
    */
   router.post("/teams/create", controller.setupTeam);
+  router.post("/teams/assign-member", controller.attachStaff);
 
   /**
-   * @openapi
-   * /api/v1/department/teams/assign-member:
-   *   post:
-   *     summary: Attach active personnel to a response team
-   *     description: Links a specific staff profile to an active department team, optionally assigning them as a leader.
+   * @swagger
+   * /api/department/teams:
+   *   get:
+   *     summary: List department operational teams
    *     tags: [Department API]
-   *     security:
-   *       - BearerAuth: []
+   *     security: [{ BearerAuth: [] }]
+   *     responses:
+   *       200:
+   *         description: Teams list.
+   */
+  router.get("/teams", controller.getTeams);
+  router.get("/teams/:teamName", controller.getTeamDetails);
+  router.patch("/teams/:teamName", controller.updateTeam);
+  router.delete("/teams/:teamName/members/:staffId", controller.removeMember);
+  router.patch("/teams/:teamName/members/:staffId", controller.toggleLeader);
+
+  /**
+   * @swagger
+   * /api/department/teams/{teamName}/assign-complaint:
+   *   post:
+   *     summary: Assign complaint ticket to an operational team
+   *     tags: [Department API]
+   *     security: [{ BearerAuth: [] }]
+   *     parameters:
+   *       - in: path
+   *         name: teamName
+   *         required: true
+   *         schema:
+   *           type: string
    *     requestBody:
    *       required: true
    *       content:
    *         application/json:
    *           schema:
-   *             $ref: '#/components/schemas/AssignTeamMemberRequest'
+   *             $ref: '#/components/schemas/AssignComplaintToTeamRequest'
    *     responses:
-   *       201:
-   *         description: Staff profile linked to the team successfully.
+   *       200:
+   *         description: Ticket assigned to team.
    */
-  router.post("/teams/assign-member", controller.attachStaff);
-
-  // ─── Team Management ─────────────────────────────────────────────────────────
-
-  /** List all teams in the department with member details */
-  router.get("/teams", controller.getTeams);
-
-  /** Get a single team by name with full member details */
-  router.get("/teams/:teamName", controller.getTeamDetails);
-
-  /** Update team fields (name, description, is_active) */
-  router.patch("/teams/:teamName", controller.updateTeam);
-
-  /** Remove a staff member from a team */
-  router.delete("/teams/:teamName/members/:staffId", controller.removeMember);
-
-  /** Toggle leader status for a team member */
-  router.patch("/teams/:teamName/members/:staffId", controller.toggleLeader);
+  router.post("/teams/:teamName/assign-complaint", controller.assignComplaintToTeam);
+  router.get("/teams/:teamName/complaints", controller.getTeamComplaints);
 
   /**
-   * @openapi
-   * /api/v1/department/complaints/{complaintId}/state:
+   * @swagger
+   * /api/department/complaints/{complaintId}/state:
    *   patch:
-   *     summary: Transition the lifecycle state of an assigned complaint
-   *     description: Allows the department head to update a complaint to ongoing, resolved, or rejected, enforcing audit notes.
+   *     summary: Process complaint status transition (under_review, assigned, rejected)
    *     tags: [Department API]
-   *     security:
-   *       - BearerAuth: []
+   *     security: [{ BearerAuth: [] }]
    *     parameters:
    *       - in: path
    *         name: complaintId
    *         required: true
-   *         schema: { type: string, format: uuid }
-   *         description: Unique key id of the complaint.
-   *     requestBody:
-   *       required: true
-   *       content:
-   *         application/json:
-   *           schema:
-   *             $ref: '#/components/schemas/UpdateComplaintStateRequest'
+   *         schema:
+   *           type: string
+   *           format: uuid
    *     responses:
    *       200:
-   *         description: Complaint status updated and timestamp locked.
+   *         description: Status updated.
    */
   router.patch(
     "/complaints/:complaintId/state",
@@ -138,104 +227,37 @@ export function createDepartmentRouter(
   );
 
   /**
-   * @openapi
-   * /api/v1/department/staff-roster:
+   * @swagger
+   * /api/department/staff-roster:
    *   get:
-   *     summary: Fetch department personnel roster
-   *     description: Returns the full list of staff profiles operating under this department head's jurisdiction.
+   *     summary: List department staff roster
    *     tags: [Department API]
-   *     security:
-   *       - BearerAuth: []
+   *     security: [{ BearerAuth: [] }]
    *     responses:
    *       200:
-   *         description: Roster retrieved successfully.
+   *         description: Staff roster.
    */
   router.get("/staff-roster", controller.getStaffRoster);
+  router.get("/staff", controller.getStaffRoster);
 
   /**
-   * @openapi
+   * @swagger
    * /api/department/staff/create:
    *   post:
-   *     summary: Create a staff user account in this department
-   *     description: Directly creates a new staff user under this department. The user is created with force_password_reset enabled. Department and municipality IDs are auto-filled from the authenticated department head's context.
+   *     summary: Dispatch staff invitation token
    *     tags: [Department API]
-   *     security:
-   *       - BearerAuth: []
-   *     requestBody:
-   *       required: true
-   *       content:
-   *         application/json:
-   *           schema:
-   *             $ref: '#/components/schemas/CreateUserRequest'
+   *     security: [{ BearerAuth: [] }]
    *     responses:
    *       201:
-   *         description: Staff account created successfully.
-   *       400:
-   *         description: Validation error or duplicate email.
+   *         description: Staff invite dispatched.
    */
   router.post("/staff/create", controller.createStaff);
+  router.post("/staff", controller.createStaff);
 
-  /**
-   * @openapi
-   * /api/v1/department/staff/{staffId}:
-   *   patch:
-   *     summary: Update a department staff member's profile
-   *     description: Allows the department head to edit staff details such as name, email, phone, expertise, status, and other personal information. Only staff belonging to this department can be modified.
-   *     tags: [Department API]
-   *     security:
-   *       - BearerAuth: []
-   *     parameters:
-   *       - in: path
-   *         name: staffId
-   *         required: true
-   *         schema: { type: string, format: uuid }
-   *         description: Unique staff record identifier (s_uid).
-   *     requestBody:
-   *       required: true
-   *       content:
-   *         application/json:
-   *           schema:
-   *             type: object
-   *             properties:
-   *               full_name: { type: string, description: "Staff full name (updates profile)." }
-   *               email: { type: string, format: email, description: "Staff email (updates profile)." }
-   *               phone: { type: string, description: "Staff phone (updates profile)." }
-   *               expertise: { type: string, description: "Area of expertise." }
-   *               contact_number: { type: string, description: "Direct contact number." }
-   *               employee_status: { type: string, enum: [active, inactive, suspended], description: "Employment status." }
-   *               gender: { type: string, description: "Gender." }
-   *               date_of_birth: { type: string, format: date, description: "Date of birth." }
-   *               personal_address: { type: string, description: "Residential address." }
-   *     responses:
-   *       200:
-   *         description: Staff record updated successfully.
-   *       400:
-   *         description: Validation error or staff not found in this department.
-   */
   router.patch("/staff/:staffId", controller.updateStaff);
-
-  /**
-   * @openapi
-   * /api/v1/department/staff/{staffId}:
-   *   delete:
-   *     summary: Soft-delete a department staff member
-   *     description: Marks the staff record as deleted and deactivates their linked profile. The staff member will no longer be able to log in. Only staff belonging to this department can be removed.
-   *     tags: [Department API]
-   *     security:
-   *       - BearerAuth: []
-   *     parameters:
-   *       - in: path
-   *         name: staffId
-   *         required: true
-   *         schema: { type: string, format: uuid }
-   *         description: Unique staff record identifier (s_uid).
-   *     responses:
-   *       200:
-   *         description: Staff member deactivated successfully.
-   *       400:
-   *         description: Staff not found or access denied.
-   */
   router.delete("/staff/:staffId", controller.removeStaff);
+  router.patch("/staff/:staffId/status", controller.updateStaffStatus);
+  router.post("/staff/:staffId/reset-password", controller.resetStaffPassword);
 
   return router;
 }

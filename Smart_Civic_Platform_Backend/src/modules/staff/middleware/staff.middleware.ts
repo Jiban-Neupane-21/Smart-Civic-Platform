@@ -24,8 +24,28 @@ export const verifyStaffContext = (supabase: SupabaseClient) => {
         .eq('id', userId)
         .single();
 
-      if (profileError || !profile || profile.account_status !== 'active' || profile.role !== 'staff') {
+      if (profileError || !profile) {
         res.status(403).json({ success: false, error: 'Access Denied: Requires active Field Staff permissions.' });
+        return;
+      }
+
+      if (profile.account_status === "suspended") {
+        res.status(403).json({ success: false, error: "Account suspended. Contact platform administrator." });
+        return;
+      }
+
+      if (profile.account_status === "invited") {
+        res.status(403).json({ success: false, error: "Invitation not accepted yet. Accept your invitation link first." });
+        return;
+      }
+
+      if (profile.account_status === "pending_onboarding" && !req.path?.startsWith("/onboarding")) {
+        res.status(403).json({ success: false, error: "Onboarding incomplete. Complete your profile activation wizard first." });
+        return;
+      }
+
+      if (profile.role !== 'staff') {
+        res.status(403).json({ success: false, error: 'Access Denied: Requires Field Staff permissions.' });
         return;
       }
 
