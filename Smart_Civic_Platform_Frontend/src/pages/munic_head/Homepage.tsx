@@ -17,7 +17,7 @@ import {
   FiBarChart2,
   FiActivity,
 } from "react-icons/fi";
-import { municipalityApi } from "../../../api/municipality";
+import { municipalityApi } from "../../api";
 
 interface DashboardData {
   municipality_id?: string;

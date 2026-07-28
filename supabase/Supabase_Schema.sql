@@ -1070,10 +1070,11 @@ BEGIN
       v_gender,
       NULLIF(NEW.raw_user_meta_data->>'phone', '')
     );
-  ELSIF v_role = 'staff' THEN
+  ELSIF v_role IN ('staff', 'department_head') THEN
     IF v_municipality_id IS NOT NULL AND v_department_id IS NOT NULL THEN
-      INSERT INTO public.staff (profile_id, municipality_id, primary_department_id, contact_number, gender)
-      VALUES (NEW.id, v_municipality_id, v_department_id, NULLIF(NEW.raw_user_meta_data->>'phone', ''), v_gender);
+      INSERT INTO public.staff (profile_id, municipality_id, primary_department_id, contact_number, gender, onboarded_at, employee_status)
+      VALUES (NEW.id, v_municipality_id, v_department_id, NULLIF(NEW.raw_user_meta_data->>'phone', ''), v_gender, NOW(), 'active')
+      ON CONFLICT (profile_id) DO NOTHING;
     END IF;
   END IF;
 

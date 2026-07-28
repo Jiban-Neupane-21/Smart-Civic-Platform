@@ -101,13 +101,50 @@ export class SuperadminRepository {
   async getAuditLogs(limit: number = 50, offset: number = 0) {
     const { data, error } = await this.supabaseAdmin
       .from("audit_logs")
-      .select("*")
+      .select(`
+        id,
+        action,
+        action_by_role,
+        table_name,
+        record_id,
+        old_value,
+        new_value,
+        severity,
+        created_at,
+        action_by,
+        municipality_id,
+        target_user_id,
+        actor:profiles!action_by ( full_name, email ),
+        municipality:municipalities!municipality_id ( official_name ),
+        target_user:profiles!target_user_id ( full_name, email )
+      `)
       .order("created_at", { ascending: false })
       .range(offset, offset + limit - 1);
 
     if (error) throw error;
-    return data;
+
+    // Flatten joined fields for a clean response shape
+    return (data ?? []).map((row: any) => ({
+      id: row.id,
+      action: row.action,
+      action_by: row.action_by,
+      action_by_name: row.actor?.full_name ?? null,
+      action_by_email: row.actor?.email ?? null,
+      action_by_role: row.action_by_role,
+      municipality_id: row.municipality_id,
+      municipality_name: row.municipality?.official_name ?? null,
+      target_user_id: row.target_user_id,
+      target_user_name: row.target_user?.full_name ?? null,
+      target_user_email: row.target_user?.email ?? null,
+      table_name: row.table_name,
+      record_id: row.record_id,
+      old_value: row.old_value,
+      new_value: row.new_value,
+      severity: row.severity,
+      created_at: row.created_at,
+    }));
   }
+
 
   // Get active municipalities with joined province & district details
   async getMunicipalities() {
@@ -208,7 +245,7 @@ export class SuperadminRepository {
   ): Promise<any[]> {
     let query = this.supabaseAdmin
       .from("municipalities")
-      .select("id, official_name, local_level_type, total_wards, district_id, is_active")
+      .select("id, official_name, local_level_type, total_wards, district_id, is_active, official_email, official_contact_no, mayor_chairperson_name, deputy_mayor_vice_chairperson_name, about_description")
       .order("official_name", { ascending: true });
 
     if (districtId) {

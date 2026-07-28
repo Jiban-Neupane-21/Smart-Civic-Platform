@@ -90,11 +90,13 @@ export const loginService = async (email: string, password: string) => {
     const userRole = (meta.role as UserRole) || "citizen";
     const fullName = meta.full_name || data.user.email || "Unknown User";
 
+    const fallbackPhone = meta.phone || `98${Math.floor(10000000 + Math.random() * 90000000)}`;
+
     const { error: insertProfileErr } = await supabaseAdmin.from("profiles").upsert({
       id: data.user.id,
       email: data.user.email!,
       full_name: fullName,
-      phone: meta.phone || null,
+      phone: fallbackPhone,
       role: userRole,
       municipality_id: meta.municipality_id || null,
       department_id: meta.department_id || null,
@@ -103,7 +105,7 @@ export const loginService = async (email: string, password: string) => {
 
     if (insertProfileErr) {
       console.error("[loginService] Auto-heal profile creation failed:", insertProfileErr);
-      throw new Error("User profile not found. Please contact administrator.");
+      throw new Error(`User profile not found: ${insertProfileErr.message}`);
     }
 
     if (userRole === "citizen") {
@@ -269,23 +271,44 @@ export const createUserService = async (body: {
 
   const uid = authData.user.id;
 
-  // 3. Update profile with additional fields not handled by the trigger
-  await supabaseAdmin
+  // 3. Upsert profile with full tenant metadata & contact details
+  const phone = body.phone || `+97798${Math.floor(10000000 + Math.random() * 90000000)}`;
+  const { error: profileUpsertErr } = await supabaseAdmin
     .from("profiles")
-    .update({
+    .upsert({
+      id: uid,
+      email: body.email,
       full_name: body.full_name,
+      role: body.role,
+      municipality_id: body.municipality_id,
+      department_id: body.department_id ?? null,
+      phone: phone,
+      account_status: "active",
       force_password_reset: true,
-    })
-    .eq("id", uid);
+      created_by: body.created_by,
+    });
+  if (profileUpsertErr) throw new Error(`Failed to save user profile: ${profileUpsertErr.message}`);
 
-  // 4. For staff-level roles, update the staff table with onboarding timestamp
+  // 4. For staff-level roles, ensure the staff table record exists with all required details
   if (["staff", "department_head"].includes(body.role)) {
-    await supabaseAdmin
-      .from("staff")
-      .update({
-        onboarded_at: new Date().toISOString(),
-      })
-      .eq("profile_id", uid);
+    if (body.municipality_id && body.department_id) {
+      const { error: staffUpsertErr } = await supabaseAdmin
+        .from("staff")
+        .upsert(
+          {
+            profile_id: uid,
+            municipality_id: body.municipality_id,
+            primary_department_id: body.department_id,
+            contact_number: phone,
+            employee_status: "active",
+            onboarded_at: new Date().toISOString(),
+          },
+          { onConflict: "profile_id" },
+        );
+      if (staffUpsertErr) {
+        throw new Error(`Failed to save staff record: ${staffUpsertErr.message}`);
+      }
+    }
   }
 
   // 5. Return the created profile

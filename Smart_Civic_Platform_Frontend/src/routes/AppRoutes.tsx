@@ -14,8 +14,11 @@ import { ComplaintReport } from "../pages/citizen/ComplainHistory";
 import { SubmitComplaint } from "../pages/citizen/SubmitComplain";
 
 import NotFoundPage from "../pages/common/NotFoundPage";
+import SuperadminDashboard from "../pages/Superadmin/Dashboard";
 import AuditLog from "../pages/Superadmin/AuditLog";
 import ManageMuniciple from "../pages/Superadmin/ManageMuniciple";
+import UserManagement from "../pages/Superadmin/UserManagement";
+import SystemSetting from "../pages/Superadmin/SystemSetting";
 
 import { DeptDashboard } from "../pages/dept_head/Dept_Dashboard";
 import DeptManageStaff from "../pages/dept_head/ManageStaff";
@@ -57,13 +60,11 @@ function AppRoute() {
         {/* Superadmin Routes */}
         <Route element={<ProtectedRoute allowedRoles={["superadmin"]} />}>
           <Route element={<MainLayout />}>
-            <Route
-              path="/superadmin/dashboard"
-              element={<div>Superadmin Dashboard Placeholder</div>}
-            />
+            <Route path="/superadmin/dashboard" element={<SuperadminDashboard />} />
             <Route path="/superadmin/manage-municipality" element={<ManageMuniciple />} />
-
+            <Route path="/superadmin/users" element={<UserManagement />} />
             <Route path="/superadmin/audit-log" element={<AuditLog />} />
+            <Route path="/superadmin/system-setting" element={<SystemSetting />} />
           </Route>
         </Route>
 

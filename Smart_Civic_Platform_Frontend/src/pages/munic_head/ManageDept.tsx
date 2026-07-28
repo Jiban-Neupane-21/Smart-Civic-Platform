@@ -32,27 +32,23 @@ import DeleteIcon from "@mui/icons-material/Delete";
 import SearchIcon from "@mui/icons-material/Search";
 import BusinessIcon from "@mui/icons-material/Business";
 import { useAuth } from "../../hooks/useAuth";
-import { BASE_URL, fetchWithAuth } from "../../api";
+import { municipalityApi } from "../../api";
+import type { Department, CreateDepartmentDto } from "../../api/types";
 
-interface Department {
-  id?: string;
-  d_uid?: string;
+interface DepartmentForm {
   department_name: string;
-  official_email?: string;
-  head_name?: string;
-  head_email?: string;
-  is_active?: boolean;
-  staff_count?: number;
-  complaint_count?: number;
-  created_at: string;
-  department_category?: string;
+  official_email: string;
+  head_name: string;
+  head_email: string;
+  head_contact_no: string;
+  department_category: string;
 }
 
-const emptyForm = { 
-  department_name: "", 
-  official_email: "", 
-  head_name: "", 
-  head_email: "", 
+const emptyForm: DepartmentForm = {
+  department_name: "",
+  official_email: "",
+  head_name: "",
+  head_email: "",
   head_contact_no: "",
   department_category: "other",
 };
@@ -67,30 +63,24 @@ export default function ManageDept() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Modal state
   const [modalOpen, setModalOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<Department | null>(null);
-  const [formData, setFormData] = useState(emptyForm);
+  const [formData, setFormData] = useState<DepartmentForm>(emptyForm);
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
-  // Delete confirm dialog
   const [deleteTarget, setDeleteTarget] = useState<Department | null>(null);
   const [deleting, setDeleting] = useState(false);
 
   const [categories, setCategories] = useState<string[]>([]);
 
-  // Credentials dialog for newly created department head
-  const [newCredentials, setNewCredentials] = useState<{ email: string; password: string } | null>(null);
+  const [newCredentials, setNewCredentials] = useState<{ email: string; password: string; department_name: string } | null>(null);
 
   const fetchCategories = async () => {
     try {
-      const res = await fetchWithAuth(`${BASE_URL}/municipality/departments/categories`);
-      if (res.ok) {
-        const data = await res.json();
-        setCategories(data.data || []);
-      }
+      const res = await municipalityApi.getDepartmentCategories();
+      setCategories(res.data || []);
     } catch (err) {
       console.error("Failed to fetch department categories:", err);
     }
@@ -101,15 +91,11 @@ export default function ManageDept() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetchWithAuth(
-        `${BASE_URL}/municipality/${municipalityId}/departments`
-      );
-      if (!res.ok) throw new Error("Failed to fetch departments");
-      const data = await res.json();
-      const arr = data?.data?.departments ?? data?.data ?? data ?? [];
+      const res = await municipalityApi.getDepartments(municipalityId);
+      const arr = res.data?.departments ?? res.data ?? [];
       setDepartments(Array.isArray(arr) ? arr : []);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "An error occurred");
+    } catch (err: any) {
+      setError(err?.response?.data?.error || err?.message || "An error occurred");
     } finally {
       setLoading(false);
     }
@@ -125,7 +111,7 @@ export default function ManageDept() {
     setFiltered(
       departments.filter(
         (d) =>
-          (d.department_name ?? "").toLowerCase().includes(q) || 
+          (d.department_name ?? "").toLowerCase().includes(q) ||
           (d.official_email ?? "").toLowerCase().includes(q) ||
           (d.head_name ?? "").toLowerCase().includes(q)
       )
@@ -142,9 +128,9 @@ export default function ManageDept() {
 
   const openEdit = (dept: Department) => {
     setEditTarget(dept);
-    setFormData({ 
-      department_name: dept.department_name || "", 
-      official_email: dept.official_email || "", 
+    setFormData({
+      department_name: dept.department_name || "",
+      official_email: dept.official_email || "",
       head_name: dept.head_name || "",
       head_email: dept.head_email || "",
       head_contact_no: "",
@@ -174,29 +160,46 @@ export default function ManageDept() {
     setFormError(null);
     try {
       const isEdit = !!editTarget;
-      const targetId = editTarget ? (editTarget.d_uid || editTarget.id) : null;
-      const url = isEdit
-        ? `${BASE_URL}/municipality/${municipalityId}/departments/${targetId}`
-        : `${BASE_URL}/municipality/${municipalityId}/departments`;
-      const res = await fetchWithAuth(url, {
-        method: isEdit ? "PATCH" : "POST",
-        body: JSON.stringify(formData),
-      });
-      const result = await res.json();
-      console.log("ManageDept handleSubmit raw result:", result);
-      if (!res.ok) throw new Error(result.error || result.message || "Operation failed");
+      if (isEdit) {
+        const payload: Record<string, string> = {
+          department_name: formData.department_name,
+          official_email: formData.official_email,
+          department_category: formData.department_category,
+        };
+        if (formData.head_name) payload.head_name = formData.head_name;
+        if (formData.head_email) payload.head_email = formData.head_email;
+        if (formData.head_contact_no) payload.head_contact_no = formData.head_contact_no;
+
+        await municipalityApi.updateDepartment(municipalityId, editTarget!.id, payload);
+      } else {
+        const payload: CreateDepartmentDto = {
+          department_name: formData.department_name,
+          official_email: formData.official_email,
+          head_name: formData.head_name,
+          head_email: formData.head_email,
+          department_category: formData.department_category,
+        };
+        if (formData.head_contact_no) payload.head_contact_no = formData.head_contact_no;
+
+        const res = await municipalityApi.createDepartment(municipalityId, payload);
+        setModalOpen(false);
+        await fetchDepartments();
+
+        if (res.data?.head_password) {
+          setNewCredentials({
+            email: formData.head_email,
+            password: res.data.head_password as string,
+            department_name: formData.department_name,
+          });
+        }
+        return;
+      }
+
       setModalOpen(false);
       await fetchDepartments();
-
-      // If a new department head was created, show their credentials
-      if (!isEdit && result.data && result.data.head_password) {
-        setNewCredentials({
-          email: formData.head_email,
-          password: result.data.head_password
-        });
-      }
-    } catch (err) {
-      setFormError(err instanceof Error ? err.message : "An error occurred");
+    } catch (err: any) {
+      const msg = err?.response?.data?.error || err?.message || "An error occurred";
+      setFormError(msg);
     } finally {
       setSubmitting(false);
     }
@@ -206,19 +209,11 @@ export default function ManageDept() {
     if (!deleteTarget) return;
     setDeleting(true);
     try {
-      const targetId = deleteTarget.d_uid || deleteTarget.id;
-      const res = await fetchWithAuth(
-        `${BASE_URL}/municipality/${municipalityId}/departments/${targetId}`,
-        { method: "DELETE" }
-      );
-      if (!res.ok) {
-        const d = await res.json();
-        throw new Error(d.message || "Failed to delete department");
-      }
-      setDepartments((prev) => prev.filter((d) => (d.d_uid || d.id) !== targetId));
+      await municipalityApi.deleteDepartment(municipalityId, deleteTarget.id);
+      setDepartments((prev) => prev.filter((d) => d.id !== deleteTarget.id));
       setDeleteTarget(null);
-    } catch (err) {
-      alert(err instanceof Error ? err.message : "Delete failed");
+    } catch (err: any) {
+      alert(err?.response?.data?.error || err?.message || "Delete failed");
     } finally {
       setDeleting(false);
     }
@@ -234,7 +229,6 @@ export default function ManageDept() {
 
   return (
     <Box sx={{ p: { xs: 2, md: 4 }, maxWidth: 1400, mx: "auto" }}>
-      {/* Header */}
       <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 3, flexWrap: "wrap", gap: 2 }}>
         <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
           <BusinessIcon sx={{ color: "primary.main", fontSize: 32 }} />
@@ -263,7 +257,6 @@ export default function ManageDept() {
         </Alert>
       )}
 
-      {/* Search */}
       <TextField
         placeholder="Search by name, email, or head name..."
         value={search}
@@ -302,18 +295,25 @@ export default function ManageDept() {
             <TableBody>
               {filtered.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} align="center" sx={{ py: 5, color: "text.secondary" }}>
+                  <TableCell colSpan={7} align="center" sx={{ py: 5, color: "text.secondary" }}>
                     No departments found.
                   </TableCell>
                 </TableRow>
               ) : (
                 filtered.map((dept) => (
                   <TableRow
-                    key={dept.d_uid || dept.id}
+                    key={dept.id}
                     sx={{ "&:hover": { bgcolor: "#f5f8ff" }, "&:last-child td": { border: 0 } }}
                   >
                     <TableCell>
                       <Typography fontWeight={600}>{dept.department_name}</Typography>
+                      {dept.department_category && (
+                        <Chip
+                          label={dept.department_category.split("_").map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ")}
+                          size="small"
+                          sx={{ mt: 0.5, textTransform: "capitalize" }}
+                        />
+                      )}
                     </TableCell>
                     <TableCell>
                       <Typography variant="body2">{dept.official_email ?? "—"}</Typography>
@@ -454,8 +454,7 @@ export default function ManageDept() {
         <DialogTitle fontWeight={700}>Delete Department?</DialogTitle>
         <DialogContent>
           <Typography>
-            Are you sure you want to delete{" "}
-            <strong>{deleteTarget?.department_name}</strong>? This action cannot be undone.
+            Deleting <strong>{deleteTarget?.department_name}</strong> will also deactivate the department head account. Staff under this department will become unassigned. This cannot be undone.
           </Typography>
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 3 }}>
@@ -473,6 +472,7 @@ export default function ManageDept() {
           </Button>
         </DialogActions>
       </Dialog>
+
       {/* New Credentials Dialog */}
       <Dialog open={!!newCredentials} onClose={() => setNewCredentials(null)} maxWidth="sm" fullWidth>
         <DialogTitle sx={{ fontWeight: 700, color: "success.main" }}>
@@ -484,6 +484,10 @@ export default function ManageDept() {
           </Alert>
           <Paper variant="outlined" sx={{ p: 2, bgcolor: "#f9f9f9", borderRadius: 2 }}>
             <Box sx={{ mb: 2 }}>
+              <Typography variant="caption" color="text.secondary">Department</Typography>
+              <Typography variant="body1" fontWeight={600}>{newCredentials?.department_name}</Typography>
+            </Box>
+            <Box sx={{ mb: 2 }}>
               <Typography variant="caption" color="text.secondary">Login Email</Typography>
               <Typography variant="body1" fontWeight={600}>{newCredentials?.email}</Typography>
             </Box>
@@ -493,9 +497,9 @@ export default function ManageDept() {
                 <Typography variant="body1" fontWeight={600} sx={{ fontFamily: "monospace", letterSpacing: 1 }}>
                   {newCredentials?.password}
                 </Typography>
-                <Button 
-                  size="small" 
-                  variant="outlined" 
+                <Button
+                  size="small"
+                  variant="outlined"
                   onClick={() => {
                     if (newCredentials?.password) {
                       navigator.clipboard.writeText(newCredentials.password);

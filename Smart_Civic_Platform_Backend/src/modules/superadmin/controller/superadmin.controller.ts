@@ -74,7 +74,7 @@ export class SuperadminController {
           full_name: head_name,
           role: "municipality_head",
           municipality_id: municipality_id,
-          created_by: (req as any).user?.id || "superadmin",
+          created_by: (req as any).user?.id,
         });
       } catch (userError: any) {
         res.status(400).json({

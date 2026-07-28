@@ -2154,6 +2154,61 @@ BEGIN
         END IF;
     END IF;
 
+    -- District: Makwanpur
+    SELECT id INTO d_id FROM districts WHERE name = 'Makwanpur' LIMIT 1;
+    IF d_id IS NOT NULL THEN
+        IF NOT EXISTS (SELECT 1 FROM municipalities WHERE official_name = 'Hetauda' AND district_id = d_id) THEN
+            INSERT INTO municipalities (district_id, official_name, official_email, local_level_type, total_wards, is_active)
+            VALUES (d_id, 'Hetauda', 'contact.hetauda.makwanpur@municipality.gov.np', 'sub_metropolitan_city', 19, FALSE);
+            m_count := m_count + 1;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM municipalities WHERE official_name = 'Thaha' AND district_id = d_id) THEN
+            INSERT INTO municipalities (district_id, official_name, official_email, local_level_type, total_wards, is_active)
+            VALUES (d_id, 'Thaha', 'contact.thaha.makwanpur@municipality.gov.np', 'municipality', 12, FALSE);
+            m_count := m_count + 1;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM municipalities WHERE official_name = 'Bhimphedi' AND district_id = d_id) THEN
+            INSERT INTO municipalities (district_id, official_name, official_email, local_level_type, total_wards, is_active)
+            VALUES (d_id, 'Bhimphedi', 'contact.bhimphedi.makwanpur@municipality.gov.np', 'rural_municipality', 6, FALSE);
+            m_count := m_count + 1;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM municipalities WHERE official_name = 'Makwanpurgadhi' AND district_id = d_id) THEN
+            INSERT INTO municipalities (district_id, official_name, official_email, local_level_type, total_wards, is_active)
+            VALUES (d_id, 'Makwanpurgadhi', 'contact.makwanpurgadhi.makwanpur@municipality.gov.np', 'rural_municipality', 6, FALSE);
+            m_count := m_count + 1;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM municipalities WHERE official_name = 'Manahari' AND district_id = d_id) THEN
+            INSERT INTO municipalities (district_id, official_name, official_email, local_level_type, total_wards, is_active)
+            VALUES (d_id, 'Manahari', 'contact.manahari.makwanpur@municipality.gov.np', 'rural_municipality', 5, FALSE);
+            m_count := m_count + 1;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM municipalities WHERE official_name = 'Raksirang' AND district_id = d_id) THEN
+            INSERT INTO municipalities (district_id, official_name, official_email, local_level_type, total_wards, is_active)
+            VALUES (d_id, 'Raksirang', 'contact.raksirang.makwanpur@municipality.gov.np', 'rural_municipality', 6, FALSE);
+            m_count := m_count + 1;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM municipalities WHERE official_name = 'Bakaiya' AND district_id = d_id) THEN
+            INSERT INTO municipalities (district_id, official_name, official_email, local_level_type, total_wards, is_active)
+            VALUES (d_id, 'Bakaiya', 'contact.bakaiya.makwanpur@municipality.gov.np', 'rural_municipality', 8, FALSE);
+            m_count := m_count + 1;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM municipalities WHERE official_name = 'Bagmati' AND district_id = d_id) THEN
+            INSERT INTO municipalities (district_id, official_name, official_email, local_level_type, total_wards, is_active)
+            VALUES (d_id, 'Bagmati', 'contact.bagmati.makwanpur@municipality.gov.np', 'rural_municipality', 5, FALSE);
+            m_count := m_count + 1;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM municipalities WHERE official_name = 'Kailash' AND district_id = d_id) THEN
+            INSERT INTO municipalities (district_id, official_name, official_email, local_level_type, total_wards, is_active)
+            VALUES (d_id, 'Kailash', 'contact.kailash.makwanpur@municipality.gov.np', 'rural_municipality', 5, FALSE);
+            m_count := m_count + 1;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM municipalities WHERE official_name = 'Indrasarowar' AND district_id = d_id) THEN
+            INSERT INTO municipalities (district_id, official_name, official_email, local_level_type, total_wards, is_active)
+            VALUES (d_id, 'Indrasarowar', 'contact.indrasarowar.makwanpur@municipality.gov.np', 'rural_municipality', 5, FALSE);
+            m_count := m_count + 1;
+        END IF;
+    END IF;
+
     -- District: Manang
     SELECT id INTO d_id FROM districts WHERE name = 'Manang' LIMIT 1;
     IF d_id IS NOT NULL THEN
@@ -2359,8 +2414,8 @@ BEGIN
         END IF;
     END IF;
 
-    -- District: Nawalparasi (Bardaghat Susta East)
-    SELECT id INTO d_id FROM districts WHERE name = 'Nawalparasi (Bardaghat Susta East)' LIMIT 1;
+    -- District: Nawalpur
+    SELECT id INTO d_id FROM districts WHERE name = 'Nawalpur' LIMIT 1;
     IF d_id IS NOT NULL THEN
         IF NOT EXISTS (SELECT 1 FROM municipalities WHERE official_name = 'Kawassoti' AND district_id = d_id) THEN
             INSERT INTO municipalities (district_id, official_name, official_email, local_level_type, total_wards, is_active)
@@ -2404,8 +2459,8 @@ BEGIN
         END IF;
     END IF;
 
-    -- District: Nawalparasi (Bardaghat Susta West)
-    SELECT id INTO d_id FROM districts WHERE name = 'Nawalparasi (Bardaghat Susta West)' LIMIT 1;
+    -- District: Parasi
+    SELECT id INTO d_id FROM districts WHERE name = 'Parasi' LIMIT 1;
     IF d_id IS NOT NULL THEN
         IF NOT EXISTS (SELECT 1 FROM municipalities WHERE official_name = 'Bardaghat' AND district_id = d_id) THEN
             INSERT INTO municipalities (district_id, official_name, official_email, local_level_type, total_wards, is_active)
@@ -3059,8 +3114,8 @@ BEGIN
         END IF;
     END IF;
 
-    -- District: Rukum East
-    SELECT id INTO d_id FROM districts WHERE name = 'Rukum East' LIMIT 1;
+    -- District: Eastern Rukum
+    SELECT id INTO d_id FROM districts WHERE name = 'Eastern Rukum' LIMIT 1;
     IF d_id IS NOT NULL THEN
         IF NOT EXISTS (SELECT 1 FROM municipalities WHERE official_name = 'Bhume' AND district_id = d_id) THEN
             INSERT INTO municipalities (district_id, official_name, official_email, local_level_type, total_wards, is_active)
@@ -3079,8 +3134,8 @@ BEGIN
         END IF;
     END IF;
 
-    -- District: Rukum Paschim
-    SELECT id INTO d_id FROM districts WHERE name = 'Rukum Paschim' LIMIT 1;
+    -- District: Western Rukum
+    SELECT id INTO d_id FROM districts WHERE name = 'Western Rukum' LIMIT 1;
     IF d_id IS NOT NULL THEN
         IF NOT EXISTS (SELECT 1 FROM municipalities WHERE official_name = 'Musikot' AND district_id = d_id) THEN
             INSERT INTO municipalities (district_id, official_name, official_email, local_level_type, total_wards, is_active)
@@ -3934,8 +3989,8 @@ BEGIN
         END IF;
     END IF;
 
-    -- District: Tanahu
-    SELECT id INTO d_id FROM districts WHERE name = 'Tanahu' LIMIT 1;
+    -- District: Tanahun
+    SELECT id INTO d_id FROM districts WHERE name = 'Tanahun' LIMIT 1;
     IF d_id IS NOT NULL THEN
         IF NOT EXISTS (SELECT 1 FROM municipalities WHERE official_name = 'Byas' AND district_id = d_id) THEN
             INSERT INTO municipalities (district_id, official_name, official_email, local_level_type, total_wards, is_active)
@@ -4039,8 +4094,8 @@ BEGIN
         END IF;
     END IF;
 
-    -- District: Terhathum
-    SELECT id INTO d_id FROM districts WHERE name = 'Terhathum' LIMIT 1;
+    -- District: Tehrathum
+    SELECT id INTO d_id FROM districts WHERE name = 'Tehrathum' LIMIT 1;
     IF d_id IS NOT NULL THEN
         IF NOT EXISTS (SELECT 1 FROM municipalities WHERE official_name = 'Myanglung' AND district_id = d_id) THEN
             INSERT INTO municipalities (district_id, official_name, official_email, local_level_type, total_wards, is_active)

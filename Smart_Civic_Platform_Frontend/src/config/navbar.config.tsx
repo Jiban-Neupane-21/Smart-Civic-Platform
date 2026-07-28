@@ -49,12 +49,14 @@ const manageMunicipalityItem = createNavItem(
   "Manage Municipality",
   <FiBriefcase />,
 );
+const userManagementItem = createNavItem("User Management", <FiUsers />);
 const auditLogItem = createNavItem("Audit Log", <FiList />);
 const systemSettingItem = createNavItem("System Setting", <FiSettings />);
 const manageDepartmentStaffItem = createNavItem(
   "Manage Department Staff",
   <FiGitBranch />,
 );
+const manageStaffItem = createNavItem("Manage Staff", <FiUsers />);
 const complaintDetailItem = createNavItem("Complaint Detail", <FiFileText />);
 const reportAnalyticsItem = createNavItem(
   "Report & Analytics",
@@ -77,6 +79,7 @@ export const NavbarItems: NavbarConfig = {
     desktop: [
       dashboardItem.desktop,
       manageMunicipalityItem.desktop,
+      userManagementItem.desktop,
       auditLogItem.desktop,
       systemSettingItem.desktop,
       logoutItem.desktop,
@@ -84,7 +87,8 @@ export const NavbarItems: NavbarConfig = {
     mobile: {
       primary: [
         dashboardItem.mobile,
-        manageMunicipalityItem.mobile, // Important admin task
+        manageMunicipalityItem.mobile,
+        userManagementItem.mobile,
         auditLogItem.mobile,
       ],
       secondary: [systemSettingItem.mobile, logoutItem.mobile],
@@ -95,6 +99,7 @@ export const NavbarItems: NavbarConfig = {
     desktop: [
       dashboardItem.desktop,
       manageDepartmentStaffItem.desktop,
+      manageStaffItem.desktop,
       complaintDetailItem.desktop,
       reportAnalyticsItem.desktop,
       notificationItem.desktop,
@@ -105,10 +110,11 @@ export const NavbarItems: NavbarConfig = {
       primary: [
         dashboardItem.mobile,
         manageDepartmentStaffItem.mobile,
+        manageStaffItem.mobile,
         reportAnalyticsItem.mobile, // Heavy tables/graphs usually viewed on desktop
-        notificationItem.mobile, // Alerts for new issues
       ],
       secondary: [
+        notificationItem.mobile, // Alerts for new issues
         complaintDetailItem.mobile, // Crucial for quick resolution checks
         profileItem.mobile,
         logoutItem.mobile,
@@ -148,8 +154,8 @@ export const NavbarItems: NavbarConfig = {
       dashboardItem.desktop,
       complaintItem.desktop,
       profileItem.desktop,
-      logoutItem.desktop,
       notificationItem.desktop,
+      logoutItem.desktop,
     ],
     mobile: {
       primary: [

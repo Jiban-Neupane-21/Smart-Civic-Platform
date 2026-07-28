@@ -75,7 +75,7 @@ export class MunicipalityRepository {
       .select(`
         *,
         staff_count:staff(count),
-        complaint_count:complaints(count)
+        complaint_count:complaints!assigned_department_id(count)
       `)
       .eq("municipality_id", municipalityId);
 

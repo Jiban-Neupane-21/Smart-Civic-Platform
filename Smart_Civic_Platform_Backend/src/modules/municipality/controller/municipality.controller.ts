@@ -384,10 +384,10 @@ export class MunicipalityController {
     try {
       const { email, password, full_name, role, department_id, phone } = req.body;
 
-      if (!email || !password || !full_name || !role) {
+      if (!email || !full_name || !role) {
         res.status(400).json({
           success: false,
-          error: "Missing required fields: email, password, full_name, role.",
+          error: "Missing required fields: email, full_name, role.",
         });
         return;
       }
@@ -408,9 +408,11 @@ export class MunicipalityController {
         return;
       }
 
+      const generatedPassword = password || crypto.randomBytes(6).toString("hex");
+
       const profile = await createUserService({
         email,
-        password,
+        password: generatedPassword,
         full_name,
         role,
         municipality_id: req.municipalityId,
@@ -419,7 +421,13 @@ export class MunicipalityController {
         created_by: req.user.id,
       });
 
-      res.status(201).json({ success: true, data: profile });
+      res.status(201).json({
+        success: true,
+        data: {
+          ...profile,
+          password: generatedPassword,
+        },
+      });
     } catch (error: any) {
       res.status(400).json({ success: false, error: error.message });
     }

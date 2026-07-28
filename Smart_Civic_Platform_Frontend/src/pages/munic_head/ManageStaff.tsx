@@ -35,7 +35,8 @@ import SearchIcon from "@mui/icons-material/Search";
 import PeopleIcon from "@mui/icons-material/People";
 import LockResetIcon from "@mui/icons-material/LockReset";
 import { useAuth } from "../../hooks/useAuth";
-import { BASE_URL, fetchWithAuth } from "../../api";
+import { BASE_URL, fetchWithAuth, municipalityApi } from "../../api";
+import type { UpdateStaffDto, CreateStaffUserDto } from "../../api/types/municipality.types";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -49,11 +50,40 @@ interface Staff {
   id: string;
   name?: string;
   email?: string;
+  phone?: string;
   role?: string;
   status?: string;
   department_id?: string;
   department?: { id: string; name: string };
   created_at?: string;
+}
+
+interface RawStaffItem {
+  id: string;
+  name?: string;
+  full_name?: string;
+  email?: string;
+  phone?: string;
+  phoneNumber?: string;
+  contact_number?: string;
+  role?: string;
+  status?: string;
+  account_status?: string;
+  employee_status?: string;
+  department_id?: string;
+  primary_department_id?: string;
+  department?: { id?: string; name?: string; department_name?: string };
+  profile?: { full_name?: string; email?: string; phone?: string; role?: string; account_status?: string };
+  created_at?: string;
+  onboarded_at?: string;
+}
+
+interface RawDeptItem {
+  id: string;
+  name?: string;
+  department_name?: string;
+  code?: string;
+  department_category?: string;
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -69,7 +99,7 @@ const STATUS_COLOR: Record<string, "success" | "error" | "warning" | "default"> 
 const emptyForm = {
   name: "",
   email: "",
-  password: "",
+  phone: "",
   role: "staff",
   departmentId: "",
 };
@@ -89,12 +119,25 @@ function getInitials(name?: string): string {
 
 function normalizeStaffList(data: unknown): Staff[] {
   if (!data) return [];
-  // Handle: { data: { staff: [...] } } | { data: [...] } | [...]
   const d = data as Record<string, unknown>;
   const inner = (d?.data as Record<string, unknown>)?.staff
     ?? d?.data
     ?? data;
-  return Array.isArray(inner) ? inner : [];
+  if (!Array.isArray(inner)) return [];
+  return inner.map((item: RawStaffItem) => ({
+    id: item.id,
+    name: item.name ?? item.full_name ?? item.profile?.full_name ?? "—",
+    email: item.email ?? item.profile?.email ?? "—",
+    phone: item.phone ?? item.phoneNumber ?? item.contact_number ?? item.profile?.phone ?? "",
+    role: item.role ?? item.profile?.role ?? "staff",
+    status: item.status ?? item.account_status ?? item.employee_status ?? item.profile?.account_status ?? "active",
+    department_id: item.department_id ?? item.primary_department_id ?? item.department?.id,
+    department: item.department ? {
+      id: item.department.id ?? item.primary_department_id ?? "",
+      name: item.department.name ?? item.department.department_name ?? "—"
+    } : undefined,
+    created_at: item.created_at ?? item.onboarded_at,
+  }));
 }
 
 function normalizeDeptList(data: unknown): Department[] {
@@ -103,33 +146,54 @@ function normalizeDeptList(data: unknown): Department[] {
   const inner = (d?.data as Record<string, unknown>)?.departments
     ?? d?.data
     ?? data;
-  return Array.isArray(inner) ? inner : [];
+  if (!Array.isArray(inner)) return [];
+  return inner.map((item: RawDeptItem) => ({
+    id: item.id,
+    name: item.name ?? item.department_name ?? "—",
+    code: item.code ?? item.department_category ?? "",
+  }));
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function ManageStaff() {
   const { user } = useAuth();
+  const userObj = user as {
+    municipalityId?: string;
+    municipality_id?: string;
+    user_metadata?: { municipality_id?: string };
+    profile?: { municipality_id?: string };
+  } | null;
   const municipalityId =
-    (user as Record<string, unknown>)?.municipalityId as string ||
-    (user as Record<string, unknown>)?.municipality_id as string;
+    userObj?.municipalityId ||
+    userObj?.municipality_id ||
+    userObj?.user_metadata?.municipality_id ||
+    userObj?.profile?.municipality_id ||
+    "";
 
   const [staffList, setStaffList] = useState<Staff[]>([]);
-  const [filtered, setFiltered] = useState<Staff[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
-  const [search, setSearch] = useState("");
-  const [roleFilter, setRoleFilter] = useState("all");
+  const [filtered, setFiltered] = useState<Staff[]>([]);
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Create / Edit modal
+  const [search, setSearch] = useState("");
+  const [roleFilter, setRoleFilter] = useState("all");
+
   const [modalOpen, setModalOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<Staff | null>(null);
   const [formData, setFormData] = useState(emptyForm);
-  const [submitting, setSubmitting] = useState(false);
+  const [newCredentials, setNewCredentials] = useState<{
+    name: string;
+    email: string;
+    password: string;
+    role: string;
+    departmentName?: string;
+  } | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
-  // Delete
   const [deleteTarget, setDeleteTarget] = useState<Staff | null>(null);
   const [deleting, setDeleting] = useState(false);
 
@@ -204,7 +268,7 @@ export default function ManageStaff() {
     setFormData({
       name: staff.name ?? "",
       email: staff.email ?? "",
-      password: "",
+      phone: staff.phone ?? "",
       role: staff.role ?? "staff",
       departmentId: staff.department?.id ?? staff.department_id ?? "",
     });
@@ -223,52 +287,53 @@ export default function ManageStaff() {
       const isEdit = !!editTarget;
 
       if (isEdit) {
-        // PATCH /api/municipality/:municipalityId/staff/:staffId
-        // via the municipality-scoped route in staff.routes.ts
-        const body: Record<string, string> = {
-          name: formData.name,
+        const payload: UpdateStaffDto = {
+          full_name: formData.name,
           email: formData.email,
-          role: formData.role,
-          departmentId: formData.departmentId,
+          primary_department_id: formData.departmentId,
+          phone: formData.phone || undefined,
         };
 
-        const res = await fetchWithAuth(
-          `${BASE_URL}/municipality/${municipalityId}/staff/${editTarget!.id}`,
-          { method: "PATCH", body: JSON.stringify(body) }
+        await municipalityApi.updateStaff(
+          municipalityId,
+          editTarget!.id,
+          payload
         );
-        const result = await res.json().catch(() => ({}));
-        if (!res.ok) {
-          throw new Error(
-            (result as Record<string, unknown>)?.message as string || "Update failed"
-          );
-        }
       } else {
-        // POST /api/municipality/:municipalityId/staff
-        // Required: name, email, password, role, departmentId
-        const body = {
-          name: formData.name,
+        const payload: CreateStaffUserDto = {
+          full_name: formData.name,
           email: formData.email,
-          password: formData.password,
-          role: formData.role,
-          departmentId: formData.departmentId,
+          role: formData.role as 'staff' | 'department_head',
+          department_id: formData.departmentId,
+          phone: formData.phone || undefined,
         };
 
-        const res = await fetchWithAuth(
-          `${BASE_URL}/municipality/${municipalityId}/staff`,
-          { method: "POST", body: JSON.stringify(body) }
-        );
-        const result = await res.json().catch(() => ({}));
-        if (!res.ok) {
-          throw new Error(
-            (result as Record<string, unknown>)?.message as string || "Create failed"
-          );
+        const res = await municipalityApi.createStaffUser(payload);
+        setModalOpen(false);
+        await fetchAll();
+
+        if (res.data?.password) {
+          const deptObj = departments.find((d) => d.id === formData.departmentId);
+          setNewCredentials({
+            name: formData.name,
+            email: formData.email,
+            password: res.data.password as string,
+            role: formData.role,
+            departmentName: deptObj?.name || formData.departmentId,
+          });
         }
+        return;
       }
 
       setModalOpen(false);
       await fetchAll();
-    } catch (err) {
-      setFormError(err instanceof Error ? err.message : "An error occurred");
+    } catch (err: unknown) {
+      const errorObj = err as { response?: { data?: { message?: string; error?: string } } };
+      const msg =
+        errorObj?.response?.data?.message ||
+        errorObj?.response?.data?.error ||
+        (err instanceof Error ? err.message : "An error occurred");
+      setFormError(msg);
     } finally {
       setSubmitting(false);
     }
@@ -588,18 +653,13 @@ export default function ManageStaff() {
               onChange={(e) => setFormData({ ...formData, email: e.target.value })}
             />
 
-            {/* Password only on create */}
-            {!editTarget && (
-              <TextField
-                label="Temporary Password"
-                type="password"
-                fullWidth
-                required
-                value={formData.password}
-                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                helperText="Staff must change this on first login"
-              />
-            )}
+            <TextField
+              label="Phone Number (Optional)"
+              fullWidth
+              value={formData.phone}
+              onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+              placeholder="e.g. +977-9841234567"
+            />
 
             <FormControl fullWidth required>
               <InputLabel>Role</InputLabel>
@@ -723,6 +783,58 @@ export default function ManageStaff() {
             sx={{ fontWeight: 600 }}
           >
             {updatingStatus ? "Updating..." : "Update Status"}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* ── New Credentials Dialog ── */}
+      <Dialog open={!!newCredentials} onClose={() => setNewCredentials(null)} maxWidth="sm" fullWidth>
+        <DialogTitle sx={{ fontWeight: 700, color: "success.main" }}>
+          Staff Member Provisioned Successfully!
+        </DialogTitle>
+        <DialogContent>
+          <Alert severity="info" sx={{ mb: 3 }}>
+            A new staff account has been provisioned. Please copy the credentials below and securely share them with the staff member. They will be prompted to change their password upon first login.
+          </Alert>
+          <Paper variant="outlined" sx={{ p: 2, bgcolor: "#f9f9f9", borderRadius: 2 }}>
+            <Box sx={{ mb: 2 }}>
+              <Typography variant="caption" color="text.secondary">Staff Name</Typography>
+              <Typography variant="body1" fontWeight={600}>{newCredentials?.name}</Typography>
+            </Box>
+            <Box sx={{ mb: 2 }}>
+              <Typography variant="caption" color="text.secondary">Role & Department</Typography>
+              <Typography variant="body1" fontWeight={600} sx={{ textTransform: "capitalize" }}>
+                {newCredentials?.role ? newCredentials.role.replace(/_/g, " ") : ""} {newCredentials?.departmentName ? `• ${newCredentials.departmentName}` : ""}
+              </Typography>
+            </Box>
+            <Box sx={{ mb: 2 }}>
+              <Typography variant="caption" color="text.secondary">Login Email</Typography>
+              <Typography variant="body1" fontWeight={600}>{newCredentials?.email}</Typography>
+            </Box>
+            <Box>
+              <Typography variant="caption" color="text.secondary">Temporary Password</Typography>
+              <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mt: 0.5 }}>
+                <Typography variant="body1" fontWeight={600} sx={{ fontFamily: "monospace", letterSpacing: 1 }}>
+                  {newCredentials?.password}
+                </Typography>
+                <Button
+                  size="small"
+                  variant="outlined"
+                  onClick={() => {
+                    if (newCredentials?.password) {
+                      navigator.clipboard.writeText(newCredentials.password);
+                    }
+                  }}
+                >
+                  Copy
+                </Button>
+              </Box>
+            </Box>
+          </Paper>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 3 }}>
+          <Button variant="contained" onClick={() => setNewCredentials(null)} sx={{ fontWeight: 600 }}>
+            Done
           </Button>
         </DialogActions>
       </Dialog>
