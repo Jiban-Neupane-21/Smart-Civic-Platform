@@ -168,3 +168,35 @@ export interface UpdateStaffDto {
   primary_department_id?: string;
   departmentId?: string;
 }
+
+export interface MunicipComplaint {
+  co_uid: string;
+  tracking_id: string;
+  title: string;
+  description?: string;
+  status: string;
+  priority?: string;
+  severity_level: string;
+  ward_number?: number;
+  citizen_id: string;
+  municipality_id: string;
+  assigned_department_id?: string;
+  category_id?: string;
+  submitted_date: string;
+  updated_at?: string;
+  resolution_date?: string | null;
+  resolution_note?: string | null;
+  sla_due_at?: string | null;
+  sla_breached?: boolean;
+  department?: { id: string; department_name: string } | null;
+  category?: { id: string; category_name: string } | null;
+  citizen?: {
+    id: string;
+    current_province_id?: string;
+    current_district_id?: string;
+    current_municipality_id?: string;
+    permanent_province_id?: string;
+    permanent_district_id?: string;
+    permanent_municipality_id?: string;
+  } | null;
+}

@@ -8,6 +8,7 @@ export interface UserProfile {
   full_name: string;
   municipality_id?: string;
   municipalityId?: string;
+  departmentId?: string;
 }
 
 interface AuthContextType {

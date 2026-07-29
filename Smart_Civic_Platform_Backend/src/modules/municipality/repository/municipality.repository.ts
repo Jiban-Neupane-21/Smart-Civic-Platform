@@ -349,7 +349,7 @@ export class MunicipalityRepository {
     let query = this.supabaseAdmin
       .from("complaints")
       .select(
-        "id, title, status, submitted_date, assigned_department_id, category_id",
+        `co_uid, tracking_id, title, description, status, priority, severity_level, ward_number, citizen_id, municipality_id, assigned_department_id, category_id, submitted_date, updated_at, resolution_date, resolution_note, sla_due_at, sla_breached, department:departments!assigned_department_id(id, department_name), category:complaint_categories!category_id(id, category_name), citizen:citizens(id, current_province_id, current_district_id, current_municipality_id, permanent_province_id, permanent_district_id, permanent_municipality_id)`,
       )
       .eq("municipality_id", municipalityId);
 

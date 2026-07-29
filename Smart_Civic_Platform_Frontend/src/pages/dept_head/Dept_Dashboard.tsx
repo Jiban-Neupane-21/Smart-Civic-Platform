@@ -194,7 +194,7 @@ export const DeptDashboard: React.FC = () => {
 
       {/* Primary Metrics */}
       <Grid container spacing={3} sx={{ mb: 5 }}>
-        <Grid item xs={12} sm={6} md={4}>
+        <Grid size={{ xs: 12, sm: 6, md: 4 }}>
           <StatCard
             title="Total Complaints"
             value={totalComplaints}
@@ -202,7 +202,7 @@ export const DeptDashboard: React.FC = () => {
             gradient="linear-gradient(135deg, #6366F1 0%, #4F46E5 100%)"
           />
         </Grid>
-        <Grid item xs={12} sm={6} md={4}>
+        <Grid size={{ xs: 12, sm: 6, md: 4 }}>
           <StatCard
             title="Resolution Rate"
             value={`${resolutionRate}%`}
@@ -210,7 +210,7 @@ export const DeptDashboard: React.FC = () => {
             gradient="linear-gradient(135deg, #10B981 0%, #059669 100%)"
           />
         </Grid>
-        <Grid item xs={12} sm={6} md={4}>
+        <Grid size={{ xs: 12, sm: 6, md: 4 }}>
           <StatCard
             title="Pending"
             value={pending}
@@ -228,7 +228,7 @@ export const DeptDashboard: React.FC = () => {
         Complaint Status Breakdown
       </Typography>
       <Grid container spacing={3} sx={{ mb: 5 }}>
-        <Grid item xs={12} sm={6} md={4}>
+        <Grid size={{ xs: 12, sm: 6, md: 4 }}>
           <Paper
             elevation={0}
             sx={{
@@ -268,7 +268,7 @@ export const DeptDashboard: React.FC = () => {
             </Box>
           </Paper>
         </Grid>
-        <Grid item xs={12} sm={6} md={4}>
+        <Grid size={{ xs: 12, sm: 6, md: 4 }}>
           <Paper
             elevation={0}
             sx={{
@@ -308,7 +308,7 @@ export const DeptDashboard: React.FC = () => {
             </Box>
           </Paper>
         </Grid>
-        <Grid item xs={12} sm={6} md={4}>
+        <Grid size={{ xs: 12, sm: 6, md: 4 }}>
           <Paper
             elevation={0}
             sx={{
@@ -348,7 +348,7 @@ export const DeptDashboard: React.FC = () => {
             </Box>
           </Paper>
         </Grid>
-        <Grid item xs={12} sm={6} md={4}>
+        <Grid size={{ xs: 12, sm: 6, md: 4 }}>
           <Paper
             elevation={0}
             sx={{
@@ -388,7 +388,7 @@ export const DeptDashboard: React.FC = () => {
             </Box>
           </Paper>
         </Grid>
-        <Grid item xs={12} sm={6} md={4}>
+        <Grid size={{ xs: 12, sm: 6, md: 4 }}>
           <Paper
             elevation={0}
             sx={{
@@ -428,7 +428,7 @@ export const DeptDashboard: React.FC = () => {
             </Box>
           </Paper>
         </Grid>
-        <Grid item xs={12} sm={6} md={4}>
+        <Grid size={{ xs: 12, sm: 6, md: 4 }}>
           <Paper
             elevation={0}
             sx={{
@@ -478,7 +478,7 @@ export const DeptDashboard: React.FC = () => {
         Personnel &amp; Teams
       </Typography>
       <Grid container spacing={3} sx={{ mb: 5 }}>
-        <Grid item xs={12} sm={6}>
+        <Grid size={{ xs: 12, sm: 6 }}>
           <Paper
             elevation={0}
             sx={{
@@ -518,7 +518,7 @@ export const DeptDashboard: React.FC = () => {
             </Box>
           </Paper>
         </Grid>
-        <Grid item xs={12} sm={6}>
+        <Grid size={{ xs: 12, sm: 6 }}>
           <Paper
             elevation={0}
             sx={{

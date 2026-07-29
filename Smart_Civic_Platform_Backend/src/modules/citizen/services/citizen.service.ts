@@ -65,6 +65,7 @@ export const submitComplaint = async (
   }
 
   // 2. Location resolution
+  console.log("--> [submitComplaint] Step 2: Location resolution");
   const locationResolver = new LocationResolverService(supabaseAdmin);
   const location = await locationResolver.resolveLocation(citizenId, {
     ...locationPayload,
@@ -72,6 +73,7 @@ export const submitComplaint = async (
   });
 
   // 3. Routing resolution
+  console.log("--> [submitComplaint] Step 3: Routing resolution");
   const routingEngine = new RoutingEngineService(supabaseAdmin);
   const routing = await routingEngine.routeComplaint(
     location.municipality_id,
@@ -80,6 +82,7 @@ export const submitComplaint = async (
   );
 
   // 4. Tracking ID generation
+  console.log("--> [submitComplaint] Step 4: Tracking ID generation");
   const trackingService = new TrackingIdService(supabaseAdmin);
   const trackingId = await trackingService.generateTrackingId(
     location.municipality_id,
@@ -88,15 +91,16 @@ export const submitComplaint = async (
   );
 
   // 5. SLA Due Date calculation
+  console.log("--> [submitComplaint] Step 5: SLA Due Date calculation");
   const slaService = new SlaMonitorService(supabaseAdmin);
   const slaDueAt = slaService.calculateSlaDueDate(detailsPayload.severity_level || "medium");
 
   // 6. Insert complaint record
+  console.log("--> [submitComplaint] Step 6: Insert complaint record");
   const payload: any = {
     citizen_id: citizenId,
     tracking_id: trackingId,
     municipality_id: location.municipality_id,
-    ward_id: location.ward_id,
     ward_number: location.ward_number,
     location_source: location.source,
     latitude: location.latitude,
@@ -127,6 +131,7 @@ export const submitComplaint = async (
   if (insertErr) throw new Error(insertErr.message);
 
   // 7. If Method A collaboration (citizen tagged secondary category), create collaboration row
+  console.log("--> [submitComplaint] Step 7: Collaboration");
   if (routing.supporting_department_id) {
     const collabService = new CollaborationService(supabaseAdmin);
     await collabService.createCollaborationOnSubmission(
@@ -138,6 +143,7 @@ export const submitComplaint = async (
   }
 
   // 8. Trigger notification
+  console.log("--> [submitComplaint] Step 8: Trigger notification");
   const notifService = new NotificationService(supabaseAdmin);
   await notifService.notifyDepartment(
     routing.lead_department_id,
@@ -160,8 +166,8 @@ export const getMyComplaints = async (
     .select(
       `
       co_uid, tracking_id, title, status, severity_level, submitted_date, resolution_date, resolution_note,
-      complaint_categories ( category_name ),
-      departments ( department_name )
+      complaint_categories!category_id ( category_name ),
+      departments!assigned_department_id ( department_name )
     `,
     )
     .eq("citizen_id", citizenId)

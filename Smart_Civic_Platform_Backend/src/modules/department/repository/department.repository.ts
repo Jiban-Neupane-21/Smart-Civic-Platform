@@ -347,7 +347,7 @@ export class DepartmentRepository {
       .select(`
         *,
         team_members (
-          staff_id, is_leader, joined_at, acknowledged_at,
+          staff_id, is_leader, joined_at,
           staff (
             id, employee_id, expertise,
             profiles ( full_name, email )
@@ -533,7 +533,7 @@ export class DepartmentRepository {
       .select(`
         co_uid, tracking_id, title, description, status, priority, severity_level,
         cross_dept_status, location_source, ward_number, submitted_date, sla_due_at, sla_breached,
-        complaint_categories ( category_name ),
+        complaint_categories!complaints_category_id_fkey ( category_name ),
         citizens ( first_name, last_name, contact_number )
       `)
       .or(`assigned_department_id.eq.${departmentId},lead_department_id.eq.${departmentId}`);
@@ -558,7 +558,7 @@ export class DepartmentRepository {
         .select(`
           co_uid, tracking_id, title, description, status, priority, severity_level,
           cross_dept_status, location_source, ward_number, submitted_date, sla_due_at, sla_breached,
-          complaint_categories ( category_name ),
+          complaint_categories!complaints_category_id_fkey ( category_name ),
           citizens ( first_name, last_name, contact_number )
         `)
         .in("co_uid", collabIds);

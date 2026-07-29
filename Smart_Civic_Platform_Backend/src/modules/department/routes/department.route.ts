@@ -240,6 +240,8 @@ export function createDepartmentRouter(
   router.get("/staff-roster", controller.getStaffRoster);
   router.get("/staff", controller.getStaffRoster);
 
+  router.post("/staff/availability", controller.checkStaffAvailability);
+
   /**
    * @swagger
    * /api/department/staff/create:

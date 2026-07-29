@@ -1,393 +1,290 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import {
-  Box,
-  Typography,
-  Paper,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  Chip,
-  CircularProgress,
-  Alert,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  Button,
-  TextField,
-  Select,
-  MenuItem,
-  FormControl,
-  InputLabel,
-  InputAdornment,
-  Stack,
-  Divider,
-  IconButton,
-  Tooltip,
+  Box, Typography, Paper, Table, TableBody, TableCell, TableContainer,
+  TableHead, TableRow, Chip, CircularProgress, Alert, Dialog, DialogTitle,
+  DialogContent, DialogActions, Button, TextField, FormControl, InputLabel,
+  Select, MenuItem, IconButton
 } from "@mui/material";
-import SearchIcon from "@mui/icons-material/Search";
-import AssignmentIcon from "@mui/icons-material/Assignment";
-import FilterListIcon from "@mui/icons-material/FilterList";
-import VisibilityIcon from "@mui/icons-material/Visibility";
+import { Visibility, ErrorOutlined } from "@mui/icons-material";
 import { useAuth } from "../../hooks/useAuth";
-import { BASE_URL, fetchWithAuth } from "../../api";
+import { municipalityApi } from "../../api/modules/municipality.api";
+import { publicApi } from "../../api/modules/public.api";
+import type { MunicipComplaint } from "../../api/types/municipality.types";
+import { formatDistanceToNow } from "date-fns";
 
-interface Complaint {
-  co_uid: string;
-  title: string;
-  description: string;
-  category: string;
-  status: string;
-  priority?: string;
-  citizen_id?: string;
-  department_id?: string;
-  department?: { id: string; name: string };
-  created_at: string;
-  updated_at: string;
-}
-
-interface Department {
-  id: string;
-  name: string;
-}
-
-const STATUS_OPTIONS = ["pending", "in_progress", "resolved", "closed"];
-const STATUS_COLOR: Record<string, "default" | "warning" | "info" | "success" | "error"> = {
+const STATUS_COLOR: Record<string, "default" | "primary" | "warning" | "info" | "success" | "error" | "secondary"> = {
   pending: "warning",
-  in_progress: "info",
+  assigned: "info",
+  under_review: "info",
+  in_progress: "primary",
   resolved: "success",
+  rejected: "error",
   closed: "default",
+  escalated: "error",
+  reopened: "warning",
+  cross_dept_pending: "secondary",
+};
+
+const SEVERITY_PROPS: Record<string, { color: any; variant?: any; sx?: any }> = {
+  low: { color: "success", variant: "outlined" },
+  medium: { color: "warning" },
+  high: { color: "error" },
+  urgent: { color: "error", sx: { bgcolor: "error.dark", color: "white", fontWeight: "bold" } },
 };
 
 export default function ComplainDetails() {
   const { user } = useAuth();
-  const municipalityId = (user as any)?.municipalityId || (user as any)?.municipality_id;
+  const municipalityId = user?.municipalityId || user?.municipality_id;
 
-  const [complaints, setComplaints] = useState<Complaint[]>([]);
-  const [filtered, setFiltered] = useState<Complaint[]>([]);
-  const [departments, setDepartments] = useState<Department[]>([]);
-  const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
-  const [deptFilter, setDeptFilter] = useState("all");
+  const [complaints, setComplaints] = useState<MunicipComplaint[]>([]);
+  const [departments, setDepartments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // View/Update Dialog
-  const [selected, setSelected] = useState<Complaint | null>(null);
-  const [updatedStatus, setUpdatedStatus] = useState("");
-  const [updatedDept, setUpdatedDept] = useState("");
+  // Scope Info
+  const [municipalityName, setMunicipalityName] = useState("Loading scope...");
+
+  // Dialog state
+  const [selected, setSelected] = useState<MunicipComplaint | null>(null);
+  const [action, setAction] = useState<string>("update_status");
+  const [newStatus, setNewStatus] = useState<string>("");
+  const [newDept, setNewDept] = useState<string>("");
+  const [note, setNote] = useState<string>("");
   const [saving, setSaving] = useState(false);
-  const [saveError, setSaveError] = useState<string | null>(null);
 
-  const fetchAll = async () => {
-    if (!municipalityId) return;
-    setLoading(true);
-    setError(null);
+  useEffect(() => {
+    if (municipalityId) {
+      fetchData();
+      fetchScope();
+    } else if (user) {
+      setLoading(false);
+      setError("No municipality assigned to your account.");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [municipalityId, user]);
+
+  const fetchScope = async () => {
     try {
-      const params = new URLSearchParams();
-      if (statusFilter !== "all") params.set("status", statusFilter);
-      if (deptFilter !== "all") params.set("departmentId", deptFilter);
+      if (!municipalityId) return;
+      const res = await publicApi.getMunicipalities();
+      if (res.success) {
+        const m = res.data?.find((x: any) => x.id === municipalityId);
+        if (m) setMunicipalityName(m.official_name || m.name);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
 
-      const [complaintsRes, deptRes] = await Promise.all([
-        fetchWithAuth(
-          `${BASE_URL}/municipality/${municipalityId}/complaints?${params.toString()}`
-        ),
-        fetchWithAuth(`${BASE_URL}/municipality/${municipalityId}/departments`),
+  const fetchData = async () => {
+    setLoading(true);
+    try {
+      const [compRes, deptRes] = await Promise.all([
+        municipalityApi.getComplaints(),
+        municipalityApi.getDepartments()
       ]);
-
-      if (complaintsRes.ok) {
-        const d = await complaintsRes.json();
-        const arr = d?.data?.complaints ?? d?.data ?? d ?? [];
-        setComplaints(Array.isArray(arr) ? arr : []);
-      } else {
-        const d = await complaintsRes.json();
-        throw new Error(d.message || "Failed to fetch complaints");
-      }
-      if (deptRes.ok) {
-        const d = await deptRes.json();
-        const arr = d?.data?.departments ?? d?.data ?? d ?? [];
-        setDepartments(Array.isArray(arr) ? arr : []);
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "An error occurred");
+      if (compRes.success) setComplaints(compRes.data || []);
+      if (deptRes.success) setDepartments(deptRes.data || []);
+    } catch (err: any) {
+      setError(err.message || "Failed to load data");
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => {
-    fetchAll();
-  }, [municipalityId, statusFilter, deptFilter]);
-
-  useEffect(() => {
-    const q = search.toLowerCase();
-    setFiltered(
-      complaints.filter(
-        (c) =>
-          (c.title ?? "").toLowerCase().includes(q) ||
-          (c.category ?? "").toLowerCase().includes(q)
-      )
+  const isScopeMismatch = (comp: MunicipComplaint) => {
+    if (!comp.citizen) return true; // Missing citizen info
+    return (
+      comp.citizen.current_municipality_id !== municipalityId &&
+      comp.citizen.permanent_municipality_id !== municipalityId
     );
-  }, [search, complaints]);
+  };
 
-  const openDetail = (c: Complaint) => {
+  const handleOpen = (c: MunicipComplaint) => {
     setSelected(c);
-    setUpdatedStatus(c.status);
-    setUpdatedDept(c.department?.id ?? c.department_id ?? "");
-    setSaveError(null);
+    setNewStatus(c.status);
+    setNewDept(c.assigned_department_id || "");
+    setAction("update_status");
+    setNote("");
   };
 
   const handleUpdate = async () => {
-    if (!selected) return;
+    if (!selected || !municipalityId) return;
     setSaving(true);
-    setSaveError(null);
     try {
-      const body: Record<string, string> = { status: updatedStatus };
-      if (updatedDept) body.departmentId = updatedDept;
-
-      const res = await fetchWithAuth(
-        `${BASE_URL}/municipality/${municipalityId}/complaints/${selected.co_uid}`,
-        { method: "PATCH", body: JSON.stringify(body) }
-      );
-      const result = await res.json();
-      if (!res.ok) throw new Error(result.message || "Update failed");
-
-      setComplaints((prev) =>
-        prev.map((c) =>
-          c.co_uid === selected.co_uid
-            ? { ...c, status: updatedStatus, department_id: updatedDept }
-            : c
-        )
-      );
-      setSelected(null);
-    } catch (err) {
-      setSaveError(err instanceof Error ? err.message : "Update failed");
+      const res = await municipalityApi.interveneOnComplaint(municipalityId, selected.co_uid, {
+        action: action as any,
+        note,
+        new_status: newStatus,
+        new_department_id: newDept || undefined
+      });
+      if (res.success) {
+        setSelected(null);
+        fetchData(); // Refresh list
+      }
+    } catch (e: any) {
+      alert("Error: " + (e.response?.data?.message || e.message));
     } finally {
       setSaving(false);
     }
   };
 
-  if (!municipalityId) {
-    return (
-      <Box sx={{ p: 4 }}>
-        <Alert severity="warning">Municipality ID not found in profile.</Alert>
-      </Box>
-    );
-  }
+  if (loading) return <Box p={4} display="flex" justifyContent="center"><CircularProgress /></Box>;
+  if (error) return <Box p={4}><Alert severity="error">{error}</Alert></Box>;
 
   return (
-    <Box sx={{ p: { xs: 2, md: 4 }, maxWidth: 1400, mx: "auto" }}>
-      {/* Header */}
-      <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, mb: 3 }}>
-        <AssignmentIcon sx={{ color: "primary.main", fontSize: 32 }} />
-        <Box>
-          <Typography variant="h5" fontWeight={800}>
-            Complaint Management
-          </Typography>
-          <Typography variant="body2" color="text.secondary">
-            Review, assign, and update status of all complaints
-          </Typography>
-        </Box>
-      </Box>
+    <Box>
+      <Paper sx={{ p: 3, mb: 4, bgcolor: "primary.light", color: "primary.contrastText" }}>
+        <Typography variant="h5" fontWeight="bold">🏛 Complaint Management</Typography>
+        <Typography variant="subtitle1" sx={{ mt: 1 }}>
+          Scope: {municipalityName}
+        </Typography>
+        <Typography variant="caption" sx={{ opacity: 0.9 }}>
+          Showing complaints submitted to this municipality. A warning icon indicates the citizen is not registered in this municipality.
+        </Typography>
+      </Paper>
 
-      {error && (
-        <Alert severity="error" sx={{ mb: 3 }} onClose={() => setError(null)}>
-          {error}
-        </Alert>
-      )}
-
-      {/* Filters */}
-      <Stack direction={{ xs: "column", sm: "row" }} spacing={2} sx={{ mb: 3 }}>
-        <TextField
-          placeholder="Search complaints..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          size="small"
-          sx={{ width: { xs: "100%", sm: 280 } }}
-          slotProps={{
-            input: {
-              startAdornment: (
-                <InputAdornment position="start">
-                  <SearchIcon fontSize="small" />
-                </InputAdornment>
-              ),
-            },
-          }}
-        />
-        <FormControl size="small" sx={{ minWidth: 150 }}>
-          <InputLabel>Status</InputLabel>
-          <Select
-            label="Status"
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            startAdornment={<FilterListIcon fontSize="small" sx={{ mr: 0.5, color: "text.secondary" }} />}
-          >
-            <MenuItem value="all">All Statuses</MenuItem>
-            {STATUS_OPTIONS.map((s) => (
-              <MenuItem key={s} value={s} sx={{ textTransform: "capitalize" }}>
-                {s.replace("_", " ")}
-              </MenuItem>
-            ))}
-          </Select>
-        </FormControl>
-        <FormControl size="small" sx={{ minWidth: 180 }}>
-          <InputLabel>Department</InputLabel>
-          <Select
-            label="Department"
-            value={deptFilter}
-            onChange={(e) => setDeptFilter(e.target.value)}
-          >
-            <MenuItem value="all">All Departments</MenuItem>
-            {departments.map((d) => (
-              <MenuItem key={d.id} value={d.id}>
-                {d.name}
-              </MenuItem>
-            ))}
-          </Select>
-        </FormControl>
-      </Stack>
-
-      {loading ? (
-        <Box sx={{ display: "flex", justifyContent: "center", py: 8 }}>
-          <CircularProgress />
-        </Box>
-      ) : (
-        <TableContainer component={Paper} elevation={2} sx={{ borderRadius: 3 }}>
-          <Table sx={{ minWidth: 900 }}>
-            <TableHead sx={{ bgcolor: "primary.main" }}>
-              <TableRow>
-                {["Title", "Category", "Department", "Status", "Submitted", "Actions"].map((h) => (
-                  <TableCell key={h} sx={{ color: "#fff", fontWeight: 700 }}>
-                    {h}
-                  </TableCell>
-                ))}
+      <TableContainer component={Paper} sx={{ borderRadius: 2 }}>
+        <Table>
+          <TableHead sx={{ bgcolor: "background.default" }}>
+            <TableRow>
+              <TableCell>Tracking ID</TableCell>
+              <TableCell>Title & Ward</TableCell>
+              <TableCell>Category</TableCell>
+              <TableCell>Severity</TableCell>
+              <TableCell>Status</TableCell>
+              <TableCell>Department</TableCell>
+              <TableCell>Submitted</TableCell>
+              <TableCell align="center">Actions</TableCell>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {complaints.map((c) => (
+              <TableRow key={c.co_uid} hover>
+                <TableCell>
+                  <Typography variant="body2" sx={{ fontFamily: "monospace", color: "primary.main", fontWeight: "bold" }}>
+                    {c.tracking_id}
+                  </Typography>
+                  {isScopeMismatch(c) && (
+                    <Chip size="small" icon={<ErrorOutline fontSize="small" />} label="Out of Scope" color="error" variant="outlined" sx={{ mt: 0.5, height: 20, fontSize: "0.65rem" }} />
+                  )}
+                </TableCell>
+                <TableCell>
+                  <Typography variant="body2" sx={{ maxWidth: 200, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                    {c.title}
+                  </Typography>
+                  <Typography variant="caption" color="textSecondary">
+                    {c.ward_number ? `Ward ${c.ward_number}` : "No Ward"}
+                  </Typography>
+                </TableCell>
+                <TableCell>
+                  <Chip size="small" label={c.category?.category_name || "Unknown"} />
+                </TableCell>
+                <TableCell>
+                  <Chip size="small" label={(c.severity_level || "low").toUpperCase()} {...(SEVERITY_PROPS[c.severity_level || "low"] || {})} />
+                </TableCell>
+                <TableCell>
+                  <Chip size="small" label={c.status} color={STATUS_COLOR[c.status] || "default"} />
+                </TableCell>
+                <TableCell>
+                  {c.department?.department_name || "—"}
+                </TableCell>
+                <TableCell>
+                  <Typography variant="body2">
+                    {formatDistanceToNow(new Date(c.submitted_date), { addSuffix: true })}
+                  </Typography>
+                  {c.sla_breached && <Typography variant="caption" color="error">SLA Breached</Typography>}
+                </TableCell>
+                <TableCell align="center">
+                  <IconButton size="small" color="primary" onClick={() => handleOpen(c)}>
+                    <Visibility />
+                  </IconButton>
+                </TableCell>
               </TableRow>
-            </TableHead>
-            <TableBody>
-              {filtered.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={6} align="center" sx={{ py: 5, color: "text.secondary" }}>
-                    No complaints found.
-                  </TableCell>
-                </TableRow>
-              ) : (
-                filtered.map((c) => (
-                  <TableRow key={c.co_uid} sx={{ "&:hover": { bgcolor: "#f5f8ff" }, "&:last-child td": { border: 0 } }}>
-                    <TableCell>
-                      <Typography fontWeight={600} noWrap sx={{ maxWidth: 220 }}>
-                        {c.title}
-                      </Typography>
-                    </TableCell>
-                    <TableCell>
-                      <Chip label={c.category} size="small" variant="outlined" />
-                    </TableCell>
-                    <TableCell>{c.department?.name ?? "—"}</TableCell>
-                    <TableCell>
-                      <Chip
-                        label={c.status.replace("_", " ")}
-                        color={STATUS_COLOR[c.status] ?? "default"}
-                        size="small"
-                        sx={{ textTransform: "capitalize" }}
-                      />
-                    </TableCell>
-                    <TableCell>
-                      {new Date(c.created_at).toLocaleDateString()}
-                    </TableCell>
-                    <TableCell>
-                      <Tooltip title="View & Update">
-                        <IconButton color="primary" size="small" onClick={() => openDetail(c)}>
-                          <VisibilityIcon fontSize="small" />
-                        </IconButton>
-                      </Tooltip>
-                    </TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </TableContainer>
-      )}
+            ))}
+            {complaints.length === 0 && (
+              <TableRow>
+                <TableCell colSpan={8} align="center" sx={{ py: 4 }}>
+                  No complaints found in your municipality.
+                </TableCell>
+              </TableRow>
+            )}
+          </TableBody>
+        </Table>
+      </TableContainer>
 
-      {/* Detail/Update Dialog */}
+      {/* Intervention Dialog */}
       <Dialog open={!!selected} onClose={() => setSelected(null)} maxWidth="sm" fullWidth>
-        <DialogTitle fontWeight={700}>Complaint Details</DialogTitle>
-        <DialogContent>
-          {saveError && <Alert severity="error" sx={{ mb: 2 }}>{saveError}</Alert>}
+        <DialogTitle>Complaint Intervention</DialogTitle>
+        <DialogContent dividers>
           {selected && (
-            <>
-              <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-                TITLE
-              </Typography>
-              <Typography variant="body1" fontWeight={600} gutterBottom>
-                {selected.title}
-              </Typography>
-              <Divider sx={{ my: 1.5 }} />
-              <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-                DESCRIPTION
-              </Typography>
-              <Typography variant="body2" sx={{ whiteSpace: "pre-wrap", mb: 2 }}>
-                {selected.description}
-              </Typography>
-              <Divider sx={{ my: 1.5 }} />
-              <Stack direction="row" spacing={2} sx={{ mb: 2 }}>
-                <Box>
-                  <Typography variant="caption" color="text.secondary">
-                    Category
-                  </Typography>
-                  <Typography variant="body2" fontWeight={600}>
-                    {selected.category}
-                  </Typography>
-                </Box>
-                <Box>
-                  <Typography variant="caption" color="text.secondary">
-                    Submitted
-                  </Typography>
-                  <Typography variant="body2" fontWeight={600}>
-                    {new Date(selected.created_at).toLocaleString()}
-                  </Typography>
-                </Box>
-              </Stack>
-              <FormControl fullWidth sx={{ mb: 2 }}>
-                <InputLabel>Update Status</InputLabel>
-                <Select
-                  label="Update Status"
-                  value={updatedStatus}
-                  onChange={(e) => setUpdatedStatus(e.target.value)}
-                >
-                  {STATUS_OPTIONS.map((s) => (
-                    <MenuItem key={s} value={s} sx={{ textTransform: "capitalize" }}>
-                      {s.replace("_", " ")}
-                    </MenuItem>
-                  ))}
+            <Box display="flex" flexDirection="column" gap={3}>
+              <Box>
+                <Typography variant="subtitle2" color="textSecondary">Tracking ID</Typography>
+                <Typography variant="body1" sx={{ fontFamily: "monospace" }}>{selected.tracking_id}</Typography>
+              </Box>
+
+              <Box>
+                <Typography variant="subtitle2" color="textSecondary">Description</Typography>
+                <Typography variant="body2" sx={{ mt: 0.5, p: 1.5, bgcolor: "grey.50", borderRadius: 1 }}>
+                  {selected.description || selected.title}
+                </Typography>
+              </Box>
+
+              <FormControl fullWidth size="small">
+                <InputLabel>Action</InputLabel>
+                <Select value={action} onChange={(e) => setAction(e.target.value)} label="Action">
+                  <MenuItem value="update_status">Update Status</MenuItem>
+                  <MenuItem value="reassign">Reassign Department</MenuItem>
+                  <MenuItem value="force_resolve">Force Resolve</MenuItem>
+                  <MenuItem value="force_reject">Force Reject</MenuItem>
                 </Select>
               </FormControl>
-              <FormControl fullWidth>
-                <InputLabel>Assign to Department</InputLabel>
-                <Select
-                  label="Assign to Department"
-                  value={updatedDept}
-                  onChange={(e) => setUpdatedDept(e.target.value)}
-                >
-                  <MenuItem value="">— Not Assigned —</MenuItem>
-                  {departments.map((d) => (
-                    <MenuItem key={d.id} value={d.id}>
-                      {d.name}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </>
+
+              {action === "update_status" && (
+                <FormControl fullWidth size="small">
+                  <InputLabel>Status</InputLabel>
+                  <Select value={newStatus} onChange={(e) => setNewStatus(e.target.value)} label="Status">
+                    {Object.keys(STATUS_COLOR).map(s => (
+                      <MenuItem key={s} value={s}>{s}</MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              )}
+
+              {action === "reassign" && (
+                <FormControl fullWidth size="small">
+                  <InputLabel>Department</InputLabel>
+                  <Select value={newDept} onChange={(e) => setNewDept(e.target.value)} label="Department">
+                    {departments.map(d => (
+                      <MenuItem key={d.id} value={d.id}>{d.department_name}</MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              )}
+
+              {["force_resolve", "force_reject", "reassign"].includes(action) && (
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Intervention Note (Required)"
+                  multiline
+                  rows={3}
+                  value={note}
+                  onChange={(e) => setNote(e.target.value)}
+                />
+              )}
+            </Box>
           )}
         </DialogContent>
-        <DialogActions sx={{ px: 3, pb: 3 }}>
-          <Button onClick={() => setSelected(null)} disabled={saving}>
-            Close
-          </Button>
-          <Button variant="contained" onClick={handleUpdate} disabled={saving} sx={{ fontWeight: 600 }}>
-            {saving ? "Saving..." : "Save Changes"}
+        <DialogActions sx={{ p: 2 }}>
+          <Button onClick={() => setSelected(null)} disabled={saving}>Cancel</Button>
+          <Button 
+            variant="contained" 
+            onClick={handleUpdate} 
+            disabled={saving || (["force_resolve", "force_reject", "reassign"].includes(action) && !note.trim())}
+          >
+            {saving ? "Processing..." : "Apply Intervention"}
           </Button>
         </DialogActions>
       </Dialog>

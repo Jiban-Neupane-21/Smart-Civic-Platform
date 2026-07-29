@@ -449,6 +449,35 @@ export class DepartmentController {
     }
   };
 
+  checkStaffAvailability = async (req: any, res: Response): Promise<void> => {
+    try {
+      const { staff_ids, start_date, end_date } = req.body;
+      if (!staff_ids || !start_date || !end_date) {
+        res.status(400).json({ success: false, error: "staff_ids, start_date, and end_date are required." });
+        return;
+      }
+      const { ScheduleService } = require("../../../service/schedule.service");
+      const scheduleService = new ScheduleService((this.service as any).repo.supabaseAdmin);
+      const data = await scheduleService.checkBulkAvailability(staff_ids, start_date, end_date);
+      res.status(200).json({ success: true, data });
+    } catch (error: any) {
+      res.status(500).json({ success: false, error: error.message });
+    }
+  };
+
+  getQueue = async (req: any, res: Response): Promise<void> => {
+    try {
+      const statusFilter = req.query.status as string | undefined;
+      const data = await this.service.getDepartmentQueue(
+        req.departmentId,
+        statusFilter
+      );
+      res.status(200).json({ success: true, data });
+    } catch (error: any) {
+      res.status(500).json({ success: false, error: error.message });
+    }
+  };
+
   exportComplaintsCsv = async (req: any, res: Response): Promise<void> => {
     try {
       const csvData = await this.service.exportComplaintsCsv(req.departmentId);

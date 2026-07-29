@@ -1,426 +1,562 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-  Box,
-  Typography,
-  Card,
-  TextField,
-  Button,
-  MenuItem,
-  Grid,
-  InputLabel,
-  FormControl,
-  Select,
-  Chip,
-  FormHelperText,
-  CircularProgress,
-  Alert,
-  type SelectChangeEvent,
+  Box, Typography, Card, TextField, Button, MenuItem, Grid,
+  InputLabel, FormControl, Select, CircularProgress, Alert,
+  Stepper, Step, StepLabel, RadioGroup, FormControlLabel, Radio,
+  Switch, Paper, Chip
 } from "@mui/material";
-import { CloudUpload, Send, HomeWork } from "@mui/icons-material";
 import Swal from "sweetalert2";
-import { fetchWithAuth, BASE_URL } from "../../api";
-import { LocationPickerMap } from "../../components/LocationPickerMap";
+import { publicApi, complaintsApi, fetchWithAuth, BASE_URL } from "../../api";
 import { useAuth } from "../../hooks/useAuth";
+import type { Province, District, Municipality, Ward, ComplaintCategory, SubmitComplaintPayload } from "../../api/types";
 
-interface MunicipalityItem {
-  id: string;
-  official_name: string;
-  local_level_type?: string;
-}
-
-interface ComplaintForm {
-  municipality_id: string;
-  category: string;
-  category_id?: string;
-  title: string;
-  description: string;
-  location: string;
-  attachment: File | null;
-}
-
-const formatCategoryLabel = (value: string): string => {
-  return value
-    .replace(/_/g, " ")
-    .replace(/\b\w/g, (c) => c.toUpperCase());
-};
+const STEPS = ["Location", "Category", "Details", "Review"];
 
 export const SubmitComplaint: React.FC = () => {
   const navigate = useNavigate();
-
   const { user } = useAuth();
-  const userMunicipalityId = (user as any)?.municipality_id || (user as any)?.municipalityId;
+  
+  const userMunicipalityId = (user as any)?.municipalityId || (user as any)?.municipality_id;
+  
+  const [profile, setProfile] = useState<any>(null);
+  
+  useEffect(() => {
+    fetchWithAuth(`${BASE_URL}/auth/me`)
+      .then(res => res.json())
+      .then(res => {
+        if (res.success) setProfile(res.data);
+      })
+      .catch(console.error);
+  }, []);
 
+  const registeredWardId = profile?.citizen_details?.current_ward_id || profile?.citizen_details?.permanent_ward_id;
+  const registeredMunicipalityId = profile?.citizen_details?.current_municipality_id || profile?.citizen_details?.permanent_municipality_id || profile?.municipality_id || userMunicipalityId;
+  const registeredAddressStr = profile?.citizen_details?.current_address || profile?.citizen_details?.permanent_address;
 
-  const [form, setForm] = useState<ComplaintForm>({
-    municipality_id: "",
-    category: "",
-    category_id: "",
-    title: "",
-    description: "",
-    location: "",
-    attachment: null,
-  });
-
-  const [municipalities, setMunicipalities] = useState<MunicipalityItem[]>([]);
-  const [municipalitiesLoading, setMunicipalitiesLoading] = useState(true);
-
-  const [categories, setCategories] = useState<{ id?: string; name: string }[]>([]);
-  const [categoriesLoading, setCategoriesLoading] = useState(true);
-  const [categoriesError, setCategoriesError] = useState<string | null>(null);
-
+  const [activeStep, setActiveStep] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
-  // 1. Fetch Municipalities
-  const fetchMunicipalities = async () => {
-    try {
-      setMunicipalitiesLoading(true);
-      const res = await fetch(`${BASE_URL}/citizen/municipalities`);
-      if (res.ok) {
-        const result = await res.json();
-        const list: MunicipalityItem[] = result.data || [];
-        setMunicipalities(list);
-        if (list.length > 0) {
-          // Pre-select user's registered home municipality if available
-          const registeredMatch = userMunicipalityId && list.find((m) => m.id === userMunicipalityId);
-          setForm((prev) => ({
-            ...prev,
-            municipality_id: registeredMatch ? registeredMatch.id : list[0].id,
-          }));
-        }
-      }
-    } catch (err) {
-      console.error("Failed to fetch municipalities:", err);
-    } finally {
-      setMunicipalitiesLoading(false);
-    }
-  };
+  // --- Location State ---
+  const [locationSource, setLocationSource] = useState<'registered_address' | 'manual' | 'gps'>('manual');
+  
+  const [provinces, setProvinces] = useState<Province[]>([]);
+  const [districts, setDistricts] = useState<District[]>([]);
+  const [municipalities, setMunicipalities] = useState<Municipality[]>([]);
+  const [wards, setWards] = useState<Ward[]>([]);
 
-  // 2. Fetch Department/Complaint Categories
-  const fetchCategories = async () => {
-    try {
-      setCategoriesLoading(true);
-      setCategoriesError(null);
-      const res = await fetchWithAuth(
-        `${BASE_URL}/municipality/departments/categories`
-      );
-      if (res.ok) {
-        const result = await res.json();
-        const rawData = result.data || [];
-        // Support both string array and object array schemas
-        const parsed = rawData.map((item: any) => {
-          if (typeof item === "string") {
-            return { name: item };
-          }
-          return {
-            id: item.id,
-            name: item.category_name || item.department_category || item.name || "General",
-          };
-        });
-        setCategories(parsed);
-        if (parsed.length > 0) {
-          setForm((prev) => ({
-            ...prev,
-            category: parsed[0].name,
-            category_id: parsed[0].id || "",
-          }));
-        }
-      } else {
-        setCategoriesError("Failed to load complaint categories.");
-      }
-    } catch (err) {
-      console.error("Failed to fetch categories:", err);
-      setCategoriesError("Failed to load complaint categories.");
-    } finally {
-      setCategoriesLoading(false);
-    }
-  };
+  const [provId, setProvId] = useState("");
+  const [distId, setDistId] = useState("");
+  const [muniId, setMuniId] = useState("");
+  const [wardId, setWardId] = useState("");
+
+  const [gpsLocation, setGpsLocation] = useState<{lat: number, lng: number} | null>(null);
+  const [isGettingGps, setIsGettingGps] = useState(false);
+
+  // --- Category State ---
+  const [categories, setCategories] = useState<ComplaintCategory[]>([]);
+  const [primaryCategoryId, setPrimaryCategoryId] = useState("");
+  const [hasSecondary, setHasSecondary] = useState(false);
+  const [secondaryCategoryId, setSecondaryCategoryId] = useState("");
+  const [loadingCategories, setLoadingCategories] = useState(false);
+
+  // --- Details State ---
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [severity, setSeverity] = useState<'low' | 'medium' | 'high'>('medium');
 
   useEffect(() => {
-    fetchMunicipalities();
-    fetchCategories();
-  }, []);
+    fetchProvinces();
+    fetchCategories("default"); // Backend returns all categories regardless of ID
+    if (registeredMunicipalityId) {
+      setLocationSource('registered_address');
+    }
+  }, [registeredMunicipalityId]);
 
-  const handleInputChange = (
-    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
-  ) => {
-    const { name, value } = e.target;
-    setForm((prev) => ({ ...prev, [name]: value }));
-  };
-
-  const handleSelectChange = (e: SelectChangeEvent) => {
-    const { name, value } = e.target;
-    if (name === "category") {
-      const selectedObj = categories.find((c) => c.name === value);
-      setForm((prev) => ({
-        ...prev,
-        category: value,
-        category_id: selectedObj?.id || "",
-      }));
+  useEffect(() => {
+    if (provId) {
+      publicApi.getDistricts(provId).then(res => setDistricts(res.data)).catch(console.error);
     } else {
-      setForm((prev) => ({ ...prev, [name]: value }));
+      setDistricts([]);
+    }
+    setDistId("");
+  }, [provId]);
+
+  useEffect(() => {
+    if (distId) {
+      publicApi.getMunicipalities(distId).then(res => setMunicipalities(res.data)).catch(console.error);
+    } else {
+      setMunicipalities([]);
+    }
+    setMuniId("");
+  }, [distId]);
+
+  useEffect(() => {
+    if (muniId) {
+      publicApi.getWards(muniId).then(res => setWards(res.data)).catch(console.error);
+    } else {
+      setWards([]);
+    }
+    setWardId("");
+  }, [muniId]);
+
+
+
+  const fetchProvinces = async () => {
+    try {
+      const res = await publicApi.getProvinces();
+      setProvinces(res.data);
+    } catch (err) {
+      console.error(err);
     }
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      setForm((prev) => ({ ...prev, attachment: e.target.files![0] }));
+  const fetchCategories = async (mId: string) => {
+    try {
+      setLoadingCategories(true);
+      const res = await complaintsApi.getCategories(mId);
+      setCategories(res.data);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoadingCategories(false);
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleGetGps = () => {
+    if (!navigator.geolocation) {
+      alert("Geolocation is not supported by your browser");
+      return;
+    }
+    setIsGettingGps(true);
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setGpsLocation({ lat: position.coords.latitude, lng: position.coords.longitude });
+        setIsGettingGps(false);
+      },
+      (error) => {
+        alert("Unable to retrieve your location");
+        setIsGettingGps(false);
+      }
+    );
+  };
+
+  const handleNext = () => {
+    if (activeStep === 0) {
+      if (locationSource === 'manual' && (!wardId || !muniId)) {
+        alert("Please select at least a municipality and ward.");
+        return;
+      }
+      if (locationSource === 'gps' && !gpsLocation) {
+        alert("Please get your GPS location.");
+        return;
+      }
+    }
+    if (activeStep === 1) {
+      if (!primaryCategoryId) {
+        alert("Please select a primary category.");
+        return;
+      }
+    }
+    if (activeStep === 2) {
+      if (!title || title.length < 5) {
+        alert("Please provide a title of at least 5 characters.");
+        return;
+      }
+      if (!description || description.length < 20) {
+        alert("Please provide a description of at least 20 characters.");
+        return;
+      }
+    }
+    setActiveStep((prev) => prev + 1);
+  };
+
+  const handleBack = () => {
+    setActiveStep((prev) => prev - 1);
+  };
+
+  const handleSubmit = async () => {
+    setIsSubmitting(true);
     setSubmitError(null);
 
-    if (!form.municipality_id) {
-      setSubmitError("Please select a target municipality.");
-      return;
-    }
-    if (!form.title.trim()) {
-      setSubmitError("Please enter a complaint title.");
-      return;
-    }
-    if (!form.description.trim()) {
-      setSubmitError("Please enter a detailed description.");
-      return;
-    }
-
-    setIsSubmitting(true);
+    const payload: SubmitComplaintPayload = {
+      location: {
+        source: locationSource,
+        ...(locationSource === 'manual' ? { municipality_id: muniId, ward_id: wardId } : {}),
+        ...(locationSource === 'gps' ? { latitude: gpsLocation?.lat, longitude: gpsLocation?.lng } : {}),
+        ...(locationSource === 'registered_address' ? { municipality_id: registeredMunicipalityId, ward_id: registeredWardId } : {})
+      },
+      category: {
+        primary_category_id: primaryCategoryId,
+        ...(hasSecondary && secondaryCategoryId ? { secondary_category_id: secondaryCategoryId } : {})
+      },
+      details: {
+        title,
+        description,
+        severity_level: severity
+      },
+      step_completed: 4
+    };
 
     try {
-      // Build full description incorporating location details
-      const fullDescription = form.location
-        ? `📍 Location: ${form.location}\n\n${form.description}`
-        : form.description;
-
-      const payload: Record<string, any> = {
-        municipality_id: form.municipality_id,
-        title: form.title,
-        description: fullDescription,
-      };
-
-      if (form.category_id) {
-        payload.category_id = form.category_id;
+      const res = await complaintsApi.createComplaint(payload);
+      if (res.success || (res as any).status === "success") {
+        Swal.fire({
+          icon: "success",
+          title: "Complaint Submitted!",
+          text: `Tracking ID: ${res.data?.tracking_id || (res.data as any)?.ticketNumber || 'N/A'}`,
+          confirmButtonColor: "#059669",
+        }).then(() => {
+          navigate("/citizen/complaints");
+        });
+      } else {
+        setSubmitError((res as any).message || "Failed to submit complaint.");
       }
-
-      const res = await fetchWithAuth(`${BASE_URL}/citizen/complaints`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(payload),
-      });
-
-      const responseData = await res.json();
-
-      if (!res.ok) {
-        throw new Error(
-          responseData.error || responseData.message || "Failed to submit complaint"
-        );
-      }
-
-      Swal.fire({
-        icon: "success",
-        title: "Complaint Submitted!",
-        text: "Your ticket has been logged successfully and forwarded to municipal authorities.",
-        confirmButtonColor: "#1976d2",
-      }).then(() => {
-        navigate("/citizen/complaints");
-      });
     } catch (err: any) {
-      console.error("Submission Error:", err);
-      setSubmitError(err.message || "An error occurred while submitting your ticket.");
+      setSubmitError(err.response?.data?.message || err.message || "An error occurred");
     } finally {
       setIsSubmitting(false);
     }
   };
 
   return (
-    <Box p={3} maxWidth="md" sx={{ margin: "0 auto" }}>
-      <Typography variant="h4" fontWeight="bold" mb={3}>
-        Submit a New Complaint
+    <Box sx={{ maxWidth: 800, mx: "auto", p: 2 }}>
+      <Typography variant="h4" gutterBottom fontWeight={700}>
+        Submit a Complaint
       </Typography>
+      
+      <Stepper activeStep={activeStep} sx={{ mb: 4, mt: 2 }}>
+        {STEPS.map((label) => (
+          <Step key={label}>
+            <StepLabel>{label}</StepLabel>
+          </Step>
+        ))}
+      </Stepper>
 
-      <Card sx={{ p: 4 }}>
-        <Box component="form" onSubmit={handleSubmit} noValidate>
-          {submitError && (
-            <Alert severity="error" sx={{ mb: 3 }} onClose={() => setSubmitError(null)}>
-              {submitError}
-            </Alert>
-          )}
+      <Card sx={{ p: 4, borderRadius: 3, boxShadow: "0 4px 20px rgba(0,0,0,0.05)" }}>
+        {submitError && (
+          <Alert severity="error" sx={{ mb: 3 }}>
+            {submitError}
+          </Alert>
+        )}
 
-          <Grid container spacing={3}>
-            {/* Municipality Selector */}
-            <Grid item xs={12} sm={6}>
-              <FormControl fullWidth required>
-                <InputLabel id="municipality-label">Target Municipality</InputLabel>
-                <Select
-                  labelId="municipality-label"
-                  name="municipality_id"
-                  value={form.municipality_id}
-                  label="Target Municipality"
-                  onChange={handleSelectChange}
-                  disabled={municipalitiesLoading || isSubmitting}
-                  endAdornment={
-                    municipalitiesLoading ? (
-                      <CircularProgress size={20} sx={{ mr: 2 }} />
-                    ) : null
-                  }
-                >
-                  {municipalities.map((muni) => (
-                    <MenuItem key={muni.id} value={muni.id}>
-                      {muni.official_name}
-                    </MenuItem>
-                  ))}
-                </Select>
-                {form.municipality_id && form.municipality_id === userMunicipalityId && (
-                  <FormHelperText sx={{ color: "success.main", display: "flex", alignItems: "center", gap: 0.5, mt: 0.5 }}>
-                    <HomeWork fontSize="inherit" /> Auto-selected: Registered Home Municipality
-                  </FormHelperText>
-                )}
-              </FormControl>
-            </Grid>
-
-            {/* Department / Category Selector */}
-            <Grid item xs={12} sm={6}>
-              {categoriesError && (
-                <Alert severity="error" sx={{ mb: 1 }}>
-                  {categoriesError}
-                </Alert>
-              )}
-              <FormControl fullWidth required>
-                <InputLabel id="category-label">Department / Category</InputLabel>
-                <Select
-                  labelId="category-label"
-                  name="category"
-                  value={form.category}
-                  label="Department / Category"
-                  onChange={handleSelectChange}
-                  disabled={categoriesLoading || isSubmitting}
-                  endAdornment={
-                    categoriesLoading ? (
-                      <CircularProgress size={20} sx={{ mr: 2 }} />
-                    ) : null
-                  }
-                >
-                  {categories.map((cat, idx) => (
-                    <MenuItem key={cat.id || idx} value={cat.name}>
-                      {formatCategoryLabel(cat.name)}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Grid>
-
-            {/* Complaint Title */}
-            <Grid item xs={12}>
-              <TextField
-                fullWidth
-                required
-                label="Complaint Title"
-                name="title"
-                value={form.title}
-                onChange={handleInputChange}
-                disabled={isSubmitting}
-                placeholder="Brief summary of the issue (e.g., Broken street light near Ward 3 office)"
-              />
-            </Grid>
-
-            {/* Location & Interactive Map */}
-            <Grid item xs={12}>
-              <TextField
-                fullWidth
-                required
-                label="Location / Address"
-                name="location"
-                value={form.location}
-                onChange={handleInputChange}
-                disabled={isSubmitting}
-                placeholder="E.g., 42 Civic Way, Ward 3"
-              />
-              <LocationPickerMap
-                onLocationSelect={(address) => {
-                  setForm((prev) => ({ ...prev, location: address }));
-                }}
-              />
-            </Grid>
-
-            {/* Detailed Description */}
-            <Grid item xs={12}>
-              <TextField
-                fullWidth
-                required
-                multiline
-                rows={4}
-                label="Detailed Description"
-                name="description"
-                value={form.description}
-                onChange={handleInputChange}
-                disabled={isSubmitting}
-                placeholder="Provide details that can help municipal staff track down or resolve the issue..."
-              />
-            </Grid>
-
-            {/* Upload Attachment */}
-            <Grid item xs={12}>
-              <Box
-                sx={{
-                  border: "2px dashed #ccc",
-                  p: 3,
-                  textAlign: "center",
-                  borderRadius: 2,
-                  bgcolor: "#fafafa",
-                }}
+        {/* STEP 1: LOCATION */}
+        {activeStep === 0 && (
+          <Box>
+            <Typography variant="h6" gutterBottom>Where is the issue located?</Typography>
+            <FormControl component="fieldset" sx={{ mb: 3, width: '100%' }}>
+              <RadioGroup
+                value={locationSource}
+                onChange={(e) => setLocationSource(e.target.value as any)}
               >
-                <Button
-                  component="label"
-                  variant="outlined"
-                  startIcon={<CloudUpload />}
-                  disabled={isSubmitting}
-                  sx={{ mb: 1 }}
-                >
-                  Upload Image / Proof
-                  <input
-                    type="file"
-                    hidden
-                    accept="image/*"
-                    onChange={handleFileChange}
+                <Paper variant="outlined" sx={{ p: 2, mb: 2, borderRadius: 2 }}>
+                  <FormControlLabel
+                    value="registered_address"
+                    control={<Radio />}
+                    label={
+                      <Box>
+                        <Typography variant="subtitle1" fontWeight={600}>Use Registered Address</Typography>
+                        {registeredMunicipalityId ? (
+                          <Typography variant="body2" color="text.secondary">
+                            {registeredAddressStr ? registeredAddressStr : "Your profile address"} {registeredWardId ? `(Ward ID: ${registeredWardId.slice(0, 4)}...)` : ""}
+                          </Typography>
+                        ) : (
+                          <Typography variant="body2" color="error">
+                            No registered address found in your profile.
+                          </Typography>
+                        )}
+                      </Box>
+                    }
+                    disabled={!registeredMunicipalityId}
                   />
-                </Button>
-                <Typography variant="body2" color="textSecondary">
-                  {form.attachment
-                    ? `Selected: ${form.attachment.name}`
-                    : "PNG, JPG, or PDF up to 5MB"}
-                </Typography>
-              </Box>
-            </Grid>
+                </Paper>
 
-            {/* Action Buttons */}
-            <Grid item xs={12} display="flex" justifyContent="flex-end" gap={2}>
+                <Paper variant="outlined" sx={{ p: 2, mb: 2, borderRadius: 2 }}>
+                  <FormControlLabel
+                    value="manual"
+                    control={<Radio />}
+                    label={
+                      <Box>
+                        <Typography variant="subtitle1" fontWeight={600}>Select Manually</Typography>
+                        <Typography variant="body2" color="text.secondary">Choose Province, District, Municipality, and Ward</Typography>
+                      </Box>
+                    }
+                  />
+                  {locationSource === 'manual' && (
+                    <Grid container spacing={2} sx={{ mt: 1, ml: 2, width: 'calc(100% - 16px)' }}>
+                      <Grid item xs={12} sm={6}>
+                        <FormControl fullWidth size="small">
+                          <InputLabel>Province</InputLabel>
+                          <Select value={provId} label="Province" onChange={(e) => setProvId(e.target.value)}>
+                            {provinces.map(p => <MenuItem key={p.id} value={p.id}>{p.name}</MenuItem>)}
+                          </Select>
+                        </FormControl>
+                      </Grid>
+                      <Grid item xs={12} sm={6}>
+                        <FormControl fullWidth size="small" disabled={!provId}>
+                          <InputLabel>District</InputLabel>
+                          <Select value={distId} label="District" onChange={(e) => setDistId(e.target.value)}>
+                            {districts.map(d => <MenuItem key={d.id} value={d.id}>{d.name}</MenuItem>)}
+                          </Select>
+                        </FormControl>
+                      </Grid>
+                      <Grid item xs={12} sm={6}>
+                        <FormControl fullWidth size="small" disabled={!distId}>
+                          <InputLabel>Municipality</InputLabel>
+                          <Select value={muniId} label="Municipality" onChange={(e) => setMuniId(e.target.value)}>
+                            {municipalities.map(m => <MenuItem key={m.id} value={m.id}>{m.name}</MenuItem>)}
+                          </Select>
+                        </FormControl>
+                      </Grid>
+                      <Grid item xs={12} sm={6}>
+                        <FormControl fullWidth size="small" disabled={!muniId}>
+                          <InputLabel>Ward</InputLabel>
+                          <Select value={wardId} label="Ward" onChange={(e) => setWardId(e.target.value)}>
+                            {wards.map(w => <MenuItem key={w.id} value={w.id}>Ward {w.ward_no}</MenuItem>)}
+                          </Select>
+                        </FormControl>
+                      </Grid>
+                    </Grid>
+                  )}
+                </Paper>
+
+                <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
+                  <FormControlLabel
+                    value="gps"
+                    control={<Radio />}
+                    label={
+                      <Box>
+                        <Typography variant="subtitle1" fontWeight={600}>Use Current Location</Typography>
+                        <Typography variant="body2" color="text.secondary">Use your device's GPS to pinpoint the issue</Typography>
+                      </Box>
+                    }
+                  />
+                  {locationSource === 'gps' && (
+                    <Box sx={{ mt: 2, ml: 4 }}>
+                      <Button variant="outlined" onClick={handleGetGps} disabled={isGettingGps}>
+                        {isGettingGps ? <CircularProgress size={24} /> : "Get Coordinates"}
+                      </Button>
+                      {gpsLocation && (
+                        <Typography variant="body2" sx={{ mt: 1, color: 'success.main' }}>
+                          Location acquired: {gpsLocation.lat.toFixed(4)}, {gpsLocation.lng.toFixed(4)}
+                        </Typography>
+                      )}
+                    </Box>
+                  )}
+                </Paper>
+              </RadioGroup>
+            </FormControl>
+          </Box>
+        )}
+
+        {/* STEP 2: CATEGORY */}
+        {activeStep === 1 && (
+          <Box>
+            <Typography variant="h6" gutterBottom>What type of issue is this?</Typography>
+            
+            {loadingCategories ? (
+              <Box display="flex" justifyContent="center" p={4}><CircularProgress /></Box>
+            ) : (
+              <>
+                <FormControl fullWidth sx={{ mb: 4 }}>
+                  <InputLabel>Primary Category *</InputLabel>
+                  <Select
+                    value={primaryCategoryId}
+                    label="Primary Category *"
+                    onChange={(e) => setPrimaryCategoryId(e.target.value)}
+                  >
+                    {categories.map((cat) => (
+                      <MenuItem key={cat.id} value={cat.id}>
+                        {cat.category_name} {cat.department_name ? `(${cat.department_name})` : ''}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+
+                <Paper variant="outlined" sx={{ p: 2, borderRadius: 2, bgcolor: hasSecondary ? 'action.hover' : 'background.paper' }}>
+                  <FormControlLabel
+                    control={<Switch checked={hasSecondary} onChange={(e) => setHasSecondary(e.target.checked)} />}
+                    label="This issue involves another department (Optional)"
+                  />
+                  {hasSecondary && (
+                    <FormControl fullWidth sx={{ mt: 2 }}>
+                      <InputLabel>Secondary Category</InputLabel>
+                      <Select
+                        value={secondaryCategoryId}
+                        label="Secondary Category"
+                        onChange={(e) => setSecondaryCategoryId(e.target.value)}
+                      >
+                        {categories.filter(c => c.id !== primaryCategoryId).map((cat) => (
+                          <MenuItem key={cat.id} value={cat.id}>
+                            {cat.category_name} {cat.department_name ? `(${cat.department_name})` : ''}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  )}
+                </Paper>
+              </>
+            )}
+          </Box>
+        )}
+
+        {/* STEP 3: DETAILS */}
+        {activeStep === 2 && (
+          <Box>
+            <Typography variant="h6" gutterBottom>Provide details</Typography>
+            
+            <TextField
+              fullWidth
+              label="Title *"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              margin="normal"
+              placeholder="E.g. Broken street light near Ward 3 office"
+              helperText="Minimum 5 characters"
+            />
+            
+            <TextField
+              fullWidth
+              label="Description *"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              margin="normal"
+              multiline
+              rows={4}
+              placeholder="Describe the issue in detail..."
+              helperText="Minimum 20 characters"
+            />
+
+            <Typography variant="subtitle1" sx={{ mt: 3, mb: 1, fontWeight: 600 }}>Severity Level *</Typography>
+            <Grid container spacing={2}>
+              <Grid item xs={4}>
+                <Paper
+                  variant="outlined"
+                  sx={{ 
+                    p: 2, textAlign: 'center', cursor: 'pointer', borderRadius: 2,
+                    borderColor: severity === 'low' ? 'success.main' : 'divider',
+                    bgcolor: severity === 'low' ? 'success.light' : 'background.paper'
+                  }}
+                  onClick={() => setSeverity('low')}
+                >
+                  <Typography variant="h6" color="success.main">🟢 Low</Typography>
+                  <Typography variant="caption">Minor issue</Typography>
+                </Paper>
+              </Grid>
+              <Grid item xs={4}>
+                <Paper
+                  variant="outlined"
+                  sx={{ 
+                    p: 2, textAlign: 'center', cursor: 'pointer', borderRadius: 2,
+                    borderColor: severity === 'medium' ? 'warning.main' : 'divider',
+                    bgcolor: severity === 'medium' ? 'warning.light' : 'background.paper'
+                  }}
+                  onClick={() => setSeverity('medium')}
+                >
+                  <Typography variant="h6" color="warning.main">🟡 Medium</Typography>
+                  <Typography variant="caption">Requires attention</Typography>
+                </Paper>
+              </Grid>
+              <Grid item xs={4}>
+                <Paper
+                  variant="outlined"
+                  sx={{ 
+                    p: 2, textAlign: 'center', cursor: 'pointer', borderRadius: 2,
+                    borderColor: severity === 'high' ? 'error.main' : 'divider',
+                    bgcolor: severity === 'high' ? 'error.light' : 'background.paper'
+                  }}
+                  onClick={() => setSeverity('high')}
+                >
+                  <Typography variant="h6" color="error.main">🔴 High</Typography>
+                  <Typography variant="caption">Urgent</Typography>
+                </Paper>
+              </Grid>
+            </Grid>
+          </Box>
+        )}
+
+        {/* STEP 4: REVIEW */}
+        {activeStep === 3 && (
+          <Box>
+            <Typography variant="h6" gutterBottom>Review & Submit</Typography>
+            <Paper variant="outlined" sx={{ p: 3, borderRadius: 2, mb: 3 }}>
+              <Grid container spacing={2}>
+                <Grid item xs={12}>
+                  <Typography variant="caption" color="text.secondary">Location</Typography>
+                  <Typography variant="body1" fontWeight={500}>
+                    {locationSource === 'registered_address' && `Registered Address (${registeredAddressStr || 'Unknown'})`}
+                    {locationSource === 'gps' && `GPS Coordinates: ${gpsLocation?.lat}, ${gpsLocation?.lng}`}
+                    {locationSource === 'manual' && `Selected Manually`}
+                  </Typography>
+                </Grid>
+                
+                <Grid item xs={12}>
+                  <Typography variant="caption" color="text.secondary">Category</Typography>
+                  <Typography variant="body1" fontWeight={500}>
+                    Primary: {categories.find(c => c.id === primaryCategoryId)?.category_name}
+                  </Typography>
+                  {hasSecondary && secondaryCategoryId && (
+                    <Typography variant="body1" color="text.secondary">
+                      + Secondary: {categories.find(c => c.id === secondaryCategoryId)?.category_name}
+                    </Typography>
+                  )}
+                </Grid>
+
+                <Grid item xs={12}>
+                  <Typography variant="caption" color="text.secondary">Issue Details</Typography>
+                  <Typography variant="h6">{title}</Typography>
+                  <Typography variant="body2" sx={{ mt: 1, whiteSpace: 'pre-wrap' }}>{description}</Typography>
+                </Grid>
+
+                <Grid item xs={12}>
+                  <Typography variant="caption" color="text.secondary">Severity</Typography>
+                  <Box mt={0.5}>
+                    <Chip 
+                      label={severity.toUpperCase()} 
+                      color={severity === 'high' ? 'error' : severity === 'medium' ? 'warning' : 'success'} 
+                      size="small"
+                    />
+                  </Box>
+                </Grid>
+              </Grid>
+            </Paper>
+          </Box>
+        )}
+
+        {/* Form Actions */}
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 4 }}>
+          <Button
+            variant="outlined"
+            onClick={handleBack}
+            disabled={activeStep === 0 || isSubmitting}
+          >
+            Back
+          </Button>
+          <Box>
+            {activeStep === STEPS.length - 1 ? (
               <Button
-                variant="outlined"
-                color="secondary"
-                onClick={() => navigate("/dashboard")}
-                disabled={isSubmitting}
-              >
-                Cancel
-              </Button>
-              <Button
-                type="submit"
                 variant="contained"
                 color="primary"
-                startIcon={
-                  isSubmitting ? <CircularProgress size={20} color="inherit" /> : <Send />
-                }
+                onClick={handleSubmit}
                 disabled={isSubmitting}
+                startIcon={isSubmitting && <CircularProgress size={20} />}
               >
-                {isSubmitting ? "Submitting..." : "Submit Ticket"}
+                {isSubmitting ? "Submitting..." : "Submit Complaint"}
               </Button>
-            </Grid>
-          </Grid>
+            ) : (
+              <Button
+                variant="contained"
+                onClick={handleNext}
+              >
+                Next
+              </Button>
+            )}
+          </Box>
         </Box>
       </Card>
     </Box>
   );
 };
+
+export default SubmitComplaint;

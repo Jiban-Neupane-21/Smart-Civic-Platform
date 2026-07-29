@@ -267,6 +267,19 @@ export function createMunicipalityRouter(
 
   /**
    * @swagger
+   * /api/municipality/complaints:
+   *   get:
+   *     summary: Get all complaints for the municipality
+   *     tags: [Municipality API]
+   *     security: [{ BearerAuth: [] }]
+   *     responses:
+   *       200:
+   *         description: Complaints list.
+   */
+  router.get("/complaints", controller.getComplaints);
+
+  /**
+   * @swagger
    * /api/municipality/complaints/escalated:
    *   get:
    *     summary: Get SLA Level 2 escalated grievances feed
@@ -304,6 +317,7 @@ export function createMunicipalityRouter(
    */
   router.post("/complaints/:id/intervene", controller.interveneInComplaint);
 
+  router.get("/:municipalityId/complaints", controller.getComplaints);
   router.get("/:municipalityId/complaints/escalated", controller.getEscalatedComplaints);
   router.post("/:municipalityId/complaints/:id/intervene", controller.interveneInComplaint);
 

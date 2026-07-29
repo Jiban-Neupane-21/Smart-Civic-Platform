@@ -26,7 +26,13 @@ export interface UserProfile {
   citizen_details?: {
     home_address?: string;
     permanent_address?: string;
+    current_address?: string;
     ward_number?: number;
+    ward_id?: string;
+    current_ward_id?: string;
+    permanent_ward_id?: string;
+    current_municipality_id?: string;
+    permanent_municipality_id?: string;
     citizenship_no?: string;
   };
 }

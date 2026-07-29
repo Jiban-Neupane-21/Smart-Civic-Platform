@@ -14,6 +14,7 @@ import type {
   CreateStaffDto,
   CreateStaffUserDto,
   UpdateStaffDto,
+  MunicipComplaint,
 } from '../types';
 
 export const municipalityApi = {
@@ -170,6 +171,31 @@ export const municipalityApi = {
   resetStaffPassword: async (municipalityId: string, staffId: string): Promise<ApiResponse<{ temp_password: string }>> => {
     const response = await apiClient.post<ApiResponse<{ temp_password: string }>>(
       `/municipality/${municipalityId}/staff/${staffId}/reset-password`
+    );
+    return response.data;
+  },
+
+  /**
+   * Get all complaints for the municipality
+   */
+  getComplaints: async (status?: string): Promise<ApiResponse<MunicipComplaint[]>> => {
+    const response = await apiClient.get<ApiResponse<MunicipComplaint[]>>('/municipality/complaints', {
+      params: status ? { status } : undefined,
+    });
+    return response.data;
+  },
+
+  /**
+   * Intervene on a complaint (Admin action)
+   */
+  interveneOnComplaint: async (
+    municipalityId: string, 
+    complaintId: string, 
+    data: { action: 'reassign' | 'force_resolve' | 'force_reject' | 'update_status'; note: string; new_department_id?: string; new_status?: string }
+  ): Promise<ApiResponse<any>> => {
+    const response = await apiClient.post<ApiResponse<any>>(
+      `/municipality/${municipalityId}/complaints/${complaintId}/intervene`,
+      data
     );
     return response.data;
   },

@@ -42,9 +42,9 @@ export const publicApi = {
   /**
    * Get municipalities by district
    */
-  getMunicipalities: async (districtId: string): Promise<ApiResponse<Municipality[]>> => {
+  getMunicipalities: async (districtId?: string): Promise<ApiResponse<Municipality[]>> => {
     const response = await apiClient.get<ApiResponse<Municipality[]>>('/public/municipalities', {
-      params: { district_id: districtId },
+      params: districtId ? { district_id: districtId } : undefined,
     });
     return response.data;
   },

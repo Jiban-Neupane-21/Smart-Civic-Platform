@@ -3,14 +3,17 @@ import * as CitizenService from "../services/citizen.service";
 import { sendSuccess, sendError } from "../../../utils/response";
 
 export const submitComplaint = async (req: Request, res: Response) => {
+  console.log("--> [submitComplaint] Received request from:", req.user?.id);
   try {
     const data = await CitizenService.submitComplaint(
       req.user!.id,
       req.body,
       req.userClient!,
     );
+    console.log("<-- [submitComplaint] Successfully processed for:", req.user?.id);
     return sendSuccess(res, data, "Complaint submitted successfully", 201);
   } catch (e: any) {
+    console.error("!-! [submitComplaint] Error:", e.message);
     return sendError(res, e.message, 400);
   }
 };

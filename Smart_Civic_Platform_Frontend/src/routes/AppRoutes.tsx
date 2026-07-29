@@ -23,6 +23,7 @@ import SystemSetting from "../pages/Superadmin/SystemSetting";
 import { DeptDashboard } from "../pages/dept_head/Dept_Dashboard";
 import DeptManageStaff from "../pages/dept_head/ManageStaff";
 import DeptManageTeam from "../pages/dept_head/ManageTeam";
+import DeptComplainDetails from "../pages/dept_head/ComplainDetails";
 
 // Municipality Head Pages
 import MunicHomepage from "../pages/munic_head/Homepage";
@@ -97,6 +98,10 @@ function AppRoute() {
             <Route
               path="/department_head/team"
               element={<DeptManageTeam />}
+            />
+            <Route
+              path="/department_head/complaint-queue"
+              element={<DeptComplainDetails />}
             />
           </Route>
         </Route>

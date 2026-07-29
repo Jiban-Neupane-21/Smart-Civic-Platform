@@ -58,6 +58,7 @@ const manageDepartmentStaffItem = createNavItem(
 );
 const manageStaffItem = createNavItem("Manage Staff", <FiUsers />);
 const complaintDetailItem = createNavItem("Complaint Detail", <FiFileText />);
+const complaintQueueItem = createNavItem("Complaint Queue", <FiFileText />);
 const reportAnalyticsItem = createNavItem(
   "Report & Analytics",
   <FiBarChart2 />,
@@ -115,7 +116,7 @@ export const NavbarItems: NavbarConfig = {
       ],
       secondary: [
         notificationItem.mobile, // Alerts for new issues
-        complaintDetailItem.mobile, // Crucial for quick resolution checks
+        complaintQueueItem.mobile, // Crucial for quick resolution checks
         profileItem.mobile,
         logoutItem.mobile,
       ],
@@ -127,7 +128,7 @@ export const NavbarItems: NavbarConfig = {
       dashboardItem.desktop,
       staffItem.desktop,
       teamItem.desktop,
-      complaintDetailItem.desktop,
+      complaintQueueItem.desktop,
       reportAnalyticsItem.desktop,
       notificationItem.desktop,
       profileItem.desktop,
@@ -136,7 +137,7 @@ export const NavbarItems: NavbarConfig = {
     mobile: {
       primary: [
         dashboardItem.mobile,
-        complaintDetailItem.mobile,
+        complaintQueueItem.mobile,
         reportAnalyticsItem.mobile,
         notificationItem.mobile,
       ],
