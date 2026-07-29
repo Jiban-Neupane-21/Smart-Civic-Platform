@@ -502,8 +502,8 @@ export const getDashboardData = async (
 export const updateStructuredAddress = async (
   citizenId: string,
   body: {
-    permanent?: { province_id?: string; district_id?: string; municipality_id?: string; ward_id?: string; tole?: string };
-    current?: { province_id?: string; district_id?: string; municipality_id?: string; ward_id?: string; tole?: string };
+    permanent?: { province_id?: string; district_id?: string; municipality_id?: string; ward_id?: string; tole?: string; full_address?: string };
+    current?: { province_id?: string; district_id?: string; municipality_id?: string; ward_id?: string; tole?: string; full_address?: string };
   }
 ) => {
   const updates: Record<string, any> = { updated_at: new Date().toISOString() };
@@ -514,6 +514,7 @@ export const updateStructuredAddress = async (
     if (body.permanent.municipality_id !== undefined) updates.permanent_municipality_id = body.permanent.municipality_id;
     if (body.permanent.ward_id !== undefined) updates.permanent_ward_id = body.permanent.ward_id;
     if (body.permanent.tole !== undefined) updates.permanent_tole = body.permanent.tole;
+    if (body.permanent.full_address !== undefined) updates.permanent_address = body.permanent.full_address;
   }
 
   if (body.current) {
@@ -522,6 +523,7 @@ export const updateStructuredAddress = async (
     if (body.current.municipality_id !== undefined) updates.current_municipality_id = body.current.municipality_id;
     if (body.current.ward_id !== undefined) updates.current_ward_id = body.current.ward_id;
     if (body.current.tole !== undefined) updates.current_tole = body.current.tole;
+    if (body.current.full_address !== undefined) updates.current_address = body.current.full_address;
   }
 
   const { data, error } = await supabaseAdmin

@@ -71,8 +71,13 @@ export class DepartmentRepository {
   async getDepartmentStaff(departmentId: string) {
     const { data, error } = await this.supabaseAdmin
       .from("staff")
-      .select("id, employee_id, expertise, profiles(full_name, email)")
-      .eq("primary_department_id", departmentId);
+      .select(
+        `id, profile_id, employee_id, expertise, contact_number,
+         gender, date_of_birth, personal_address, employee_status, onboarded_at, is_deleted,
+         profiles(id, full_name, email, phone, role, account_status)`
+      )
+      .eq("primary_department_id", departmentId)
+      .eq("is_deleted", false);
 
     if (error) throw error;
     return data;

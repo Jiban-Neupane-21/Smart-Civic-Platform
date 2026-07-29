@@ -179,8 +179,12 @@ export default function ManageTeam() {
       const res = await fetchWithAuth(`${BASE_URL}/department/staff-roster`);
       if (res.ok) {
         const data = await res.json();
+        const rawList = ((data as Record<string, unknown>).data as any[]) ?? [];
         setStaffRoster(
-          ((data as Record<string, unknown>).data as StaffRosterItem[]) ?? []
+          rawList.map((item) => ({
+            ...item,
+            s_uid: item.id || item.s_uid,
+          }))
         );
       }
     } catch {

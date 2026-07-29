@@ -1,12 +1,11 @@
 import { z } from "zod";
 
 export const registerSchema = z.object({
-  first_name:       z.string().min(1, "First name is required"),
-  middle_name:      z.string().optional().transform(val => val?.trim() || undefined),
-  last_name:        z.string().min(1, "Last name is required"),
+  full_name:        z.string().min(1, "Full name is required"),
   email:            z.string().email("Invalid email address"),
   password:         z.string().min(8, "Password must be at least 8 characters"),
   phone:            z.string().optional().transform(val => val?.trim() || undefined),
+  date_of_birth:    z.string().optional().transform(val => val?.trim() || undefined),
   full_address:     z.string().optional().transform(val => val?.trim() || undefined),
   current_address:  z.string().optional().transform(val => val?.trim() || undefined),
   gender:           z.preprocess(

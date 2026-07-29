@@ -253,6 +253,7 @@ export function createDepartmentRouter(
    */
   router.post("/staff/create", controller.createStaff);
   router.post("/staff", controller.createStaff);
+  router.post("/users/create", controller.createUser);
 
   router.patch("/staff/:staffId", controller.updateStaff);
   router.delete("/staff/:staffId", controller.removeStaff);

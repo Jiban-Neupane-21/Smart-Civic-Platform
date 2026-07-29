@@ -43,6 +43,8 @@ export interface RegisterRequest {
   role?: UserRole;
   phoneNumber?: string;
   municipalityId?: string;
+  dateOfBirth?: string;
+  gender?: string;
 }
 
 export interface AuthTokens {

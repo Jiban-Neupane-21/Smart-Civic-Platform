@@ -25,8 +25,7 @@ export const getPublicDistricts = async (provinceId?: string) => {
 export const getPublicMunicipalities = async (districtId?: string) => {
   let query = supabaseAdmin
     .from("municipalities")
-    .select("id, district_id, official_name, official_email, local_level_type, total_wards, is_active")
-    .eq("is_active", true);
+    .select("id, district_id, official_name, official_email, local_level_type, total_wards, is_active");
 
   if (districtId) query = query.eq("district_id", districtId);
 
@@ -43,6 +42,36 @@ export const getPublicWards = async (municipalityId: string) => {
     .order("ward_no");
 
   if (error) throw new Error(error.message);
+
+  if (data && data.length === 0) {
+    const { data: muniData } = await supabaseAdmin
+      .from("municipalities")
+      .select("total_wards")
+      .eq("id", municipalityId)
+      .single();
+
+    if (muniData && muniData.total_wards > 0) {
+      const wardsToInsert = Array.from({ length: muniData.total_wards }).map((_, i) => ({
+        municipality_id: municipalityId,
+        ward_no: i + 1,
+      }));
+
+      const { error: insertError } = await supabaseAdmin
+        .from("wards")
+        .upsert(wardsToInsert, { onConflict: 'municipality_id,ward_no', ignoreDuplicates: true });
+
+      if (!insertError) {
+        const { data: newWards } = await supabaseAdmin
+          .from("wards")
+          .select("id, municipality_id, ward_no, ward_office_name, ward_chairperson_name, contact_number")
+          .eq("municipality_id", municipalityId)
+          .order("ward_no");
+          
+        return newWards || [];
+      }
+    }
+  }
+
   return data;
 };
 

@@ -174,7 +174,7 @@ export class DepartmentController {
 
   createStaff = async (req: any, res: Response): Promise<void> => {
     try {
-      const { email, password, full_name, phone, expertise } = req.body;
+      const { email, password, full_name, phone, expertise, role } = req.body;
 
       if (!email || !full_name) {
         res.status(400).json({
@@ -185,7 +185,7 @@ export class DepartmentController {
       }
 
       // Department head can ONLY create staff role accounts
-      if (req.body.role && req.body.role !== "staff") {
+      if (role && role !== "staff") {
         res.status(403).json({
           success: false,
           error: "Department head can only create staff role accounts.",
@@ -204,35 +204,43 @@ export class DepartmentController {
       }
 
       const municipalityId = await this.service.getMunicipalityId(req.departmentId);
+      const generatedPassword = password || crypto.randomBytes(6).toString("hex");
 
-      const { RoleInviteService } = require("../../../service/role-invite.service");
-      const inviteService = new RoleInviteService((this.service as any).repo.supabaseAdmin);
-
-      const invite = await inviteService.createInvite({
-        invited_by: req.user.id,
+      const profile = await createUserService({
         email,
-        phone,
+        password: generatedPassword,
+        full_name,
         role: "staff",
         municipality_id: municipalityId,
         department_id: req.departmentId,
-        additional_data: { full_name, expertise },
+        phone,
+        created_by: req.user.id,
       });
+
+      if (expertise && profile?.id) {
+        try {
+          await this.service.setStaffExpertise(profile.id, req.departmentId, expertise);
+        } catch (err: any) {
+          console.warn("Failed to set staff expertise:", err.message);
+        }
+      }
 
       res.status(201).json({
         success: true,
-        message: "Staff role invitation dispatched successfully.",
+        message: "Staff member created successfully.",
         data: {
-          invite_id: invite.id,
-          email: invite.email,
-          role: invite.role,
-          invite_token: invite.token,
-          expires_at: invite.expires_at,
-          invite_link: `/accept-invite?token=${invite.token}`,
+          ...profile,
+          expertise: expertise || null,
+          password: generatedPassword,
         },
       });
     } catch (error: any) {
       res.status(400).json({ success: false, error: error.message });
     }
+  };
+
+  createUser = async (req: any, res: Response): Promise<void> => {
+    return this.createStaff(req, res);
   };
 
   updateStaffStatus = async (req: any, res: Response): Promise<void> => {

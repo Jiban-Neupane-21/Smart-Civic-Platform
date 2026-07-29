@@ -31,6 +31,7 @@ const addressSectionSchema = z.object({
   municipality_id: z.string().uuid().optional(),
   ward_id: z.string().uuid().optional(),
   tole: z.string().optional(),
+  full_address: z.string().optional(),
 });
 
 export const addressSchema = z.object({

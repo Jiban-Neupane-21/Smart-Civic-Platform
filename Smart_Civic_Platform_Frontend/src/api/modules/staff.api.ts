@@ -1,13 +1,13 @@
 import apiClient from '../client';
-import type { ApiResponse, PaginatedResponse } from '../types';
+import type { ApiResponse } from '../types';
 import type { StaffUser, CreateStaffDto, UpdateStaffDto } from '../types';
 
 export const staffApi = {
   /**
-   * List staff members for municipality or department
+   * List staff members for department
    */
-  getStaffMembers: async (params?: { departmentId?: string; role?: string }): Promise<PaginatedResponse<StaffUser>> => {
-    const response = await apiClient.get<PaginatedResponse<StaffUser>>('/staff', { params });
+  getStaffMembers: async (params?: { departmentId?: string; role?: string }): Promise<ApiResponse<StaffUser[]>> => {
+    const response = await apiClient.get<ApiResponse<StaffUser[]>>('/department/staff-roster', { params });
     return response.data;
   },
 
@@ -15,31 +15,47 @@ export const staffApi = {
    * Get staff member by ID
    */
   getStaffById: async (id: string): Promise<ApiResponse<StaffUser>> => {
-    const response = await apiClient.get<ApiResponse<StaffUser>>(`/staff/${id}`);
+    const response = await apiClient.get<ApiResponse<StaffUser>>(`/department/staff/${id}`);
     return response.data;
   },
 
   /**
-   * Create / Invite a new staff member
+   * Create / Provision a new staff member account
    */
-  createStaff: async (data: CreateStaffDto): Promise<ApiResponse<StaffUser>> => {
-    const response = await apiClient.post<ApiResponse<StaffUser>>('/staff', data);
+  createStaff: async (data: CreateStaffDto): Promise<ApiResponse<any>> => {
+    const response = await apiClient.post<ApiResponse<any>>('/department/staff/create', data);
     return response.data;
   },
 
   /**
    * Update staff member profile & assignment
    */
-  updateStaff: async (id: string, data: UpdateStaffDto): Promise<ApiResponse<StaffUser>> => {
-    const response = await apiClient.put<ApiResponse<StaffUser>>(`/staff/${id}`, data);
+  updateStaff: async (id: string, data: UpdateStaffDto): Promise<ApiResponse<any>> => {
+    const response = await apiClient.patch<ApiResponse<any>>(`/department/staff/${id}`, data);
     return response.data;
   },
 
   /**
-   * Assign staff to a department
+   * Delete / Archive a staff member
    */
-  assignDepartment: async (id: string, departmentId: string): Promise<ApiResponse<StaffUser>> => {
-    const response = await apiClient.patch<ApiResponse<StaffUser>>(`/staff/${id}/assign-department`, { departmentId });
+  deleteStaff: async (id: string): Promise<ApiResponse<any>> => {
+    const response = await apiClient.delete<ApiResponse<any>>(`/department/staff/${id}`);
+    return response.data;
+  },
+
+  /**
+   * Update staff account status (e.g. active, suspended)
+   */
+  updateStaffStatus: async (id: string, status: string): Promise<ApiResponse<any>> => {
+    const response = await apiClient.patch<ApiResponse<any>>(`/department/staff/${id}/status`, { status });
+    return response.data;
+  },
+
+  /**
+   * Reset staff password
+   */
+  resetStaffPassword: async (id: string, newPassword?: string): Promise<ApiResponse<any>> => {
+    const response = await apiClient.post<ApiResponse<any>>(`/department/staff/${id}/reset-password`, { newPassword });
     return response.data;
   },
 };

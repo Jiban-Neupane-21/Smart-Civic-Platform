@@ -12,9 +12,8 @@ const REFRESH_TOKEN_TTL_MS =
 export const registerService = async (body: {
   email: string;
   password: string;
-  first_name: string;
-  middle_name?: string;
-  last_name: string;
+  full_name: string;
+  date_of_birth?: string;
   phone?: string;
   full_address?: string;
   current_address?: string;
@@ -23,9 +22,10 @@ export const registerService = async (body: {
   municipality_id?: string;
   department_id?: string;
 }) => {
-  const fullName = body.middle_name?.trim()
-    ? `${body.first_name.trim()} ${body.middle_name.trim()} ${body.last_name.trim()}`
-    : `${body.first_name.trim()} ${body.last_name.trim()}`;
+  const nameParts = body.full_name.trim().split(/\s+/);
+  const first_name = nameParts[0];
+  const last_name = nameParts.length > 1 ? nameParts[nameParts.length - 1] : "";
+  const middle_name = nameParts.length > 2 ? nameParts.slice(1, -1).join(" ") : undefined;
 
   const sanitizedGender = body.gender && ['male', 'female', 'other', 'prefer_not_to_say'].includes(body.gender.toLowerCase())
     ? body.gender.toLowerCase()
@@ -40,10 +40,10 @@ export const registerService = async (body: {
     password: body.password,
     email_confirm: true,
     user_metadata: {
-      full_name: fullName,
-      first_name: body.first_name.trim(),
-      middle_name: body.middle_name?.trim() || null,
-      last_name: body.last_name.trim(),
+      full_name: body.full_name.trim(),
+      first_name,
+      middle_name: middle_name || null,
+      last_name,
       role: body.role ?? "citizen",
       municipality_id: municipalityId,
       department_id: departmentId,
@@ -59,7 +59,17 @@ export const registerService = async (body: {
     throw new Error(error.message);
   }
 
-  return { id: data.user.id, email: data.user.email };
+  // Database trigger on_auth_user_created runs synchronously on insert and creates the citizen record.
+  // Update it to set the date_of_birth which is not handled by the trigger.
+  if (body.date_of_birth) {
+    await supabaseAdmin
+      .from("citizens")
+      .update({ date_of_birth: body.date_of_birth })
+      .eq("id", data.user.id);
+  }
+
+  // Return the login session payload (access_token, profile, etc.)
+  return loginService(body.email, body.password);
 };
 
 export const loginService = async (email: string, password: string) => {

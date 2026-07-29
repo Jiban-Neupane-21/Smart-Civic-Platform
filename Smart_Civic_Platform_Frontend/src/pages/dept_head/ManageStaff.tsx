@@ -33,12 +33,13 @@ import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
 import SearchIcon from "@mui/icons-material/Search";
 import PeopleIcon from "@mui/icons-material/People";
-import { BASE_URL, fetchWithAuth } from "../../api";
+import { BASE_URL, fetchWithAuth, staffApi } from "../../api";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface StaffMember {
-  s_uid: string;
+  id?: string;
+  s_uid?: string;
   employee_id: string | null;
   expertise: string | null;
   contact_number: string | null;
@@ -111,7 +112,13 @@ function normalizeStaffList(data: unknown): StaffMember[] {
   const inner = (d?.data as Record<string, unknown>)?.roster
     ?? d?.data
     ?? data;
-  return Array.isArray(inner) ? inner : [];
+  return Array.isArray(inner)
+    ? inner.map((item: any) => ({
+        ...item,
+        id: item.id || item.s_uid,
+        s_uid: item.id || item.s_uid,
+      }))
+    : [];
 }
 
 function generatePassword(): string {
@@ -175,19 +182,14 @@ export default function ManageStaff() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetchWithAuth(`${BASE_URL}/department/staff-roster`);
-      if (res.ok) {
-        const data = await res.json();
-        setStaffList(normalizeStaffList(data));
+      const res = await staffApi.getStaffMembers();
+      if (res.success || res.data) {
+        setStaffList(normalizeStaffList(res));
       } else {
-        const data = await res.json().catch(() => ({}));
-        setError(
-          (data as Record<string, unknown>)?.error as string ||
-            "Failed to load staff roster"
-        );
+        setError(res.error || "Failed to load staff roster");
       }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Network error");
+    } catch (err: any) {
+      setError(err.message || "Network error");
     } finally {
       setLoading(false);
     }
@@ -267,7 +269,7 @@ export default function ManageStaff() {
     try {
       const isEdit = !!editTarget;
 
-      if (isEdit) {
+      if (isEdit && editTarget) {
         const body: Record<string, string> = {};
         if (formData.full_name) body.full_name = formData.full_name;
         if (formData.email) body.email = formData.email;
@@ -279,43 +281,31 @@ export default function ManageStaff() {
         if (formData.date_of_birth) body.date_of_birth = formData.date_of_birth;
         if (formData.personal_address) body.personal_address = formData.personal_address;
 
-        const res = await fetchWithAuth(
-          `${BASE_URL}/department/staff/${editTarget.s_uid}`,
-          { method: "PATCH", body: JSON.stringify(body) }
-        );
-        const result = await res.json().catch(() => ({}));
-        if (!res.ok) {
-          throw new Error(
-            (result as Record<string, unknown>)?.error as string || "Update failed"
-          );
+        const targetId = editTarget.id || editTarget.s_uid || "";
+        const res = await staffApi.updateStaff(targetId, body);
+        if (!res.success && res.error) {
+          throw new Error(res.error || "Update failed");
         }
       } else {
         if (!formData.full_name || !formData.email) {
           throw new Error("Name and email are required.");
         }
 
-        // Generate a random password
         const generatedPassword = generatePassword();
 
         const body = {
           full_name: formData.full_name,
           email: formData.email,
           password: generatedPassword,
+          role: "staff" as const,
           expertise: formData.expertise || formatCategory(departmentCategory) || departmentName,
         };
 
-        const res = await fetchWithAuth(
-          `${BASE_URL}/department/staff/create`,
-          { method: "POST", body: JSON.stringify(body) }
-        );
-        const result = await res.json().catch(() => ({}));
-        if (!res.ok) {
-          throw new Error(
-            (result as Record<string, unknown>)?.error as string || "Create failed"
-          );
+        const res = await staffApi.createStaff(body);
+        if (!res.success && res.error) {
+          throw new Error(res.error || "Create failed");
         }
 
-        // Show success dialog with credentials
         setSuccessData({
           email: formData.email,
           password: generatedPassword,
@@ -324,8 +314,8 @@ export default function ManageStaff() {
 
       setModalOpen(false);
       await fetchStaff();
-    } catch (err) {
-      setFormError(err instanceof Error ? err.message : "An error occurred");
+    } catch (err: any) {
+      setFormError(err.message || "An error occurred");
     } finally {
       setSubmitting(false);
     }
@@ -337,20 +327,15 @@ export default function ManageStaff() {
     if (!deleteTarget) return;
     setDeleting(true);
     try {
-      const res = await fetchWithAuth(
-        `${BASE_URL}/department/staff/${deleteTarget.s_uid}`,
-        { method: "DELETE" }
-      );
-      const result = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        throw new Error(
-          (result as Record<string, unknown>)?.error as string || "Delete failed"
-        );
+      const targetId = deleteTarget.id || deleteTarget.s_uid || "";
+      const res = await staffApi.deleteStaff(targetId);
+      if (!res.success && res.error) {
+        throw new Error(res.error || "Delete failed");
       }
-      setStaffList((prev) => prev.filter((s) => s.s_uid !== deleteTarget.s_uid));
+      setStaffList((prev) => prev.filter((s) => (s.id || s.s_uid) !== targetId));
       setDeleteTarget(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Delete failed");
+    } catch (err: any) {
+      setError(err.message || "Delete failed");
     } finally {
       setDeleting(false);
     }
@@ -450,7 +435,7 @@ export default function ManageStaff() {
               ) : (
                 filtered.map((s) => (
                   <TableRow
-                    key={s.s_uid}
+                    key={s.id || s.s_uid}
                     sx={{
                       "&:hover": { bgcolor: "#f5f8ff" },
                       "&:last-child td": { border: 0 },
