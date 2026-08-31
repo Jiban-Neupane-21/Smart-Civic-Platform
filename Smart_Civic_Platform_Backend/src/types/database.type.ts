@@ -237,6 +237,10 @@ export interface DepartmentRow {
   head_profile_id: string | null;
   head_name: string | null;
   head_email: string | null;
+  kyc_status: "unverified" | "pending" | "verified" | "rejected";
+  kyc_rejection_reason: string | null;
+  kyc_verified_by: string | null;
+  kyc_verified_at: string | null;
   is_active: boolean;
   created_at: string;
   updated_at: string;

@@ -88,6 +88,11 @@ export const superadminApi = {
     return response.data;
   },
 
+  reviewMunicipalityKyc: async (id: string, data: { status: 'verified' | 'rejected', rejection_reason?: string }): Promise<ApiResponse<MunicipalityJoined>> => {
+    const response = await apiClient.patch<ApiResponse<MunicipalityJoined>>(`/superadmin/municipalities/${id}/kyc`, data);
+    return response.data;
+  },
+
   deleteMunicipality: async (id: string): Promise<ApiResponse<{ message: string }>> => {
     const response = await apiClient.delete<ApiResponse<{ message: string }>>(`/superadmin/municipalities/${id}`);
     return response.data;

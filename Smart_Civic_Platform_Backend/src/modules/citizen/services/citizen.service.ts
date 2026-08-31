@@ -89,6 +89,7 @@ export const submitComplaint = async (
     location.ward_number,
     primaryCategoryId
   );
+  console.log("GENERATED TRACKING ID:", trackingId);
 
   // 5. SLA Due Date calculation
   console.log("--> [submitComplaint] Step 5: SLA Due Date calculation");
@@ -122,7 +123,7 @@ export const submitComplaint = async (
     updated_at: new Date().toISOString(),
   };
 
-  const { data: complaint, error: insertErr } = await db
+  const { data: complaint, error: insertErr } = await supabaseAdmin
     .from("complaints")
     .insert(payload)
     .select()
@@ -194,8 +195,8 @@ export const getComplaintDetail = async (
       co_uid, tracking_id, title, description, status, severity_level,
       location_source, ward_number, latitude, longitude, cross_dept_status,
       submitted_date, resolution_date, resolution_note, rejection_reason, sla_due_at, sla_breached,
-      complaint_categories ( category_name ),
-      departments ( department_name )
+      complaint_categories!category_id ( category_name ),
+      departments!assigned_department_id ( department_name )
     `,
     )
     .eq("co_uid", complaintId)
@@ -294,19 +295,20 @@ export const uploadComplaintMedia = async (
   fileName: string
 ) => {
   const storageService = new StorageService(supabaseAdmin);
-  const publicUrl = await storageService.uploadIdentityDocument(
-    citizenId,
-    mediaBase64,
-    `complaint_${complaintId}_${fileName}`
+  const fileKey = `${citizenId}/complaints/${complaintId}/${Date.now()}_${fileName}`;
+  const publicUrl = await storageService.upload(
+    "complaint-media",
+    fileKey,
+    mediaBase64
   );
 
   const { data, error } = await supabaseAdmin
     .from("media")
     .insert({
-      complaint_id: complaintId,
+      context: "complaint",
+      context_id: complaintId,
       uploaded_by: citizenId,
-      media_url: publicUrl,
-      media_type: "image",
+      file_url: publicUrl,
     })
     .select()
     .single();

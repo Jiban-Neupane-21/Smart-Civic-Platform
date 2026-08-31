@@ -68,6 +68,11 @@ export interface Department {
   head_email?: string;
   head_profile_id?: string;
   head_contact_no?: string;
+  head_identity_type?: string;
+  head_identity_number?: string;
+  head_identity_front_url?: string;
+  kyc_status?: string;
+  kyc_rejection_reason?: string;
   is_active: boolean;
   staff_count?: number;
   complaint_count?: number;
@@ -167,6 +172,86 @@ export interface UpdateStaffDto {
   employee_status?: string;
   primary_department_id?: string;
   departmentId?: string;
+}
+
+// ===== Cross-Department Team Types =====
+
+export interface CrossDeptTeamMemberProfile {
+  full_name: string;
+  email: string;
+  phone?: string;
+}
+
+export interface CrossDeptTeamStaff {
+  s_uid: string;
+  employee_id: string | null;
+  expertise: string | null;
+  profiles: CrossDeptTeamMemberProfile | null;
+}
+
+export interface CrossDeptTeamMember {
+  id: string;
+  staff_id: string;
+  is_leader: boolean;
+  joined_at: string;
+  staff: CrossDeptTeamStaff | null;
+}
+
+export interface CrossDeptTeam {
+  id: string;
+  team_name: string;
+  description: string | null;
+  team_type: "cross_departmental";
+  start_date: string;
+  end_date: string;
+  is_active: boolean;
+  is_expired?: boolean;
+  days_remaining?: number | null;
+  member_count?: number;
+  municipality_id?: string;
+  created_by?: string | null;
+  created_at: string;
+  updated_at: string;
+  team_members: CrossDeptTeamMember[];
+}
+
+export interface CreateCrossDeptTeamDto {
+  team_name: string;
+  description?: string;
+  start_date: string;
+  end_date: string;
+  member_staff_ids: string[];
+  leader_staff_id?: string;
+  is_emergency_override?: boolean;
+  override_reason?: string;
+}
+
+export interface StaffAvailabilityResult {
+  staff_id: string;
+  is_available: boolean;
+  conflicting_team_name?: string;
+  conflict_start?: string;
+  conflict_end?: string;
+}
+
+export interface MunicipTeamComplaintAssignment {
+  id: string;
+  complaint_id: string;
+  team_id: string;
+  assigned_by: string;
+  status: "pending" | "accepted" | "in_progress" | "completed" | "cancelled";
+  assigned_at: string;
+  complaint?: {
+    tracking_id: string;
+    title: string;
+    status: string;
+    severity_level: string;
+    submitted_date: string;
+    sla_due_at?: string;
+    sla_breached?: boolean;
+    complaint_categories: { category_name: string } | null;
+    departments: { department_name: string } | null;
+  };
 }
 
 export interface MunicipComplaint {

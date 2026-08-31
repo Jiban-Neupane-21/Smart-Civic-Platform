@@ -24,7 +24,7 @@ const requireSuperadminGuard =
   (supabase: SupabaseClient) => async (req: any, res: any, next: any) => {
     const { data: profile, error } = await supabase
       .from("profiles")
-      .select("role, account_status")
+      .select("role, account_status, force_password_reset")
       .eq("id", req.user.id)
       .single();
 
@@ -38,6 +38,9 @@ const requireSuperadminGuard =
         .status(403)
         .json({ error: "Access Denied: Superadmin privileges restricted." });
     }
+    
+    req.user.force_password_reset = profile.force_password_reset;
+    req.user.role = profile.role;
     next();
   };
 
@@ -50,6 +53,9 @@ export function createSuperadminRouter(
   // Route Wide Global Protection Components
   router.use(requireAuth(supabaseAdminClient));
   router.use(requireSuperadminGuard(supabaseAdminClient));
+
+  const { forcePasswordReset } = require("../../../middleware/forcePasswordReset");
+  router.use(forcePasswordReset);
 
   /**
    * @openapi
@@ -262,6 +268,17 @@ export function createSuperadminRouter(
    *     summary: Delete a municipality
    *     tags: [Superadmin API]
    */
+  /**
+   * @openapi
+   * /api/v1/superadmin/municipalities/{id}/kyc:
+   *   patch:
+   *     summary: Review and update a municipality's KYC status
+   *     tags: [Superadmin API]
+   *     security:
+   *       - BearerAuth: []
+   */
+  router.patch("/municipalities/:id/kyc", controller.reviewMunicipalityKyc);
+
   router.put("/municipalities/:id", controller.updateMunicipality);
   router.delete("/municipalities/:id", controller.deleteMunicipality);
 

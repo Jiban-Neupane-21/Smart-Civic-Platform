@@ -18,6 +18,43 @@ export class MunicipalityController {
     }
   };
 
+  updateLogo = async (req: any, res: Response): Promise<void> => {
+    try {
+      if (!req.body.logo) {
+        res.status(400).json({ success: false, error: "logo base64 string is required" });
+        return;
+      }
+      const data = await this.service.updateLogo(req.municipalityId, req.body.logo);
+      res.status(200).json({ success: true, data, message: "Logo updated successfully" });
+    } catch (error: any) {
+      res.status(500).json({ success: false, error: error.message });
+    }
+  };
+
+  getMunicipalityProfile = async (req: any, res: Response): Promise<void> => {
+    try {
+      const data = await this.service.getMunicipalityProfile(req.municipalityId);
+      res.status(200).json({ success: true, data });
+    } catch (error: any) {
+      res.status(500).json({ success: false, error: error.message });
+    }
+  };
+
+  updateMunicipalityProfile = async (req: any, res: Response): Promise<void> => {
+    try {
+      const data = await this.service.updateMunicipalityProfile(req.municipalityId, req.body, req.user?.id);
+      res.status(200).json({
+        success: true,
+        data,
+        message: data.kyc_status === "pending"
+          ? "Profile updated and submitted for KYC verification!"
+          : "Profile updated successfully.",
+      });
+    } catch (error: any) {
+      res.status(500).json({ success: false, error: error.message });
+    }
+  };
+
   getDepartments = async (req: any, res: Response): Promise<void> => {
     try {
       const depts = await this.service.getDepartments(req.municipalityId);
@@ -47,6 +84,34 @@ export class MunicipalityController {
       res.status(200).json({ success: true, data: categories });
     } catch (error: any) {
       res.status(500).json({ success: false, error: error.message });
+    }
+  };
+
+  reviewDepartmentKyc = async (req: any, res: Response): Promise<void> => {
+    try {
+      const { id: departmentId } = req.params;
+      const { status, rejection_reason } = req.body;
+
+      if (!status || !["verified", "rejected"].includes(status)) {
+        res.status(400).json({ success: false, error: "status must be 'verified' or 'rejected'." });
+        return;
+      }
+
+      const updated = await this.service.reviewDepartmentKyc(
+        req.municipalityId,
+        departmentId,
+        req.user.id,
+        status,
+        rejection_reason
+      );
+
+      res.status(200).json({
+        success: true,
+        message: `Department KYC status updated to '${status}'.`,
+        data: updated,
+      });
+    } catch (error: any) {
+      res.status(400).json({ success: false, error: error.message });
     }
   };
 
@@ -346,6 +411,45 @@ export class MunicipalityController {
     }
   };
 
+  reviewStaffKyc = async (req: any, res: Response): Promise<void> => {
+    try {
+      const { id: staffId } = req.params;
+      const { status, rejection_reason } = req.body;
+
+      if (!status || !["verified", "rejected"].includes(status)) {
+        res.status(400).json({
+          success: false,
+          error: "Status must be 'verified' or 'rejected'.",
+        });
+        return;
+      }
+
+      if (status === "rejected" && !rejection_reason) {
+        res.status(400).json({
+          success: false,
+          error: "Rejection reason is required when rejecting KYC.",
+        });
+        return;
+      }
+
+      const updated = await this.service.reviewStaffKyc(
+        req.municipalityId,
+        staffId,
+        req.user.id,
+        status,
+        rejection_reason
+      );
+
+      res.status(200).json({
+        success: true,
+        message: `Staff KYC ${status === "verified" ? "approved" : "rejected"} successfully.`,
+        data: updated,
+      });
+    } catch (error: any) {
+      res.status(400).json({ success: false, error: error.message });
+    }
+  };
+
   onboardStaffProfile = async (req: any, res: Response): Promise<void> => {
     try {
       const { profile_id, primary_department_id, employee_id, expertise } = req.body;
@@ -543,6 +647,44 @@ export class MunicipalityController {
       res.status(200).json({ success: true, message: "Cross-department team deactivated.", data: deactivated });
     } catch (error: any) {
       res.status(400).json({ success: false, error: error.message });
+    }
+  };
+
+  assignComplaintToTeam = async (req: any, res: Response): Promise<void> => {
+    try {
+      const { teamId } = req.params;
+      const { complaint_id, notes } = req.body;
+
+      if (!complaint_id) {
+        res.status(400).json({ success: false, error: "complaint_id is required." });
+        return;
+      }
+
+      const data = await this.service.assignComplaintToTeam(
+        req.municipalityId,
+        teamId,
+        complaint_id,
+        req.user.id,
+        notes
+      );
+
+      res.status(201).json({
+        success: true,
+        message: "Grievance ticket assigned to cross-department team.",
+        data,
+      });
+    } catch (error: any) {
+      res.status(400).json({ success: false, error: error.message });
+    }
+  };
+
+  getTeamComplaints = async (req: any, res: Response): Promise<void> => {
+    try {
+      const { teamId } = req.params;
+      const data = await this.service.getTeamComplaints(req.municipalityId, teamId);
+      res.status(200).json({ success: true, data });
+    } catch (error: any) {
+      res.status(500).json({ success: false, error: error.message });
     }
   };
 

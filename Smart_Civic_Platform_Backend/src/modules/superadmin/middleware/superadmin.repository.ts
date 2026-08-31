@@ -198,7 +198,271 @@ export class SuperadminRepository {
     return result;
   }
 
-  // Delete a municipality
+  // Review and update KYC status of a municipality
+  async reviewMunicipalityKyc(
+    id: string,
+    status: 'verified' | 'rejected',
+    verifiedBy: string,
+    rejectionReason?: string
+  ) {
+    const updateData: Record<string, any> = {
+      kyc_status: status,
+    };
+
+    if (status === 'verified') {
+      updateData.kyc_verified_at = new Date().toISOString();
+      updateData.kyc_verified_by = verifiedBy;
+      updateData.kyc_rejection_reason = null;
+    } else if (status === 'rejected') {
+      updateData.kyc_rejection_reason = rejectionReason || null;
+    }
+
+    const { data, error } = await this.supabaseAdmin
+      .from("municipalities")
+      .update(updateData)
+      .eq("id", id)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  }
+
+  // Reset and deactivate a municipality (retaining the Nepal geographical reference entity)
+  async resetMunicipality(id: string) {
+    const { data, error } = await this.supabaseAdmin
+      .from("municipalities")
+      .update({
+        is_active: false,
+        head_profile_id: null,
+        head_name: null,
+        head_email: null,
+        head_contact_no: null,
+        kyc_status: "unverified",
+        kyc_submitted_at: null,
+        kyc_verified_at: null,
+        kyc_verified_by: null,
+        kyc_rejection_reason: null,
+        registration_document_url: null,
+        head_identity_type: null,
+        head_identity_number: null,
+        head_identity_front_url: null,
+        head_identity_back_url: null,
+        about_description: null,
+        mayor_chairperson_name: null,
+        deputy_mayor_vice_chairperson_name: null,
+        official_logo: null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", id)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  }
+
+  // Cascade soft delete a municipality: archives & soft-deletes staff, deactivates departments & profiles, revokes invites, resets municipality
+  async cascadeSoftDeleteMunicipality(municipalityId: string, deletedBy?: string) {
+    const affectedProfileIds: string[] = [];
+
+    // 1. Fetch municipality to get head_profile_id
+    const { data: municipality, error: muniErr } = await this.supabaseAdmin
+      .from("municipalities")
+      .select("id, head_profile_id")
+      .eq("id", municipalityId)
+      .maybeSingle();
+
+    if (muniErr) throw muniErr;
+    if (!municipality) throw new Error("Municipality not found.");
+
+    if (municipality.head_profile_id) {
+      affectedProfileIds.push(municipality.head_profile_id);
+    }
+
+    // 2. Fetch all departments in this municipality
+    const { data: departments, error: deptErr } = await this.supabaseAdmin
+      .from("departments")
+      .select("id, head_profile_id")
+      .eq("municipality_id", municipalityId);
+
+    if (deptErr) throw deptErr;
+
+    (departments || []).forEach((d: any) => {
+      if (d.head_profile_id) {
+        affectedProfileIds.push(d.head_profile_id);
+      }
+    });
+
+    // 3. Fetch all active staff members in this municipality
+    const { data: staffList, error: staffErr } = await this.supabaseAdmin
+      .from("staff")
+      .select(`
+        id, profile_id, employee_id, expertise, contact_number,
+        gender, date_of_birth, personal_address, employee_status,
+        primary_department_id, municipality_id,
+        profiles:profiles!profile_id(full_name, email, phone)
+      `)
+      .eq("municipality_id", municipalityId)
+      .eq("is_deleted", false);
+
+    if (staffErr) {
+      console.warn("Could not fetch staff for archive:", staffErr.message);
+    }
+
+    if (staffList && staffList.length > 0) {
+      // Archive to deleted_staff
+      const archiveRows = staffList.map((s: any) => {
+        const profile = Array.isArray(s.profiles) ? s.profiles[0] : s.profiles;
+        if (s.profile_id) {
+          affectedProfileIds.push(s.profile_id);
+        }
+        return {
+          original_staff_id: s.id,
+          original_profile_id: s.profile_id,
+          full_name: profile?.full_name || "Unknown Staff",
+          email: profile?.email || null,
+          phone: profile?.phone || null,
+          employee_id: s.employee_id || null,
+          expertise: s.expertise || null,
+          contact_number: s.contact_number || null,
+          gender: s.gender || null,
+          date_of_birth: s.date_of_birth || null,
+          personal_address: s.personal_address || null,
+          employee_status: "terminated",
+          primary_department_id: s.primary_department_id,
+          municipality_id: s.municipality_id,
+          deleted_by: deletedBy || null,
+          deleted_at: new Date().toISOString(),
+        };
+      });
+
+      try {
+        const { error: archiveErr } = await this.supabaseAdmin
+          .from("deleted_staff")
+          .insert(archiveRows);
+        if (archiveErr) {
+          console.warn("Archive staff insert warning:", archiveErr.message);
+        }
+      } catch (err: any) {
+        console.warn("Failed to insert into deleted_staff:", err.message);
+      }
+
+      // Soft delete in staff table
+      const { error: softDeleteStaffErr } = await this.supabaseAdmin
+        .from("staff")
+        .update({
+          is_deleted: true,
+          deleted_at: new Date().toISOString(),
+          employee_status: "terminated",
+          updated_at: new Date().toISOString(),
+        })
+        .eq("municipality_id", municipalityId);
+
+      if (softDeleteStaffErr) {
+        console.warn("Soft delete staff error:", softDeleteStaffErr.message);
+      }
+    }
+
+    // 4. Fetch any additional profiles directly belonging to this municipality
+    const { data: tenantProfiles, error: tenantProfilesErr } = await this.supabaseAdmin
+      .from("profiles")
+      .select("id")
+      .eq("municipality_id", municipalityId)
+      .eq("is_deleted", false);
+
+    if (!tenantProfilesErr && tenantProfiles) {
+      tenantProfiles.forEach((p: any) => affectedProfileIds.push(p.id));
+    }
+
+    const uniqueProfileIds = Array.from(new Set(affectedProfileIds)).filter(Boolean);
+
+    // 5. Soft-delete and suspend all collected profiles
+    if (uniqueProfileIds.length > 0) {
+      const { error: softDeleteProfilesErr } = await this.supabaseAdmin
+        .from("profiles")
+        .update({
+          is_deleted: true,
+          deleted_at: new Date().toISOString(),
+          account_status: "suspended" as AccountStatus,
+          updated_at: new Date().toISOString(),
+        })
+        .in("id", uniqueProfileIds);
+
+      if (softDeleteProfilesErr) {
+        console.warn("Soft delete profiles error:", softDeleteProfilesErr.message);
+      }
+    }
+
+    // 6. Deactivate all departments in this municipality
+    const { error: deactivateDeptsErr } = await this.supabaseAdmin
+      .from("departments")
+      .update({
+        is_active: false,
+        head_profile_id: null,
+        head_name: null,
+        head_email: null,
+        kyc_status: "unverified",
+        updated_at: new Date().toISOString(),
+      })
+      .eq("municipality_id", municipalityId);
+
+    if (deactivateDeptsErr) {
+      console.warn("Deactivate departments error:", deactivateDeptsErr.message);
+    }
+
+    // 7. Revoke all pending role invites for this municipality
+    const { error: revokeInvitesErr } = await this.supabaseAdmin
+      .from("role_invites")
+      .update({
+        is_revoked: true,
+        revoked_at: new Date().toISOString(),
+      })
+      .eq("municipality_id", municipalityId)
+      .eq("is_used", false);
+
+    if (revokeInvitesErr) {
+      console.warn("Revoke role invites warning:", revokeInvitesErr.message);
+    }
+
+    // 8. Reset and deactivate the municipality row
+    const resetResult = await this.resetMunicipality(municipalityId);
+
+    return {
+      success: true,
+      resetMunicipality: resetResult,
+      affectedProfileIds: uniqueProfileIds,
+      staffArchivedCount: staffList?.length || 0,
+      departmentsDeactivatedCount: departments?.length || 0,
+    };
+  }
+
+  // Delete all departments and teams in a municipality (legacy helper)
+  async deleteDepartmentsByMunicipality(municipalityId: string) {
+    const { error } = await this.supabaseAdmin
+      .from("departments")
+      .update({
+        is_active: false,
+        head_profile_id: null,
+        head_name: null,
+        head_email: null,
+        kyc_status: "unverified",
+        updated_at: new Date().toISOString(),
+      })
+      .eq("municipality_id", municipalityId);
+    if (error) console.error("Error deactivating departments for municipality:", error.message);
+  }
+
+  // Delete all wards in a municipality
+  async deleteWardsByMunicipality(municipalityId: string) {
+    const { error } = await this.supabaseAdmin
+      .from("wards")
+      .delete()
+      .eq("municipality_id", municipalityId);
+    if (error) console.error("Error clearing wards for municipality:", error.message);
+  }
+
+  // Delete a municipality row completely (fallback)
   async deleteMunicipality(id: string) {
     const { data, error } = await this.supabaseAdmin
       .from("municipalities")

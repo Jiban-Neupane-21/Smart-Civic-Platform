@@ -7,14 +7,24 @@ interface ProtectedRouteProps {
 }
 
 const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ allowedRoles }) => {
-  const { isAuthenticated, user } = useAuth();
+  const { isAuthenticated, user, kycCompleted } = useAuth();
 
   // 1. If not authenticated, redirect to login
   if (!isAuthenticated || !user) {
     return <Navigate to="/login" replace />;
   }
 
-  // 2. If the route is restricted by roles and the user doesn't have permission
+  // 2. If the user must reset their password, redirect to change-password
+  if (user.force_password_reset && !["superadmin", "citizen"].includes(user.role)) {
+    return <Navigate to="/change-password" replace />;
+  }
+
+  // Check mandatory KYC for admins
+  if (["municipality_head", "department_head", "staff"].includes(user.role) && !kycCompleted) {
+    return <Navigate to="/kyc" replace />;
+  }
+
+  // 3. If the route is restricted by roles and the user doesn't have permission
   if (
     allowedRoles &&
     allowedRoles.length > 0 &&

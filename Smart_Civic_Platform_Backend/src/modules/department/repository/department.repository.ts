@@ -73,13 +73,64 @@ export class DepartmentRepository {
       .from("staff")
       .select(
         `id, profile_id, employee_id, expertise, contact_number,
-         gender, date_of_birth, personal_address, employee_status, onboarded_at, is_deleted,
-         profiles(id, full_name, email, phone, role, account_status)`
+         gender, date_of_birth, personal_address, designation,
+         kyc_status, kyc_submitted_at, kyc_verified_at, kyc_verified_by, kyc_rejection_reason,
+         identity_type, identity_number, identity_front_url, identity_back_url, appointment_letter_url, photo_url,
+         emergency_contact_name, emergency_contact_phone,
+         employee_status, onboarded_at, is_deleted,
+         profiles:profiles!profile_id(id, full_name, email, phone, role, account_status)`
       )
       .eq("primary_department_id", departmentId)
       .eq("is_deleted", false);
 
     if (error) throw error;
+    return (data || []).filter((item: any) => {
+      const role = item.profiles?.role;
+      return !role || role === "staff";
+    });
+  }
+
+  async reviewStaffKyc(
+    staffId: string,
+    departmentId: string,
+    reviewerId: string,
+    status: "verified" | "rejected",
+    rejectionReason?: string
+  ) {
+    const nowIso = new Date().toISOString();
+    const updates: Record<string, any> = {
+      kyc_status: status,
+      kyc_verified_by: reviewerId,
+      kyc_verified_at: nowIso,
+      updated_at: nowIso,
+    };
+
+    if (status === "rejected") {
+      updates.kyc_rejection_reason = rejectionReason || "Document verification failed.";
+    } else {
+      updates.kyc_rejection_reason = null;
+    }
+
+    const { data, error } = await this.supabaseAdmin
+      .from("staff")
+      .update(updates)
+      .eq("id", staffId)
+      .eq("primary_department_id", departmentId)
+      .select("*, profile:profiles!profile_id(id, full_name, email)")
+      .single();
+
+    if (error) throw error;
+
+    if (status === "verified" && data?.profile_id) {
+      await this.supabaseAdmin
+        .from("profiles")
+        .update({
+          identity_verified_at: nowIso,
+          updated_at: nowIso,
+        })
+        .eq("id", data.profile_id);
+    }
+
     return data;
   }
 
@@ -229,7 +280,7 @@ export class DepartmentRepository {
         `id, profile_id, employee_id, expertise, contact_number,
          gender, date_of_birth, personal_address, employee_status,
          primary_department_id, municipality_id,
-         profiles(full_name, email, phone)`,
+         profiles:profiles!profile_id(full_name, email, phone)`,
       )
       .eq("id", staffId)
       .eq("primary_department_id", departmentId)
@@ -350,7 +401,7 @@ export class DepartmentRepository {
           staff_id, is_leader, joined_at,
           staff (
             id, employee_id, expertise,
-            profiles ( full_name, email )
+            profiles:profiles!profile_id ( full_name, email )
           )
         )
       `)
@@ -390,7 +441,7 @@ export class DepartmentRepository {
           staff_id, is_leader, joined_at,
           staff (
             id, employee_id, expertise,
-            profiles ( full_name, email, phone )
+            profiles:profiles!profile_id ( full_name, email, phone )
           )
         )
       `)
@@ -601,10 +652,17 @@ export class DepartmentRepository {
     assignedBy: string,
     notes?: string
   ) {
-    await this.supabaseAdmin
+    // Check if there is an existing active assignment for this complaint
+    const { data: existingAssignment } = await this.supabaseAdmin
       .from("complaint_assignments")
-      .update({ is_current: false })
-      .eq("complaint_id", complaintId);
+      .select("id")
+      .eq("complaint_id", complaintId)
+      .eq("is_current", true)
+      .single();
+
+    if (existingAssignment) {
+      throw new Error("This complaint is already assigned to a team and cannot be reassigned.");
+    }
 
     const { data, error } = await this.supabaseAdmin
       .from("complaint_assignments")

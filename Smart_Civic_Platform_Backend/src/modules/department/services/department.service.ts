@@ -2,9 +2,125 @@ import { DepartmentRepository } from "../repository/department.repository";
 import type { ComplaintStatus, Database } from "../../../types/database.type";
 import { CollaborationService } from "../../../service/collaboration.service";
 import { ExportService } from "../../../service/export.service";
+import { StorageService } from "../../../service/storage.service";
+import { supabaseAdmin } from "../../../config/supabase";
 
 export class DepartmentService {
   constructor(private repo: DepartmentRepository) { }
+
+  async updateLogo(departmentId: string, base64Data: string) {
+    const storageService = new StorageService(supabaseAdmin);
+    const fileKey = `departments/${departmentId}/logo_${Date.now()}.jpg`;
+    
+    const publicUrl = await storageService.upload("logos", fileKey, base64Data);
+
+    const { data, error } = await supabaseAdmin
+      .from("departments")
+      .update({ department_logo: publicUrl })
+      .eq("id", departmentId)
+      .select("department_logo")
+      .single();
+
+    if (error) throw new Error(`Failed to update department logo: ${error.message}`);
+    return data;
+  }
+
+  async getDepartmentProfile(departmentId: string, userId: string) {
+    const { data: deptData, error: deptError } = await supabaseAdmin
+      .from("departments")
+      .select("department_name, department_category, official_email, department_logo, head_name, head_email, kyc_status, kyc_rejection_reason")
+      .eq("id", departmentId)
+      .single();
+
+    if (deptError) throw new Error(`Failed to fetch department details: ${deptError.message}`);
+
+    const { data: profileData, error: profileError } = await supabaseAdmin
+      .from("profiles")
+      .select("phone, identity_type, identity_number, identity_document_url, identity_verified_at")
+      .eq("id", userId)
+      .single();
+
+    if (profileError) throw new Error(`Failed to fetch head profile: ${profileError.message}`);
+
+    return {
+      ...deptData,
+      head_contact_no: profileData.phone,
+      head_identity_type: profileData.identity_type,
+      head_identity_number: profileData.identity_number,
+      head_identity_front_url: profileData.identity_document_url,
+      identity_verified_at: profileData.identity_verified_at,
+    };
+  }
+
+  async setupDepartmentProfile(
+    departmentId: string,
+    userId: string,
+    payload: any
+  ) {
+    const storageService = new StorageService(supabaseAdmin);
+    let logoUrl = payload.department_logo_base64 ? undefined : payload.department_logo;
+
+    if (payload.department_logo_base64) {
+      const fileKey = `departments/${departmentId}/logo_${Date.now()}.jpg`;
+      logoUrl = await storageService.upload("logos", fileKey, payload.department_logo_base64);
+    }
+
+    let identityFrontUrl = payload.head_identity_front_base64 ? undefined : payload.head_identity_front_url;
+    if (payload.head_identity_front_base64) {
+      identityFrontUrl = await storageService.uploadIdentityDocument(
+        userId,
+        payload.head_identity_front_base64,
+        "identity_front"
+      );
+    }
+
+    let identityBackUrl = payload.head_identity_back_base64 ? undefined : payload.head_identity_back_url;
+    if (payload.head_identity_back_base64) {
+      identityBackUrl = await storageService.uploadIdentityDocument(
+        userId,
+        payload.head_identity_back_base64,
+        "identity_back"
+      );
+    }
+
+    // Update departments table
+    const deptUpdates: any = {};
+    if (payload.official_email !== undefined) deptUpdates.official_email = payload.official_email;
+    if (logoUrl !== undefined) deptUpdates.department_logo = logoUrl;
+    if (payload.head_name !== undefined) deptUpdates.head_name = payload.head_name;
+    if (payload.head_email !== undefined) deptUpdates.head_email = payload.head_email;
+
+    // Set KYC status to pending when documents are submitted
+    if (identityFrontUrl) {
+      deptUpdates.kyc_status = 'pending';
+      deptUpdates.kyc_rejection_reason = null;
+    }
+
+    if (Object.keys(deptUpdates).length > 0) {
+      const { error: deptErr } = await supabaseAdmin
+        .from("departments")
+        .update(deptUpdates)
+        .eq("id", departmentId);
+      if (deptErr) throw new Error(`Failed to update department: ${deptErr.message}`);
+    }
+
+    // Update profiles table
+    const profileUpdates: any = {};
+    if (payload.head_identity_type !== undefined) profileUpdates.identity_type = payload.head_identity_type;
+    if (payload.head_identity_number !== undefined) profileUpdates.identity_number = payload.head_identity_number;
+    if (identityFrontUrl !== undefined) profileUpdates.identity_document_url = identityFrontUrl;
+    if (payload.head_contact_no !== undefined) profileUpdates.phone = payload.head_contact_no;
+
+    if (Object.keys(profileUpdates).length > 0) {
+      const { error: profErr } = await supabaseAdmin
+        .from("profiles")
+        .update(profileUpdates)
+        .eq("id", userId);
+      if (profErr) throw new Error(`Failed to update head profile: ${profErr.message}`);
+    }
+
+    return await this.getDepartmentProfile(departmentId, userId);
+  }
 
   async buildDeploymentTeam(
     departmentId: string,
@@ -327,5 +443,21 @@ export class DepartmentService {
     const team = await this.repo.getTeamByName(teamName, departmentId);
     if (!team) throw new Error("Team not found in department.");
     return await this.repo.getTeamComplaints(team.id);
+  }
+
+  async reviewStaffKyc(
+    staffId: string,
+    departmentId: string,
+    reviewerId: string,
+    status: "verified" | "rejected",
+    rejectionReason?: string
+  ) {
+    return await this.repo.reviewStaffKyc(
+      staffId,
+      departmentId,
+      reviewerId,
+      status,
+      rejectionReason
+    );
   }
 }

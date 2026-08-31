@@ -76,7 +76,7 @@ export default function SystemSetting() {
                   <ListItemText
                     primary={flag.key}
                     secondary={flag.description || "No description"}
-                    primaryTypographyProps={{ fontWeight: 600 }}
+                    slotProps={{ primary: { fontWeight: 600 } }}
                   />
                   <ListItemSecondaryAction>
                     <Switch

@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { useFormik } from "formik";
+import axios from "axios";
 import {
   Box,
   Button,
@@ -18,6 +19,7 @@ import LockOutlinedIcon from "@mui/icons-material/LockOutlined";
 import { loginSchema } from "../../validation/auth.schema";
 import { useAuth } from "../../hooks/useAuth";
 import { withRoleRedirect } from "./withRoleRedirect";
+import { authApi } from "../../api/modules/auth.api";
 
 function LoginBase() {
   const [showPassword, setShowPassword] = useState(false);
@@ -34,40 +36,42 @@ function LoginBase() {
       try {
         setSubmitError(null);
 
-        const response = await fetch("http://localhost:3000/api/auth/login", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(values),
-        });
-
-        const result = await response.json();
-
-        if (!response.ok) {
-          throw new Error(result.message || "Login failed");
-        }
+        const result = await authApi.login(values);
 
         console.log("Login successful. Server response:", result);
 
-        // Global state updates here. HOC catches it and redirects securely!
-        const profile = result.data ? result.data.profile : result.profile;
-        console.log(`Login Email: ${profile?.email} | Role: ${profile?.role}`);
+        const responseData = result.data as any;
+        const profile = responseData?.profile || responseData?.user || (result as any).profile;
+        const accessToken = responseData?.access_token || responseData?.tokens?.accessToken || (result as any).access_token;
+        const refreshToken = responseData?.refresh_token || responseData?.tokens?.refreshToken || (result as any).refresh_token;
 
-        if (!profile) {
+        if (!profile || !accessToken) {
           throw new Error("User profile not found. Please contact administrator.");
         }
 
-        if (result.data) {
-          login(result.data.access_token, result.data.profile);
-        } else {
-          login(result.access_token, result.profile); // Fallback mapping
-        }
+        console.log(`Login Email: ${profile?.email} | Role: ${profile?.role}`);
+        login(accessToken, profile, refreshToken);
       } catch (err: unknown) {
-        const errorMessage =
-          err instanceof Error
-            ? err.message
-            : "Authentication failed. Please try again.";
+        let errorMessage = "Authentication failed. Please try again.";
+
+        if (axios.isAxiosError(err)) {
+          if (err.response?.status === 429) {
+            errorMessage =
+              (typeof err.response.data === "object" && err.response.data?.message) ||
+              "Too many requests. Please wait a few moments and try again.";
+          } else if (err.response?.data && typeof err.response.data === "object" && "message" in err.response.data) {
+            errorMessage = String(err.response.data.message);
+          } else if (err.response?.status === 401) {
+            errorMessage = "Invalid email or password. Please try again.";
+          } else if (!err.response) {
+            errorMessage = "Cannot connect to server. Please ensure the backend is running.";
+          } else if (err.message) {
+            errorMessage = err.message;
+          }
+        } else if (err instanceof Error) {
+          errorMessage = err.message;
+        }
+
         setSubmitError(errorMessage);
       } finally {
         setSubmitting(false);

@@ -68,12 +68,12 @@ export class MunicipalityRepository {
     return data;
   }
 
-  // Get departments with staff_count and complaint_count aggregations
   async getDepartments(municipalityId: string) {
     const { data, error } = await this.supabaseAdmin
       .from("departments")
       .select(`
         *,
+        head_profile:profiles!head_profile_id(identity_type, identity_number, identity_document_url, identity_verified_at, phone),
         staff_count:staff(count),
         complaint_count:complaints!assigned_department_id(count)
       `)
@@ -84,9 +84,43 @@ export class MunicipalityRepository {
     // Flatten counts if returned as objects
     return (data || []).map((dept: any) => ({
       ...dept,
+      head_identity_type: dept.head_profile?.identity_type,
+      head_identity_number: dept.head_profile?.identity_number,
+      head_identity_front_url: dept.head_profile?.identity_document_url,
+      head_contact_no: dept.head_profile?.phone,
       staff_count: Array.isArray(dept.staff_count) ? dept.staff_count[0]?.count || 0 : dept.staff_count?.count || 0,
       complaint_count: Array.isArray(dept.complaint_count) ? dept.complaint_count[0]?.count || 0 : dept.complaint_count?.count || 0,
     }));
+  }
+
+  async reviewDepartmentKyc(
+    municipalityId: string,
+    departmentId: string,
+    reviewerId: string,
+    status: "verified" | "rejected",
+    rejectionReason?: string
+  ) {
+    const updates: Record<string, any> = {
+      kyc_status: status,
+      kyc_verified_by: reviewerId,
+      kyc_verified_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+
+    if (status === "rejected") {
+      updates.kyc_rejection_reason = rejectionReason || "Document verification failed.";
+    }
+
+    const { data, error } = await this.supabaseAdmin
+      .from("departments")
+      .update(updates)
+      .eq("id", departmentId)
+      .eq("municipality_id", municipalityId)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
   }
 
   async getDepartmentById(departmentId: string) {
@@ -173,7 +207,10 @@ export class MunicipalityRepository {
     let query = this.supabaseAdmin
       .from("staff")
       .select(`
-        id, employee_id, expertise, contact_number, gender, date_of_birth, employee_status, onboarded_at,
+        id, employee_id, expertise, contact_number, gender, date_of_birth, personal_address, designation,
+        kyc_status, kyc_submitted_at, kyc_verified_at, kyc_verified_by, kyc_rejection_reason,
+        identity_type, identity_number, identity_front_url, identity_back_url, appointment_letter_url, photo_url,
+        emergency_contact_name, emergency_contact_phone, employee_status, onboarded_at,
         profile:profiles!profile_id(id, full_name, email, phone, role, account_status),
         department:departments!primary_department_id(id, department_name, department_category)
       `)
@@ -186,7 +223,54 @@ export class MunicipalityRepository {
 
     const { data, error } = await query.order("onboarded_at", { ascending: false });
     if (error) throw error;
-    return data || [];
+    return (data || []).filter((item: any) => {
+      const role = item.profile?.role;
+      return !role || role === "staff";
+    });
+  }
+
+  async reviewStaffKyc(
+    staffId: string,
+    municipalityId: string,
+    reviewerId: string,
+    status: "verified" | "rejected",
+    rejectionReason?: string
+  ) {
+    const nowIso = new Date().toISOString();
+    const updates: Record<string, any> = {
+      kyc_status: status,
+      kyc_verified_by: reviewerId,
+      kyc_verified_at: nowIso,
+      updated_at: nowIso,
+    };
+
+    if (status === "rejected") {
+      updates.kyc_rejection_reason = rejectionReason || "Document verification failed.";
+    } else {
+      updates.kyc_rejection_reason = null;
+    }
+
+    const { data, error } = await this.supabaseAdmin
+      .from("staff")
+      .update(updates)
+      .eq("id", staffId)
+      .eq("municipality_id", municipalityId)
+      .select("*, profile:profiles!profile_id(id, full_name, email)")
+      .single();
+
+    if (error) throw error;
+
+    if (status === "verified" && data?.profile_id) {
+      await this.supabaseAdmin
+        .from("profiles")
+        .update({
+          identity_verified_at: nowIso,
+          updated_at: nowIso,
+        })
+        .eq("id", data.profile_id);
+    }
+
+    return data;
   }
 
   // Staff CRUD — Update staff record
@@ -253,7 +337,7 @@ export class MunicipalityRepository {
         id, profile_id, employee_id, expertise, contact_number,
         gender, date_of_birth, personal_address, employee_status,
         primary_department_id, municipality_id,
-        profiles(full_name, email, phone)
+        profiles:profiles!profile_id(full_name, email, phone)
       `)
       .eq("id", staffId)
       .eq("municipality_id", municipalityId)
@@ -452,10 +536,10 @@ export class MunicipalityRepository {
       .select(`
         *,
         team_members (
-          staff_id, is_leader, joined_at, acknowledged_at,
+          staff_id, is_leader, joined_at,
           staff (
             id, employee_id, primary_department_id, expertise,
-            profiles ( full_name, email )
+            profiles:profiles!profile_id ( full_name, email )
           )
         )
       `)
@@ -528,6 +612,92 @@ export class MunicipalityRepository {
       })
       .eq("team_id", teamId)
     return data;
+  }
+
+  async assignComplaintToTeam(
+    municipalityId: string,
+    teamId: string,
+    complaintId: string,
+    assignedBy: string,
+    notes?: string
+  ) {
+    // Check if the team actually exists and belongs to this municipality
+    const { data: team, error: teamError } = await this.supabaseAdmin
+      .from("teams")
+      .select("id")
+      .eq("id", teamId)
+      .eq("municipality_id", municipalityId)
+      .single();
+
+    if (teamError || !team) {
+      throw new Error("Team not found in this municipality.");
+    }
+
+    // Check if there is an existing active assignment for this complaint
+    const { data: existingAssignment } = await this.supabaseAdmin
+      .from("complaint_assignments")
+      .select("id")
+      .eq("complaint_id", complaintId)
+      .eq("is_current", true)
+      .single();
+
+    if (existingAssignment) {
+      throw new Error("This complaint is already assigned to a team and cannot be reassigned.");
+    }
+
+    // Insert new assignment
+    const { data, error } = await this.supabaseAdmin
+      .from("complaint_assignments")
+      .insert({
+        complaint_id: complaintId,
+        team_id: teamId,
+        assigned_by: assignedBy,
+        status: "pending",
+        is_current: true,
+        notes: notes || null,
+        assigned_at: new Date().toISOString(),
+      })
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    await this.supabaseAdmin
+      .from("complaints")
+      .update({
+        status: "assigned",
+        current_team_id: teamId,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("co_uid", complaintId);
+
+    return data;
+  }
+
+  async getTeamComplaints(municipalityId: string, teamId: string) {
+    // Check if the team belongs to this municipality
+    const { data: team, error: teamError } = await this.supabaseAdmin
+      .from("teams")
+      .select("id")
+      .eq("id", teamId)
+      .eq("municipality_id", municipalityId)
+      .single();
+
+    if (teamError || !team) {
+      throw new Error("Team not found in this municipality.");
+    }
+
+    const { data, error } = await this.supabaseAdmin
+      .from("complaint_assignments")
+      .select(`
+        id, status, notes, assigned_at,
+        complaint:complaints!complaint_id(co_uid, tracking_id, title, description, status, priority, severity_level, sla_due_at)
+      `)
+      .eq("team_id", teamId)
+      .eq("is_current", true);
+
+    if (error) throw error;
+    return data || [];
   }
 
   // ===== ESCALATED COMPLAINTS & INTERVENTION METHODS =====

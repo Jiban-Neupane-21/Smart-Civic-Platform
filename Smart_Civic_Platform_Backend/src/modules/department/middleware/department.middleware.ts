@@ -21,7 +21,7 @@ export const verifyDepartmentHeadContext = (supabase: SupabaseClient) => {
       // Check if the profile is active and has the correct role designation
       const { data: profile, error: profileError } = await supabase
         .from("profiles")
-        .select("role, account_status")
+        .select("role, account_status, force_password_reset, identity_document_url")
         .eq("id", userId)
         .single();
 
@@ -29,6 +29,10 @@ export const verifyDepartmentHeadContext = (supabase: SupabaseClient) => {
         res.status(403).json({ success: false, error: "Access Denied: Requires active Department Head privileges." });
         return;
       }
+
+      req.user.force_password_reset = profile.force_password_reset;
+      req.user.role = profile.role;
+      req.user.identity_document_url = profile.identity_document_url;
 
       if (profile.account_status === "suspended") {
         res.status(403).json({ success: false, error: "Account suspended. Contact platform administrator." });

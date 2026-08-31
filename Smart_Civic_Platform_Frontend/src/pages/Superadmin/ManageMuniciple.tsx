@@ -34,6 +34,8 @@ import DeleteIcon from "@mui/icons-material/Delete";
 import AddIcon from "@mui/icons-material/Add";
 import SearchIcon from "@mui/icons-material/Search";
 import VisibilityIcon from "@mui/icons-material/Visibility";
+import VerifiedIcon from "@mui/icons-material/Verified";
+import PendingActionsIcon from "@mui/icons-material/PendingActions";
 import { superadminApi } from "../../api";
 import type { MunicipalityJoined, ProvinceRow, DistrictRow, MunicipalityReference } from "../../api/types";
 
@@ -80,6 +82,7 @@ export default function ManageMuniciple() {
   const [searchQuery, setSearchQuery] = useState("");
   const [filterProvince, setFilterProvince] = useState("");
   const [filterDistrict, setFilterDistrict] = useState("");
+  const [filterKycStatus, setFilterKycStatus] = useState("all");
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
 
@@ -96,6 +99,8 @@ export default function ManageMuniciple() {
 
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [viewMunicipality, setViewMunicipality] = useState<MunicipalityJoined | null>(null);
+  const [kycRejectionReason, setKycRejectionReason] = useState("");
+  const [isSubmittingKyc, setIsSubmittingKyc] = useState(false);
 
   const availableMunicipalityTypes = Array.from(
     new Set(referenceMunis.map((m) => m.local_level_type).filter(Boolean))
@@ -110,7 +115,8 @@ export default function ManageMuniciple() {
     const matchesSearch = !q || m.official_name?.toLowerCase().includes(q) || (m.head_name || "").toLowerCase().includes(q);
     const matchesProvince = !filterProvince || m.province_name === filterProvince;
     const matchesDistrict = !filterDistrict || m.district_name === filterDistrict;
-    return matchesSearch && matchesProvince && matchesDistrict;
+    const matchesKyc = filterKycStatus === "all" || (m.kyc_status || "unverified") === filterKycStatus;
+    return matchesSearch && matchesProvince && matchesDistrict && matchesKyc;
   });
 
   const paginatedData = filteredTableData.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage);
@@ -277,6 +283,32 @@ export default function ManageMuniciple() {
     }
   };
 
+  const handleKycSubmit = async (status: 'verified' | 'rejected') => {
+    if (!viewMunicipality) return;
+    if (status === 'rejected' && !kycRejectionReason.trim()) {
+      setSnackbar({ message: "Rejection reason is required.", severity: "error" });
+      return;
+    }
+
+    setIsSubmittingKyc(true);
+    try {
+      const res = await superadminApi.reviewMunicipalityKyc(viewMunicipality.id, {
+        status,
+        rejection_reason: status === 'rejected' ? kycRejectionReason : undefined
+      });
+      if (res.success) {
+        setSnackbar({ message: `KYC successfully ${status}`, severity: "success" });
+        setViewMunicipality(null);
+        setKycRejectionReason("");
+        await fetchMunicipalities();
+      }
+    } catch (err: any) {
+      setSnackbar({ message: err.response?.data?.error || err.message || "Failed to update KYC", severity: "error" });
+    } finally {
+      setIsSubmittingKyc(false);
+    }
+  };
+
   return (
     <Box sx={{ p: 3 }}>
       <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 3 }}>
@@ -314,6 +346,17 @@ export default function ManageMuniciple() {
             ))}
           </Select>
         </FormControl>
+        <FormControl size="small" sx={{ minWidth: 160 }}>
+          <InputLabel>KYC Status</InputLabel>
+          <Select value={filterKycStatus} label="KYC Status"
+            onChange={(e) => { setFilterKycStatus(e.target.value); setPage(0); }}>
+            <MenuItem value="all">All</MenuItem>
+            <MenuItem value="unverified">Unverified</MenuItem>
+            <MenuItem value="pending">Pending Review</MenuItem>
+            <MenuItem value="verified">Verified</MenuItem>
+            <MenuItem value="rejected">Rejected</MenuItem>
+          </Select>
+        </FormControl>
         <Typography variant="body2" color="text.secondary">
           {filteredTableData.length} municipality{filteredTableData.length !== 1 ? "ies" : "y"}
           {municipalities.length !== filteredTableData.length ? ` (of ${municipalities.length})` : ""}
@@ -333,6 +376,7 @@ export default function ManageMuniciple() {
                 <TableCell><strong>Head Name</strong></TableCell>
                 <TableCell><strong>Head Email</strong></TableCell>
                 <TableCell><strong>Created At</strong></TableCell>
+                <TableCell align="center"><strong>KYC Status</strong></TableCell>
                 <TableCell align="center"><strong>Actions</strong></TableCell>
               </TableRow>
             </TableHead>
@@ -354,6 +398,23 @@ export default function ManageMuniciple() {
                     <TableCell>{row.head_email || "—"}</TableCell>
                     <TableCell>{row.registered_at ? new Date(row.registered_at).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" }) : "N/A"}</TableCell>
                     <TableCell align="center">
+                      <Chip
+                        size="small"
+                        label={(row.kyc_status || 'unverified').toUpperCase()}
+                        color={
+                          row.kyc_status === 'verified' ? 'success' :
+                          row.kyc_status === 'pending' ? 'warning' :
+                          row.kyc_status === 'rejected' ? 'error' : 'default'
+                        }
+                        icon={row.kyc_status === 'verified' ? <VerifiedIcon /> : row.kyc_status === 'pending' ? <PendingActionsIcon /> : undefined}
+                      />
+                    </TableCell>
+                    <TableCell align="center" sx={{ display: 'flex', justifyContent: 'center', gap: 1 }}>
+                      {row.kyc_status === 'pending' && (
+                        <Button size="small" variant="outlined" color="warning" onClick={() => setViewMunicipality(row)} startIcon={<PendingActionsIcon />}>
+                          Review KYC
+                        </Button>
+                      )}
                       <IconButton size="small" title="View Details" onClick={() => setViewMunicipality(row)} sx={{ color: "info.main" }}><VisibilityIcon fontSize="small" /></IconButton>
                       <IconButton size="small" title="Edit" color="primary" onClick={() => openEditModal(row)}><EditIcon fontSize="small" /></IconButton>
                       <IconButton size="small" title="Delete" color="error" onClick={() => setDeleteConfirm(row.id)}><DeleteIcon fontSize="small" /></IconButton>
@@ -540,19 +601,19 @@ export default function ManageMuniciple() {
                 Location
               </Typography>
               <Grid container spacing={2} sx={{ mb: 2 }}>
-                <Grid item xs={6}>
+                <Grid size={{ xs: 6 }}>
                   <Typography variant="caption" color="text.secondary">Province</Typography>
                   <Typography variant="body2">{viewMunicipality.province_name || "—"}</Typography>
                 </Grid>
-                <Grid item xs={6}>
+                <Grid size={{ xs: 6 }}>
                   <Typography variant="caption" color="text.secondary">District</Typography>
                   <Typography variant="body2">{viewMunicipality.district_name || "—"}</Typography>
                 </Grid>
-                <Grid item xs={6}>
+                <Grid size={{ xs: 6 }}>
                   <Typography variant="caption" color="text.secondary">Total Wards</Typography>
                   <Typography variant="body2">{viewMunicipality.total_wards ?? "—"}</Typography>
                 </Grid>
-                <Grid item xs={6}>
+                <Grid size={{ xs: 6 }}>
                   <Typography variant="caption" color="text.secondary">Registered At</Typography>
                   <Typography variant="body2">
                     {viewMunicipality.registered_at ? new Date(viewMunicipality.registered_at).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" }) : "—"}
@@ -566,11 +627,11 @@ export default function ManageMuniciple() {
                 Official Contact
               </Typography>
               <Grid container spacing={2} sx={{ mb: 2 }}>
-                <Grid item xs={6}>
+                <Grid size={{ xs: 6 }}>
                   <Typography variant="caption" color="text.secondary">Official Email</Typography>
                   <Typography variant="body2">{viewMunicipality.official_email || "—"}</Typography>
                 </Grid>
-                <Grid item xs={6}>
+                <Grid size={{ xs: 6 }}>
                   <Typography variant="caption" color="text.secondary">Official Contact No.</Typography>
                   <Typography variant="body2">{viewMunicipality.official_contact_no || "—"}</Typography>
                 </Grid>
@@ -582,11 +643,11 @@ export default function ManageMuniciple() {
                 Leadership
               </Typography>
               <Grid container spacing={2} sx={{ mb: 2 }}>
-                <Grid item xs={6}>
+                <Grid size={{ xs: 6 }}>
                   <Typography variant="caption" color="text.secondary">Mayor / Chairperson</Typography>
                   <Typography variant="body2">{viewMunicipality.mayor_chairperson_name || "—"}</Typography>
                 </Grid>
-                <Grid item xs={6}>
+                <Grid size={{ xs: 6 }}>
                   <Typography variant="caption" color="text.secondary">Deputy Mayor / Vice Chairperson</Typography>
                   <Typography variant="body2">{viewMunicipality.deputy_mayor_vice_chairperson_name || "—"}</Typography>
                 </Grid>
@@ -598,15 +659,15 @@ export default function ManageMuniciple() {
                 Municipality Head
               </Typography>
               <Grid container spacing={2} sx={{ mb: 2 }}>
-                <Grid item xs={4}>
+                <Grid size={{ xs: 4 }}>
                   <Typography variant="caption" color="text.secondary">Head Name</Typography>
                   <Typography variant="body2">{viewMunicipality.head_name || "—"}</Typography>
                 </Grid>
-                <Grid item xs={4}>
+                <Grid size={{ xs: 4 }}>
                   <Typography variant="caption" color="text.secondary">Head Email</Typography>
                   <Typography variant="body2">{viewMunicipality.head_email || "—"}</Typography>
                 </Grid>
-                <Grid item xs={4}>
+                <Grid size={{ xs: 4 }}>
                   <Typography variant="caption" color="text.secondary">Head Contact No.</Typography>
                   <Typography variant="body2">{viewMunicipality.head_contact_no || "—"}</Typography>
                 </Grid>
@@ -624,12 +685,90 @@ export default function ManageMuniciple() {
                   </Typography>
                 </>
               )}
+
+              {/* KYC Documents */}
+              <Divider sx={{ my: 2 }} />
+              <Typography variant="h6" color="primary" fontWeight={700} sx={{ mb: 2 }}>
+                KYC Verification Documents
+              </Typography>
+              <Grid container spacing={3}>
+                <Grid size={{ xs: 12, md: 6 }}>
+                  <Typography variant="subtitle2" color="primary" fontWeight={700} sx={{ mb: 1 }}>
+                    Head Identity Document
+                  </Typography>
+                  <Typography variant="body2" sx={{ mb: 0.5 }}><strong>Type:</strong> {viewMunicipality.head_identity_type?.replace(/_/g, " ").toUpperCase() || "N/A"}</Typography>
+                  <Typography variant="body2" sx={{ mb: 2 }}><strong>Number:</strong> {viewMunicipality.head_identity_number || "N/A"}</Typography>
+                  
+                  {viewMunicipality.head_identity_front_url && (
+                    <Box sx={{ mb: 2 }}>
+                      <Typography variant="caption" color="text.secondary" display="block">Front Side</Typography>
+                      <img src={viewMunicipality.head_identity_front_url} alt="Identity Front" style={{ maxWidth: '100%', maxHeight: '200px', borderRadius: '8px', border: '1px solid #e0e0e0' }} />
+                    </Box>
+                  )}
+                  {viewMunicipality.head_identity_back_url && (
+                    <Box sx={{ mb: 2 }}>
+                      <Typography variant="caption" color="text.secondary" display="block">Back Side</Typography>
+                      <img src={viewMunicipality.head_identity_back_url} alt="Identity Back" style={{ maxWidth: '100%', maxHeight: '200px', borderRadius: '8px', border: '1px solid #e0e0e0' }} />
+                    </Box>
+                  )}
+                </Grid>
+                <Grid size={{ xs: 12, md: 6 }}>
+                  <Typography variant="subtitle2" color="primary" fontWeight={700} sx={{ mb: 1 }}>
+                    Registration Document
+                  </Typography>
+                  {viewMunicipality.registration_document_url ? (
+                    viewMunicipality.registration_document_url.endsWith(".pdf") ? (
+                      <Box sx={{ p: 2, border: '1px solid #e0e0e0', borderRadius: 2, textAlign: 'center' }}>
+                         <Typography variant="body2" sx={{ mb: 1 }}>PDF Document Submitted</Typography>
+                         <Button variant="outlined" href={viewMunicipality.registration_document_url} target="_blank">View PDF</Button>
+                      </Box>
+                    ) : (
+                      <img src={viewMunicipality.registration_document_url} alt="Registration" style={{ maxWidth: '100%', maxHeight: '300px', borderRadius: '8px', border: '1px solid #e0e0e0' }} />
+                    )
+                  ) : (
+                    <Typography variant="body2" color="text.secondary">No registration document provided.</Typography>
+                  )}
+                </Grid>
+              </Grid>
+
+              {/* KYC Rejection Reason (only shown if needed) */}
+              <Divider sx={{ my: 3 }} />
+              <TextField
+                label="Rejection Reason (required if rejecting)"
+                fullWidth
+                multiline
+                rows={2}
+                value={kycRejectionReason}
+                onChange={(e) => setKycRejectionReason(e.target.value)}
+                placeholder="Explain why the KYC is being rejected..."
+              />
             </Box>
           )}
         </DialogContent>
-        <DialogActions sx={{ px: 3, pb: 2 }}>
-          <Button onClick={() => { setViewMunicipality(null); openEditModal(viewMunicipality!); }} variant="outlined" startIcon={<EditIcon />}>Edit</Button>
-          <Button onClick={() => setViewMunicipality(null)} variant="contained">Close</Button>
+        <DialogActions sx={{ px: 3, pb: 2, justifyContent: 'space-between' }}>
+          <Box display="flex" gap={2}>
+            <Button onClick={() => { setViewMunicipality(null); openEditModal(viewMunicipality!); }} variant="outlined" startIcon={<EditIcon />}>Edit Profile</Button>
+            <Button onClick={() => setViewMunicipality(null)} color="inherit" disabled={isSubmittingKyc}>Close</Button>
+          </Box>
+          <Box display="flex" gap={2}>
+            <Button
+              onClick={() => handleKycSubmit('rejected')}
+              variant="outlined"
+              color="error"
+              disabled={isSubmittingKyc || !kycRejectionReason.trim()}
+            >
+              {isSubmittingKyc ? "Processing..." : "Reject KYC"}
+            </Button>
+            <Button
+              onClick={() => handleKycSubmit('verified')}
+              variant="contained"
+              color="success"
+              disabled={isSubmittingKyc}
+              startIcon={<VerifiedIcon />}
+            >
+              {isSubmittingKyc ? "Processing..." : "Verify & Approve"}
+            </Button>
+          </Box>
         </DialogActions>
       </Dialog>
 

@@ -15,7 +15,18 @@ const requireAuth =
     } = await supabase.auth.getUser(token);
     if (error || !user)
       return res.status(401).json({ error: "Invalid active session token." });
-    req.user = user;
+
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("force_password_reset, role")
+      .eq("id", user.id)
+      .single();
+
+    req.user = { 
+      ...user, 
+      force_password_reset: profile?.force_password_reset,
+      role: profile?.role
+    };
     next();
   };
 
@@ -25,6 +36,9 @@ export function createNotificationsRouter(
 ): Router {
   const router = Router();
   router.use(requireAuth(supabase));
+
+  const { forcePasswordReset } = require("../../../middleware/forcePasswordReset");
+  router.use(forcePasswordReset);
 
   /**
    * @swagger

@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
+import { withRoleRedirect } from "./withRoleRedirect";
 import { useFormik } from "formik";
 import {
   Box,
@@ -36,13 +38,15 @@ import type {
 
 const STEPS = ["Personal Info", "Address", "Credentials", "Complete"];
 
-export const Register: React.FC = () => {
+const RegisterBase: React.FC = () => {
   const { login } = useAuth();
+  const navigate = useNavigate();
 
   const [activeStep, setActiveStep] = useState(0);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [regToken, setRegToken] = useState<string | null>(null);
+  const [regRefreshToken, setRegRefreshToken] = useState<string | null>(null);
   const [regProfile, setRegProfile] = useState<any>(null);
 
   const [provinces, setProvinces] = useState<Province[]>([]);
@@ -266,6 +270,7 @@ export const Register: React.FC = () => {
       }
 
       const token = registerData.data?.access_token || registerData.data?.tokens?.accessToken;
+      const refreshToken = registerData.data?.refresh_token || registerData.data?.tokens?.refreshToken;
       const profile = registerData.data?.profile || registerData.data?.user;
 
       if (!token || !profile) {
@@ -273,6 +278,9 @@ export const Register: React.FC = () => {
       }
 
       setRegToken(token);
+      if (refreshToken) {
+        setRegRefreshToken(refreshToken);
+      }
       setRegProfile(profile);
 
       const buildAddressString = (provId: string, distId: string, muniId: string, wardId: string, tole: string, dList: typeof districts, mList: typeof municipalities, wList: typeof wards) => {
@@ -311,15 +319,25 @@ export const Register: React.FC = () => {
         };
       }
 
-      login(token, profile);
+      // Save token to localStorage for authenticated API calls (updateAddress, uploadIdentity)
+      localStorage.setItem("access_token", token);
+      if (refreshToken) {
+        localStorage.setItem("refresh_token", refreshToken);
+      }
+      localStorage.setItem("user_profile", JSON.stringify(profile));
 
       await citizenApi.updateAddress({
         permanent: permAddress,
         current: currAddress,
       });
 
+      // Advance to step 3 (success & optional KYC upload)
       setActiveStep(3);
     } catch (err: unknown) {
+      // If registration failed, clean up so the user is not in a broken state
+      localStorage.removeItem("access_token");
+      localStorage.removeItem("refresh_token");
+      localStorage.removeItem("user_profile");
       const msg = err instanceof Error ? err.message : "Registration failed";
       setSubmitError(msg);
     } finally {
@@ -681,6 +699,13 @@ export const Register: React.FC = () => {
     </Grid>
   );
 
+  const handleCompleteAndNavigate = () => {
+    if (regToken && regProfile) {
+      login(regToken, regProfile, regRefreshToken || undefined);
+    }
+    navigate("/citizen/dashboard");
+  };
+
   const renderSuccess = () => (
     <Box sx={{ textAlign: "center", py: 2 }}>
       <Typography variant="h4" gutterBottom sx={{ fontWeight: "bold" }} color="success.main">
@@ -749,7 +774,7 @@ export const Register: React.FC = () => {
               </Button>
               <Button
                 variant="text"
-                onClick={() => window.location.href = "/citizen/dashboard"}
+                onClick={handleCompleteAndNavigate}
               >
                 Skip for now
               </Button>
@@ -767,7 +792,7 @@ export const Register: React.FC = () => {
       <Button
         variant="contained"
         size="large"
-        href="/citizen/dashboard"
+        onClick={handleCompleteAndNavigate}
         sx={{ textTransform: "none", fontWeight: "bold" }}
       >
         Go to Dashboard
@@ -856,3 +881,6 @@ export const Register: React.FC = () => {
     </Container>
   );
 };
+
+export const Register = withRoleRedirect(RegisterBase);
+export default Register;

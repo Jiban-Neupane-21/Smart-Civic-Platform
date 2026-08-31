@@ -35,6 +35,8 @@ import {
 import { fetchWithAuth, BASE_URL } from "../../api";
 import { useAuth } from "../../hooks/useAuth";
 import Swal from "sweetalert2";
+import { KycUpload, type KycUploadPayload } from "../../components/kyc/KycUpload";
+import { profileApi } from "../../api/modules/profile.api";
 
 interface CitizenDetails {
   first_name: string | null;
@@ -46,6 +48,11 @@ interface CitizenDetails {
   permanent_address: string | null;
   ward_id: string | null;
   notification_pref: string | null;
+  kyc_status?: string | null;
+  identity_type?: string | null;
+  identity_number?: string | null;
+  identity_front_image_url?: string | null;
+  identity_back_image_url?: string | null;
 }
 
 interface ProfileData {
@@ -424,6 +431,7 @@ export const Profile: React.FC = () => {
         >
           <Tab label="About" icon={<BadgeOutlined fontSize="small" />} iconPosition="start" />
           <Tab label="Address" icon={<LocationOn fontSize="small" />} iconPosition="start" />
+          <Tab label="KYC Settings" icon={<Assignment fontSize="small" />} iconPosition="start" />
           <Tab label="Activity" icon={<ListAlt fontSize="small" />} iconPosition="start" />
         </Tabs>
 
@@ -440,7 +448,7 @@ export const Profile: React.FC = () => {
                 { label: "Date of Birth", value: form.date_of_birth ? formatDate(form.date_of_birth) : "—", icon: <Cake fontSize="small" /> },
                 { label: "Notification Preference", value: form.notification_pref === "both" ? "Email & SMS" : form.notification_pref === "email" ? "Email Only" : form.notification_pref === "sms" ? "SMS Only" : "None", icon: <NotificationsOutlined fontSize="small" /> },
               ].map((field) => (
-                <Grid item xs={12} sm={6} md={4} key={field.label}>
+                <Grid size={{ xs: 12, sm: 6, md: 4 }} key={field.label}>
                   <Card variant="outlined" sx={{ p: 2, borderRadius: 2, height: "100%" }}>
                     <Box display="flex" alignItems="center" gap={1} mb={0.5} color="text.secondary">
                       {field.icon}
@@ -454,7 +462,7 @@ export const Profile: React.FC = () => {
                   </Card>
                 </Grid>
               ))}
-              <Grid item xs={12}>
+              <Grid size={{ xs: 12 }}>
                 <Divider sx={{ my: 1 }} />
                 <Box display="flex" flexWrap="wrap" gap={3} color="text.secondary">
                   <Box display="flex" alignItems="center" gap={0.5}>
@@ -517,8 +525,60 @@ export const Profile: React.FC = () => {
             </Grid>
           )}
 
-          {/* ═══ Activity Tab ═══ */}
+          {/* ═══ KYC Tab ═══ */}
           {tabIndex === 2 && (
+            <Box>
+              {profile.citizen_details?.kyc_status === "verified" ? (
+                <Alert severity="success" sx={{ mb: 3 }}>
+                  Your identity has been successfully verified.
+                </Alert>
+              ) : profile.citizen_details?.kyc_status === "pending" ? (
+                <Alert severity="warning" sx={{ mb: 3 }}>
+                  Your identity verification is currently pending review.
+                </Alert>
+              ) : (
+                <Alert severity="info" sx={{ mb: 3 }}>
+                  Please submit your identity documents for KYC verification.
+                </Alert>
+              )}
+
+              <KycUpload
+                mode="front-back"
+                initialValues={{
+                  identity_type: profile.citizen_details?.identity_type || "",
+                  identity_number: profile.citizen_details?.identity_number || "",
+                }}
+                onSubmit={async (payload) => {
+                  try {
+                    await profileApi.updateIdentity(payload);
+                    Swal.fire(
+                      "Success",
+                      "Your identity documents have been submitted successfully.",
+                      "success"
+                    );
+                    setProfile((prev) =>
+                      prev
+                        ? {
+                            ...prev,
+                            citizen_details: {
+                              ...prev.citizen_details!,
+                              kyc_status: "pending",
+                              identity_type: payload.identity_type,
+                              identity_number: payload.identity_number,
+                            },
+                          }
+                        : prev
+                    );
+                  } catch (err: any) {
+                    Swal.fire("Error", err.message || "Failed to submit KYC", "error");
+                  }
+                }}
+              />
+            </Box>
+          )}
+
+          {/* ═══ Activity Tab ═══ */}
+          {tabIndex === 3 && (
             <>
               {recentComplaints.length === 0 ? (
                 <Box textAlign="center" py={4}>
@@ -593,7 +653,7 @@ export const Profile: React.FC = () => {
           </Typography>
         </Box>
         <Grid container spacing={2}>
-          <Grid item xs={12} sm={4}>
+          <Grid size={{ xs: 12, sm: 4 }}>
             <TextField
               fullWidth
               type="password"
@@ -603,7 +663,7 @@ export const Profile: React.FC = () => {
               size="small"
             />
           </Grid>
-          <Grid item xs={12} sm={4}>
+          <Grid size={{ xs: 12, sm: 4 }}>
             <TextField
               fullWidth
               type="password"
@@ -613,7 +673,7 @@ export const Profile: React.FC = () => {
               size="small"
             />
           </Grid>
-          <Grid item xs={12} sm={4}>
+          <Grid size={{ xs: 12, sm: 4 }}>
             <TextField
               fullWidth
               type="password"

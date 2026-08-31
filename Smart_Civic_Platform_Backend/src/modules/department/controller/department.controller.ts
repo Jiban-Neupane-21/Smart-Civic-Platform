@@ -6,6 +6,38 @@ import { createUserService } from "../../auth/services/auth.service";
 export class DepartmentController {
   constructor(private service: DepartmentService) { }
 
+  updateLogo = async (req: any, res: Response): Promise<void> => {
+    try {
+      if (!req.body.logo) {
+        res.status(400).json({ success: false, error: "logo base64 string is required" });
+        return;
+      }
+      const data = await this.service.updateLogo(req.departmentId, req.body.logo);
+      res.status(200).json({ success: true, data, message: "Department logo updated successfully" });
+    } catch (error: any) {
+      res.status(500).json({ success: false, error: error.message });
+    }
+  };
+
+  getDepartmentProfile = async (req: any, res: Response): Promise<void> => {
+    try {
+      const data = await this.service.getDepartmentProfile(req.departmentId, req.user.id);
+      res.status(200).json({ success: true, data });
+    } catch (error: any) {
+      res.status(500).json({ success: false, error: error.message });
+    }
+  };
+
+  setupDepartmentProfile = async (req: any, res: Response): Promise<void> => {
+    try {
+      const payload = req.body;
+      const data = await this.service.setupDepartmentProfile(req.departmentId, req.user.id, payload);
+      res.status(200).json({ success: true, data, message: "Department KYC updated successfully" });
+    } catch (error: any) {
+      res.status(400).json({ success: false, error: error.message });
+    }
+  };
+
   setupTeam = async (req: any, res: Response): Promise<void> => {
     try {
       const {
@@ -465,19 +497,6 @@ export class DepartmentController {
     }
   };
 
-  getQueue = async (req: any, res: Response): Promise<void> => {
-    try {
-      const statusFilter = req.query.status as string | undefined;
-      const data = await this.service.getDepartmentQueue(
-        req.departmentId,
-        statusFilter
-      );
-      res.status(200).json({ success: true, data });
-    } catch (error: any) {
-      res.status(500).json({ success: false, error: error.message });
-    }
-  };
-
   exportComplaintsCsv = async (req: any, res: Response): Promise<void> => {
     try {
       const csvData = await this.service.exportComplaintsCsv(req.departmentId);
@@ -527,6 +546,45 @@ export class DepartmentController {
       res.status(200).json({ success: true, data });
     } catch (error: any) {
       res.status(500).json({ success: false, error: error.message });
+    }
+  };
+
+  reviewStaffKyc = async (req: any, res: Response): Promise<void> => {
+    try {
+      const { id: staffId } = req.params;
+      const { status, rejection_reason } = req.body;
+
+      if (!status || !["verified", "rejected"].includes(status)) {
+        res.status(400).json({
+          success: false,
+          error: "Status must be 'verified' or 'rejected'.",
+        });
+        return;
+      }
+
+      if (status === "rejected" && !rejection_reason) {
+        res.status(400).json({
+          success: false,
+          error: "Rejection reason is required when rejecting KYC.",
+        });
+        return;
+      }
+
+      const updated = await this.service.reviewStaffKyc(
+        staffId,
+        req.departmentId,
+        req.user.id,
+        status,
+        rejection_reason
+      );
+
+      res.status(200).json({
+        success: true,
+        message: `Staff KYC ${status === "verified" ? "approved" : "rejected"} successfully.`,
+        data: updated,
+      });
+    } catch (error: any) {
+      res.status(400).json({ success: false, error: error.message });
     }
   };
 }

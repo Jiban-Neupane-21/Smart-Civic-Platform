@@ -9,8 +9,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     return storedUser ? (JSON.parse(storedUser) as UserProfile) : null;
   });
 
-  const login = (token: string, profile: UserProfile) => {
+  const login = (token: string, profile: UserProfile, refreshToken?: string) => {
     localStorage.setItem("access_token", token);
+    if (refreshToken) {
+      localStorage.setItem("refresh_token", refreshToken);
+    }
     localStorage.setItem("user_profile", JSON.stringify(profile));
     setUser(profile);
   };
@@ -38,9 +41,18 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
+  const kycCompleted = user
+    ? user.role === "citizen"
+      ? user.citizen_details?.kyc_status === "verified"
+      : Boolean(
+          user.identity_document_url ||
+          (user.identity_type && user.identity_number)
+        )
+    : false;
+
   return (
     <AuthContext.Provider
-      value={{ user, isAuthenticated: !!user, login, logout }}
+      value={{ user, isAuthenticated: !!user, kycCompleted, login, logout }}
     >
       {children}
     </AuthContext.Provider>

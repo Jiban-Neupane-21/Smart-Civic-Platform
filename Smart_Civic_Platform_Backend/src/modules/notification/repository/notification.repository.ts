@@ -58,7 +58,7 @@ export class NotificationsRepository {
         profile_id: userId,
         is_seen: true,
         read_at: new Date().toISOString(),
-      })
+      }, { onConflict: "notification_id,profile_id" })
       .select()
       .single();
 
@@ -83,7 +83,7 @@ export class NotificationsRepository {
     if (readRows.length > 0) {
       const { error } = await this.supabaseAdmin
         .from("notification_reads")
-        .upsert(readRows);
+        .upsert(readRows, { onConflict: "notification_id,profile_id" });
       if (error) throw error;
     }
 

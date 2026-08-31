@@ -47,6 +47,32 @@ export function createMunicipalityRouter(
 
   /**
    * @swagger
+   * /api/municipality/profile:
+   *   get:
+   *     summary: Get municipality's own full profile including KYC status
+   *     tags: [Municipality API]
+   *     security: [{ BearerAuth: [] }]
+   *     responses:
+   *       200:
+   *         description: Municipality profile data.
+   *   patch:
+   *     summary: Update municipality profile and submit KYC documents
+   *     tags: [Municipality API]
+   *     security: [{ BearerAuth: [] }]
+   *     responses:
+   *       200:
+   *         description: Profile updated.
+   */
+  router.get("/profile", controller.getMunicipalityProfile);
+  router.patch("/profile", controller.updateMunicipalityProfile);
+
+  const { forcePasswordReset } = require("../../../middleware/forcePasswordReset");
+  const { requireKyc } = require("../../../middleware/requireKyc");
+  router.use(forcePasswordReset);
+  router.use(requireKyc);
+
+  /**
+   * @swagger
    * /api/municipality/analytics:
    *   get:
    *     summary: Municipality operational analytics dashboard metrics
@@ -57,6 +83,19 @@ export function createMunicipalityRouter(
    *         description: Analytics summary loaded.
    */
   router.get("/analytics", controller.getAnalytics);
+
+  /**
+   * @swagger
+   * /api/municipality/logo:
+   *   put:
+   *     summary: Update municipality logo
+   *     tags: [Municipality API]
+   *     security: [{ BearerAuth: [] }]
+   *     responses:
+   *       200:
+   *         description: Logo updated successfully.
+   */
+  router.put("/logo", controller.updateLogo);
 
   /**
    * @swagger
@@ -136,12 +175,14 @@ export function createMunicipalityRouter(
   router.patch("/departments/:id", controller.updateDepartment);
   router.delete("/departments/:id", controller.deleteDepartment);
   router.post("/departments/:id/replace-head", controller.replaceDepartmentHead);
+  router.patch("/departments/:id/kyc", controller.reviewDepartmentKyc);
 
   router.get("/:municipalityId/departments", controller.getDepartments);
   router.post("/:municipalityId/departments", controller.provisionDepartment);
   router.get("/:municipalityId/departments/:id", controller.getDepartmentDetail);
   router.patch("/:municipalityId/departments/:id", controller.updateDepartment);
   router.delete("/:municipalityId/departments/:id", controller.deleteDepartment);
+  router.patch("/:municipalityId/departments/:id/kyc", controller.reviewDepartmentKyc);
 
   /**
    * @swagger
@@ -167,6 +208,7 @@ export function createMunicipalityRouter(
   router.patch("/staff/:staffId", controller.updateStaff);
   router.delete("/staff/:staffId", controller.deleteStaff);
   router.patch("/staff/:staffId/status", controller.updateStaffStatus);
+  router.patch("/staff/:id/kyc", controller.reviewStaffKyc);
   router.post("/staff/:staffId/reset-password", controller.resetStaffPassword);
 
   router.get("/:municipalityId/staff", controller.listStaff);
@@ -174,6 +216,7 @@ export function createMunicipalityRouter(
   router.patch("/:municipalityId/staff/:staffId", controller.updateStaff);
   router.delete("/:municipalityId/staff/:staffId", controller.deleteStaff);
   router.patch("/:municipalityId/staff/:staffId/status", controller.updateStaffStatus);
+  router.patch("/:municipalityId/staff/:id/kyc", controller.reviewStaffKyc);
   router.post("/:municipalityId/staff/:staffId/reset-password", controller.resetStaffPassword);
 
   /**
@@ -260,10 +303,14 @@ export function createMunicipalityRouter(
   router.get("/teams", controller.getCrossDeptTeams);
   router.post("/teams", controller.createCrossDeptTeam);
   router.delete("/teams/:teamId", controller.deactivateCrossDeptTeam);
+  router.post("/teams/:teamId/assign-complaint", controller.assignComplaintToTeam);
+  router.get("/teams/:teamId/complaints", controller.getTeamComplaints);
 
   router.get("/:municipalityId/teams", controller.getCrossDeptTeams);
   router.post("/:municipalityId/teams", controller.createCrossDeptTeam);
   router.delete("/:municipalityId/teams/:teamId", controller.deactivateCrossDeptTeam);
+  router.post("/:municipalityId/teams/:teamId/assign-complaint", controller.assignComplaintToTeam);
+  router.get("/:municipalityId/teams/:teamId/complaints", controller.getTeamComplaints);
 
   /**
    * @swagger

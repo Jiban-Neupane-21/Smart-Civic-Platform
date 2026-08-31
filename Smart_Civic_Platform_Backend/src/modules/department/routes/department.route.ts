@@ -30,6 +30,11 @@ export function createDepartmentRouter(
   router.use(requireAuth(supabaseAdminClient));
   router.use(verifyDepartmentHeadContext(supabaseAdminClient));
 
+  const { forcePasswordReset } = require("../../../middleware/forcePasswordReset");
+  const { requireKyc } = require("../../../middleware/requireKyc");
+  router.use(forcePasswordReset);
+  router.use(requireKyc);
+
   /**
    * @swagger
    * /api/department/dashboard:
@@ -42,6 +47,22 @@ export function createDepartmentRouter(
    *         description: Metrics loaded.
    */
   router.get("/dashboard", controller.getDashboard);
+
+  router.get("/profile", controller.getDepartmentProfile);
+  router.patch("/profile", controller.setupDepartmentProfile);
+
+  /**
+   * @swagger
+   * /api/department/logo:
+   *   put:
+   *     summary: Update department logo
+   *     tags: [Department API]
+   *     security: [{ BearerAuth: [] }]
+   *     responses:
+   *       200:
+   *         description: Logo updated successfully.
+   */
+  router.put("/logo", controller.updateLogo);
 
   /**
    * @swagger
@@ -260,6 +281,7 @@ export function createDepartmentRouter(
   router.patch("/staff/:staffId", controller.updateStaff);
   router.delete("/staff/:staffId", controller.removeStaff);
   router.patch("/staff/:staffId/status", controller.updateStaffStatus);
+  router.patch("/staff/:id/kyc", controller.reviewStaffKyc);
   router.post("/staff/:staffId/reset-password", controller.resetStaffPassword);
 
   return router;

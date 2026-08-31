@@ -4,35 +4,25 @@ export class StorageService {
   constructor(private supabaseAdmin: SupabaseClient) {}
 
   /**
-   * Upload image buffer or base64 to Supabase Storage bucket
+   * General upload method for any bucket
    */
-  async uploadIdentityDocument(
-    userId: string,
+  async upload(
+    bucketName: string,
+    fileKey: string,
     fileBuffer: Buffer | string,
-    fileName: string,
     contentType = "image/jpeg"
   ): Promise<string> {
-    const bucketName = "identity-documents";
-    const filePath = `${userId}/${Date.now()}_${fileName}`;
-
-    // Ensure bucket exists or create it
-    try {
-      const { data: buckets } = await this.supabaseAdmin.storage.listBuckets();
-      if (!buckets?.some((b) => b.name === bucketName)) {
-        await this.supabaseAdmin.storage.createBucket(bucketName, {
-          public: true,
-          fileSizeLimit: 5242880, // 5MB
-          allowedMimeTypes: ["image/png", "image/jpeg", "image/jpg", "application/pdf"],
-        });
-      }
-    } catch (err: any) {
-      console.warn("Storage bucket check warning:", err.message);
-    }
-
     let body: Buffer;
     if (typeof fileBuffer === "string") {
       // Base64 string
-      const base64Data = fileBuffer.replace(/^data:image\/\w+;base64,/, "");
+      const base64Data = fileBuffer.replace(/^data:.*?;base64,/, "");
+      // Detect content type from base64 header if possible, else default
+      if (fileBuffer.startsWith("data:")) {
+        const match = fileBuffer.match(/^data:([a-zA-Z0-9]+\/[a-zA-Z0-9-.+]+).*,/);
+        if (match && match[1]) {
+          contentType = match[1];
+        }
+      }
       body = Buffer.from(base64Data, "base64");
     } else {
       body = fileBuffer;
@@ -40,7 +30,7 @@ export class StorageService {
 
     const { error: uploadError } = await this.supabaseAdmin.storage
       .from(bucketName)
-      .upload(filePath, body, {
+      .upload(fileKey, body, {
         contentType,
         upsert: true,
       });
@@ -49,8 +39,25 @@ export class StorageService {
 
     const { data: publicUrlData } = this.supabaseAdmin.storage
       .from(bucketName)
-      .getPublicUrl(filePath);
+      .getPublicUrl(fileKey);
 
     return publicUrlData.publicUrl;
+  }
+
+  /**
+   * Upload image buffer or base64 to Supabase Storage bucket
+   * Legacy wrapper for identity documents
+   */
+  async uploadIdentityDocument(
+    userId: string,
+    fileBuffer: Buffer | string,
+    fileName: string,
+    contentType = "image/jpeg"
+  ): Promise<string> {
+    const bucketName = "identity-documents";
+    // We now include a kyc/ subfolder as per the plan path pattern
+    const fileKey = `${userId}/kyc/${Date.now()}_${fileName}`;
+
+    return this.upload(bucketName, fileKey, fileBuffer, contentType);
   }
 }

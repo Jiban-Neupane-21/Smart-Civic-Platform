@@ -78,6 +78,19 @@ export class SuperadminService {
     }
   }
 
+  async reviewMunicipalityKyc(
+    id: string,
+    status: 'verified' | 'rejected',
+    verifiedBy: string,
+    rejectionReason?: string
+  ) {
+    try {
+      return await this.repo.reviewMunicipalityKyc(id, status, verifiedBy, rejectionReason);
+    } catch (error: any) {
+      throw new Error(`Failed to update KYC status: ${error.message}`);
+    }
+  }
+
   async fetchMunicipalityById(id: string) {
     try {
       return await this.repo.getMunicipalityById(id);
@@ -102,9 +115,30 @@ export class SuperadminService {
     }
   }
 
-  async removeMunicipality(id: string) {
+  async resetMunicipality(id: string, deletedBy?: string) {
     try {
-      return await this.repo.deleteMunicipality(id);
+      return await this.repo.cascadeSoftDeleteMunicipality(id, deletedBy);
+    } catch (error: any) {
+      throw new Error(`Failed to reset municipality: ${error.message}`);
+    }
+  }
+
+  async removeMunicipality(id: string, deletedBy?: string) {
+    try {
+      const result = await this.repo.cascadeSoftDeleteMunicipality(id, deletedBy);
+
+      // Cleanly delete auth users for all affected profiles so they cannot log in
+      if (result.affectedProfileIds && result.affectedProfileIds.length > 0) {
+        for (const profileId of result.affectedProfileIds) {
+          try {
+            await this.repo.deleteAuthUser(profileId);
+          } catch (authErr: any) {
+            console.warn(`Could not remove auth user for profile ${profileId}:`, authErr.message);
+          }
+        }
+      }
+
+      return result;
     } catch (error: any) {
       throw new Error(`Failed to delete municipality: ${error.message}`);
     }

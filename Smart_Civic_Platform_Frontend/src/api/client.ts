@@ -112,6 +112,13 @@ apiClient.interceptors.response.use(
         isRefreshing = false;
       }
     }
+    
+    // Defense in depth: catch any 403 FORCE_PASSWORD_RESET from the backend
+    if (error.response?.status === 403 && error.response?.data?.code === 'FORCE_PASSWORD_RESET') {
+      if (window.location.pathname !== '/change-password') {
+        window.location.href = '/change-password';
+      }
+    }
 
     return Promise.reject(error);
   }
@@ -121,7 +128,8 @@ function clearAuthAndRedirect() {
   localStorage.removeItem('access_token');
   localStorage.removeItem('refresh_token');
   localStorage.removeItem('user_profile');
-  if (window.location.pathname !== '/login') {
+  const publicPaths = ['/login', '/register', '/', '/change-password', '/kyc'];
+  if (!publicPaths.includes(window.location.pathname)) {
     window.location.href = '/login';
   }
 }

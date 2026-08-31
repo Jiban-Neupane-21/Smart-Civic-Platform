@@ -139,11 +139,11 @@ function AuditDetailDialog({
           Action Summary
         </Typography>
         <Grid container spacing={2} sx={{ mb: 2 }}>
-          <Grid item xs={6} sm={3}>
+          <Grid size={{ xs: 6, sm: 3 }}>
             <Typography variant="caption" color="text.secondary">Action</Typography>
             <Typography variant="body2" fontWeight={600}>{ACTION_LABEL[log.action] ?? log.action}</Typography>
           </Grid>
-          <Grid item xs={6} sm={3}>
+          <Grid size={{ xs: 6, sm: 3 }}>
             <Typography variant="caption" color="text.secondary">Severity</Typography>
             <Box>
               <Chip
@@ -154,11 +154,11 @@ function AuditDetailDialog({
               />
             </Box>
           </Grid>
-          <Grid item xs={6} sm={3}>
+          <Grid size={{ xs: 6, sm: 3 }}>
             <Typography variant="caption" color="text.secondary">Table Affected</Typography>
             <Typography variant="body2" sx={{ fontFamily: "monospace" }}>{log.table_name || "—"}</Typography>
           </Grid>
-          <Grid item xs={6} sm={3}>
+          <Grid size={{ xs: 6, sm: 3 }}>
             <Typography variant="caption" color="text.secondary">Record ID</Typography>
             <Tooltip title={log.record_id}>
               <Typography
@@ -169,7 +169,7 @@ function AuditDetailDialog({
               </Typography>
             </Tooltip>
           </Grid>
-          <Grid item xs={12}>
+          <Grid size={{ xs: 12 }}>
             <Typography variant="caption" color="text.secondary">Timestamp</Typography>
             <Typography variant="body2">
               {new Date(log.created_at).toLocaleString("en-US", {
@@ -178,7 +178,7 @@ function AuditDetailDialog({
               })}
             </Typography>
           </Grid>
-          <Grid item xs={12}>
+          <Grid size={{ xs: 12 }}>
             <Typography variant="caption" color="text.secondary">Log ID</Typography>
             <Typography variant="body2" sx={{ fontFamily: "monospace", fontSize: "0.75rem", color: "text.secondary" }}>
               {log.id}
@@ -193,22 +193,22 @@ function AuditDetailDialog({
           Actor (Performed By)
         </Typography>
         <Grid container spacing={2} sx={{ mb: 2 }}>
-          <Grid item xs={6} sm={4}>
+          <Grid size={{ xs: 6, sm: 4 }}>
             <Typography variant="caption" color="text.secondary">Name</Typography>
             <Typography variant="body2">{log.action_by_name || "—"}</Typography>
           </Grid>
-          <Grid item xs={6} sm={4}>
+          <Grid size={{ xs: 6, sm: 4 }}>
             <Typography variant="caption" color="text.secondary">Email</Typography>
             <Typography variant="body2">{log.action_by_email || "—"}</Typography>
           </Grid>
-          <Grid item xs={6} sm={4}>
+          <Grid size={{ xs: 6, sm: 4 }}>
             <Typography variant="caption" color="text.secondary">Role</Typography>
             <Box>
               <Chip label={log.action_by_role} size="small" variant="outlined" />
             </Box>
           </Grid>
           {!log.action_by_name && (
-            <Grid item xs={12}>
+            <Grid size={{ xs: 12 }}>
               <Typography variant="caption" color="text.secondary">Actor UUID</Typography>
               <Typography variant="body2" sx={{ fontFamily: "monospace", fontSize: "0.75rem" }}>{log.action_by || "—"}</Typography>
             </Grid>
@@ -223,11 +223,11 @@ function AuditDetailDialog({
               Municipality
             </Typography>
             <Grid container spacing={2} sx={{ mb: 2 }}>
-              <Grid item xs={6}>
+              <Grid size={{ xs: 6 }}>
                 <Typography variant="caption" color="text.secondary">Name</Typography>
                 <Typography variant="body2">{log.municipality_name || "—"}</Typography>
               </Grid>
-              <Grid item xs={6}>
+              <Grid size={{ xs: 6 }}>
                 <Typography variant="caption" color="text.secondary">ID</Typography>
                 <Typography variant="body2" sx={{ fontFamily: "monospace", fontSize: "0.75rem", color: "text.secondary" }}>
                   {log.municipality_id || "—"}
@@ -245,15 +245,15 @@ function AuditDetailDialog({
               Target User
             </Typography>
             <Grid container spacing={2} sx={{ mb: 2 }}>
-              <Grid item xs={6} sm={4}>
+              <Grid size={{ xs: 6, sm: 4 }}>
                 <Typography variant="caption" color="text.secondary">Name</Typography>
                 <Typography variant="body2">{log.target_user_name || "—"}</Typography>
               </Grid>
-              <Grid item xs={6} sm={4}>
+              <Grid size={{ xs: 6, sm: 4 }}>
                 <Typography variant="caption" color="text.secondary">Email</Typography>
                 <Typography variant="body2">{log.target_user_email || "—"}</Typography>
               </Grid>
-              <Grid item xs={12} sm={4}>
+              <Grid size={{ xs: 12, sm: 4 }}>
                 <Typography variant="caption" color="text.secondary">User ID</Typography>
                 <Typography variant="body2" sx={{ fontFamily: "monospace", fontSize: "0.75rem", color: "text.secondary" }}>
                   {log.target_user_id}
@@ -271,10 +271,10 @@ function AuditDetailDialog({
               Changes (Old → New)
             </Typography>
             <Grid container spacing={2}>
-              <Grid item xs={12} sm={6}>
+              <Grid size={{ xs: 12, sm: 6 }}>
                 <JsonBlock label="Old Value (Before)" value={log.old_value} />
               </Grid>
-              <Grid item xs={12} sm={6}>
+              <Grid size={{ xs: 12, sm: 6 }}>
                 <JsonBlock label="New Value (After)" value={log.new_value} />
               </Grid>
             </Grid>

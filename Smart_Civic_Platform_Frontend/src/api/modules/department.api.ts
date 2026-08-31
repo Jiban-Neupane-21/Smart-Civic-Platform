@@ -56,6 +56,26 @@ export const departmentApi = {
     return response.data;
   },
 
+  getMyProfile: async (): Promise<ApiResponse<any>> => {
+    const response = await apiClient.get<ApiResponse<any>>('/department/profile');
+    return response.data;
+  },
+
+  updateMyProfile: async (data: {
+    official_email?: string;
+    department_logo_base64?: string;
+    head_name?: string;
+    head_email?: string;
+    head_contact_no?: string;
+    head_identity_type?: string;
+    head_identity_number?: string;
+    head_identity_front_base64?: string;
+    head_identity_back_base64?: string;
+  }): Promise<ApiResponse<any>> => {
+    const response = await apiClient.patch<ApiResponse<any>>('/department/profile', data);
+    return response.data;
+  },
+
   getQueue: async (status?: string): Promise<ApiResponse<DeptQueueComplaint[]>> => {
     const response = await apiClient.get<ApiResponse<DeptQueueComplaint[]>>('/department/queue', {
       params: { status }
@@ -122,6 +142,14 @@ export const departmentApi = {
 
   getDashboard: async (): Promise<ApiResponse<any>> => {
     const response = await apiClient.get<ApiResponse<any>>('/department/dashboard');
+    return response.data;
+  },
+
+  reviewStaffKyc: async (
+    staffId: string,
+    data: { status: 'verified' | 'rejected'; rejection_reason?: string }
+  ): Promise<ApiResponse<any>> => {
+    const response = await apiClient.patch<ApiResponse<any>>(`/department/staff/${staffId}/kyc`, data);
     return response.data;
   },
 };

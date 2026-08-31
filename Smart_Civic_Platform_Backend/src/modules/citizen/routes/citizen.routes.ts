@@ -81,7 +81,8 @@ router.get("/wards", C.getWards);
 router.get("/municipalities/:municipalityId/categories", C.getCategories);
 
 // Authenticated citizen routes
-router.use(authenticate, authorize("citizen"));
+import { forcePasswordReset } from "../../../middleware/forcePasswordReset";
+router.use(authenticate, authorize("citizen"), forcePasswordReset);
 
 /**
  * @swagger

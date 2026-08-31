@@ -145,6 +145,15 @@ export interface MunicipalityJoined {
   province_id?: string;
   district_id?: string;
   registered_at?: string;
+  kyc_status?: 'unverified' | 'pending' | 'verified' | 'rejected';
+  kyc_submitted_at?: string;
+  kyc_verified_at?: string;
+  kyc_rejection_reason?: string;
+  head_identity_type?: string;
+  head_identity_number?: string;
+  head_identity_front_url?: string;
+  head_identity_back_url?: string;
+  registration_document_url?: string;
 }
 
 export interface SuperadminUser {

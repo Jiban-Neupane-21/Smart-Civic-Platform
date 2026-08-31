@@ -21,7 +21,7 @@ export const verifyMunicipalityHeadContext = (supabase: SupabaseClient) => {
       // Check if the profile is active and has the correct role designation
       const { data: profile, error: profileError } = await supabase
         .from("profiles")
-        .select("role, account_status")
+        .select("role, account_status, force_password_reset, identity_document_url, municipality_id")
         .eq("id", userId)
         .single();
         
@@ -29,6 +29,10 @@ export const verifyMunicipalityHeadContext = (supabase: SupabaseClient) => {
         res.status(403).json({ success: false, error: "Access Denied: Requires active Municipality Head privileges." });
         return;
       }
+
+      req.user.force_password_reset = profile.force_password_reset;
+      req.user.role = profile.role;
+      req.user.identity_document_url = profile.identity_document_url;
 
       if (profile.account_status === "suspended") {
         res.status(403).json({ success: false, error: "Account suspended. Contact platform administrator." });
@@ -40,7 +44,9 @@ export const verifyMunicipalityHeadContext = (supabase: SupabaseClient) => {
         return;
       }
 
-      if (profile.account_status === "pending_onboarding" && !req.path?.startsWith("/onboarding")) {
+      const isProfileOrOnboardingRoute = req.path?.startsWith("/onboarding") || req.path === "/profile" || req.path?.startsWith("/profile");
+
+      if (profile.account_status === "pending_onboarding" && !isProfileOrOnboardingRoute) {
         res.status(403).json({ success: false, error: "Onboarding incomplete. Complete your profile activation wizard first." });
         return;
       }
@@ -50,34 +56,51 @@ export const verifyMunicipalityHeadContext = (supabase: SupabaseClient) => {
         return;
       }
 
-      // Find the specific municipality managed by this user
-      const { data: municipality, error: muniError } = await supabase
+      // Find the specific municipality managed by this user (check head_profile_id or profile.municipality_id)
+      let municipalityId: string | null = null;
+
+      const { data: muniByHead } = await supabase
         .from("municipalities")
         .select("id")
         .eq("head_profile_id", userId)
-        .single();
+        .maybeSingle();
 
-      if (muniError || !municipality) {
-        res
-          .status(403)
-          .json({
-            success: false,
-            error:
-              "No active municipality configuration bound to this profile.",
-          });
+      if (muniByHead) {
+        municipalityId = muniByHead.id;
+      } else if (profile.municipality_id) {
+        const { data: muniById } = await supabase
+          .from("municipalities")
+          .select("id")
+          .eq("id", profile.municipality_id)
+          .maybeSingle();
+
+        if (muniById) {
+          municipalityId = muniById.id;
+          // Heal head_profile_id link if it wasn't set
+          await supabase
+            .from("municipalities")
+            .update({ head_profile_id: userId })
+            .eq("id", municipalityId)
+            .is("head_profile_id", null);
+        }
+      }
+
+      if (!municipalityId) {
+        res.status(403).json({
+          success: false,
+          error: "No active municipality configuration bound to this profile.",
+        });
         return;
       }
 
       // Append the verified municipality ID directly to the request object
-      req.municipalityId = municipality.id;
+      req.municipalityId = municipalityId;
       next();
     } catch (err: any) {
-      res
-        .status(500)
-        .json({
-          success: false,
-          error: "Internal context verification failure.",
-        });
+      res.status(500).json({
+        success: false,
+        error: "Internal context verification failure.",
+      });
     }
   };
 };

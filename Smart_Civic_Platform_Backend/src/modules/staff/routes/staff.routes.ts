@@ -30,6 +30,32 @@ export function createStaffRouter(
   router.use(requireAuth(supabaseAdminClient));
   router.use(verifyStaffContext(supabaseAdminClient));
 
+  const { forcePasswordReset } = require("../../../middleware/forcePasswordReset");
+  const { requireKyc } = require("../../../middleware/requireKyc");
+  router.use(forcePasswordReset);
+  router.use(requireKyc);
+
+  /**
+   * @swagger
+   * /api/staff/kyc:
+   *   get:
+   *     summary: Fetch my staff KYC details & verification status
+   *     tags: [Staff API]
+   *     security: [{ BearerAuth: [] }]
+   *     responses:
+   *       200:
+   *         description: KYC details loaded.
+   *   put:
+   *     summary: Submit or update my staff KYC onboarding documents
+   *     tags: [Staff API]
+   *     security: [{ BearerAuth: [] }]
+   *     responses:
+   *       200:
+   *         description: KYC submitted successfully.
+   */
+  router.get("/kyc", controller.getKyc);
+  router.put("/kyc", controller.submitKyc);
+
   /**
    * @swagger
    * /api/staff/profile:

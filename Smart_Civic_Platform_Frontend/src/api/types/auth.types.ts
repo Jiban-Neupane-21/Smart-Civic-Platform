@@ -88,6 +88,6 @@ export interface ForgotPasswordRequest {
 }
 
 export interface ChangePasswordRequest {
-  currentPassword?: string;
-  newPassword?: string;
+  current_password: string;
+  new_password: string;
 }

@@ -9,6 +9,19 @@ export const loginSchema = Yup.object().shape({
     .required('Password is required'),
 });
 
+export const changePasswordSchema = Yup.object().shape({
+  current_password: Yup.string().required('Current password is required'),
+  new_password: Yup.string()
+    .min(8, 'Password must be at least 8 characters')
+    .matches(/[A-Z]/, 'Must contain at least one uppercase letter')
+    .matches(/[a-z]/, 'Must contain at least one lowercase letter')
+    .matches(/[0-9]/, 'Must contain at least one number')
+    .required('New password is required'),
+  confirm_password: Yup.string()
+    .oneOf([Yup.ref('new_password')], 'Passwords must match')
+    .required('Please confirm your new password'),
+});
+
 export const registerSchema = Yup.object().shape({
   fullName: Yup.string()
     .min(3, 'Name is too short')

@@ -20,14 +20,18 @@ export const verifyStaffContext = (supabase: SupabaseClient) => {
       // Assert basic account runtime safety via profiles validation
       const { data: profile, error: profileError } = await supabase
         .from('profiles')
-        .select('role, account_status')
-        .eq('id', userId)
+        .select("role, account_status, force_password_reset, identity_document_url")
+        .eq("id", userId)
         .single();
 
       if (profileError || !profile) {
-        res.status(403).json({ success: false, error: 'Access Denied: Requires active Field Staff permissions.' });
+        res.status(403).json({ success: false, error: "Access Denied: Requires active Staff privileges." });
         return;
       }
+
+      req.user.force_password_reset = profile.force_password_reset;
+      req.user.role = profile.role;
+      req.user.identity_document_url = profile.identity_document_url;
 
       if (profile.account_status === "suspended") {
         res.status(403).json({ success: false, error: "Account suspended. Contact platform administrator." });

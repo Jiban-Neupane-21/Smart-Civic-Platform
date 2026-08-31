@@ -154,4 +154,28 @@ export class StaffController {
       res.status(400).json({ success: false, error: error.message });
     }
   };
+
+  // ===== KYC HANDLERS =====
+
+  getKyc = async (req: any, res: Response): Promise<void> => {
+    try {
+      const kycData = await this.service.fetchStaffKyc(req.user.id);
+      res.status(200).json({ success: true, data: kycData });
+    } catch (error: any) {
+      res.status(500).json({ success: false, error: error.message });
+    }
+  };
+
+  submitKyc = async (req: any, res: Response): Promise<void> => {
+    try {
+      const updated = await this.service.submitStaffKyc(req.user.id, req.body);
+      res.status(200).json({
+        success: true,
+        message: "Staff KYC submitted successfully. Under review.",
+        data: updated,
+      });
+    } catch (error: any) {
+      res.status(400).json({ success: false, error: error.message });
+    }
+  };
 }

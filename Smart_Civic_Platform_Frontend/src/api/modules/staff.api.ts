@@ -58,6 +58,22 @@ export const staffApi = {
     const response = await apiClient.post<ApiResponse<any>>(`/department/staff/${id}/reset-password`, { newPassword });
     return response.data;
   },
+
+  /**
+   * Fetch current staff KYC status and submitted documents
+   */
+  getKyc: async (): Promise<ApiResponse<any>> => {
+    const response = await apiClient.get<ApiResponse<any>>('/staff/kyc');
+    return response.data;
+  },
+
+  /**
+   * Submit / Update staff KYC onboarding details
+   */
+  submitKyc: async (data: any): Promise<ApiResponse<any>> => {
+    const response = await apiClient.put<ApiResponse<any>>('/staff/kyc', data);
+    return response.data;
+  },
 };
 
 export default staffApi;

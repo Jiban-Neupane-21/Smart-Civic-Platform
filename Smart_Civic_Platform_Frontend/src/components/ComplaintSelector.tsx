@@ -50,7 +50,7 @@ export const ComplaintSelector: React.FC<ComplaintSelectorProps> = ({ open, onCl
     try {
       const res = await departmentApi.getQueue();
       if (res.success && res.data) {
-        setComplaints(res.data.filter(c => ["pending", "under_review", "in_progress"].includes(c.status)));
+        setComplaints(res.data.filter(c => ["pending", "under_review", "in_progress", "assigned"].includes(c.status)));
       } else {
         setError("Failed to load complaints");
       }
@@ -98,42 +98,51 @@ export const ComplaintSelector: React.FC<ComplaintSelectorProps> = ({ open, onCl
           </Typography>
         ) : (
           <List sx={{ width: "100%", bgcolor: "background.paper" }}>
-            {filtered.map((c) => (
-              <ListItem
-                key={c.co_uid}
-                alignItems="flex-start"
-                sx={{
-                  border: "1px solid #e0e0e0",
-                  borderRadius: 1,
-                  mb: 1,
-                  "&:hover": { bgcolor: "action.hover", cursor: "pointer" },
-                }}
-                onClick={() => onSelect(c)}
-              >
-                <ListItemText
-                  primary={
-                    <Box display="flex" justifyContent="space-between" alignItems="center">
-                      <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
-                        {c.tracking_id} - {c.title}
-                      </Typography>
-                      <Chip
-                        label={c.severity_level}
-                        size="small"
-                        color={SeverityColors[c.severity_level] || "default"}
-                      />
-                    </Box>
-                  }
-                  secondary={
-                    <React.Fragment>
-                      <Typography component="span" variant="body2" color="text.primary">
-                        Status: {c.status}
-                      </Typography>
-                      {" — "}{c.complaint_categories?.category_name || "Uncategorized"}
-                    </React.Fragment>
-                  }
-                />
-              </ListItem>
-            ))}
+            {filtered.map((c) => {
+              const isAssigned = c.status === "assigned" || (c as any).current_team_id;
+              return (
+                <ListItem
+                  key={c.co_uid}
+                  alignItems="flex-start"
+                  sx={{
+                    border: "1px solid #e0e0e0",
+                    borderRadius: 1,
+                    mb: 1,
+                    opacity: isAssigned ? 0.6 : 1,
+                    "&:hover": { bgcolor: isAssigned ? "transparent" : "action.hover", cursor: isAssigned ? "not-allowed" : "pointer" },
+                  }}
+                  onClick={() => !isAssigned && onSelect(c)}
+                >
+                  <ListItemText
+                    primary={
+                      <Box display="flex" justifyContent="space-between" alignItems="center">
+                        <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
+                          {c.tracking_id} - {c.title}
+                          {isAssigned && (
+                            <Typography component="span" color="error" variant="caption" sx={{ ml: 1, fontWeight: 'bold' }}>
+                              (Already Assigned)
+                            </Typography>
+                          )}
+                        </Typography>
+                        <Chip
+                          label={c.severity_level}
+                          size="small"
+                          color={SeverityColors[c.severity_level] || "default"}
+                        />
+                      </Box>
+                    }
+                    secondary={
+                      <React.Fragment>
+                        <Typography component="span" variant="body2" color="text.primary">
+                          Status: {c.status}
+                        </Typography>
+                        {" — "}{c.complaint_categories?.category_name || "Uncategorized"}
+                      </React.Fragment>
+                    }
+                  />
+                </ListItem>
+              );
+            })}
           </List>
         )}
       </DialogContent>

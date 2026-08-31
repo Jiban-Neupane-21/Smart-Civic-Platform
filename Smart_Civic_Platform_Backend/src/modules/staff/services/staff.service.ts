@@ -114,4 +114,22 @@ export class StaffService {
     const handoffService = new HandoffService((this.repo as any).supabaseAdmin);
     return await handoffService.returnToDepartmentHead(complaintId, staffId, reason, note);
   }
+
+  // ===== KYC METHODS =====
+
+  async fetchStaffKyc(userId: string) {
+    try {
+      return await this.repo.getStaffKyc(userId);
+    } catch (error: any) {
+      throw new Error(`Failed to retrieve staff KYC details: ${error.message}`);
+    }
+  }
+
+  async submitStaffKyc(userId: string, payload: any) {
+    try {
+      return await this.repo.submitStaffKyc(userId, payload);
+    } catch (error: any) {
+      throw new Error(`Failed to submit staff KYC onboarding: ${error.message}`);
+    }
+  }
 }

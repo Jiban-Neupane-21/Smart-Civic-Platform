@@ -60,7 +60,7 @@ export default function SuperadminDashboard() {
         <Skeleton variant="text" width={280} height={48} sx={{ mb: 3 }} />
         <Grid container spacing={3}>
           {[...Array(8)].map((_, i) => (
-            <Grid item xs={12} sm={6} md={3} key={i}>
+            <Grid size={{ xs: 12, sm: 6, md: 3 }} key={i}>
               <Skeleton variant="rounded" height={100} />
             </Grid>
           ))}
@@ -115,36 +115,36 @@ export default function SuperadminDashboard() {
         <>
           <Typography variant="h6" sx={{ mb: 2, fontWeight: 600, color: "text.secondary" }}>System Overview</Typography>
           <Grid container spacing={3} sx={{ mb: 4 }}>
-            <Grid item xs={12} sm={6} md={3}>
+            <Grid size={{ xs: 12, sm: 6, md: 3 }}>
               <StatCard title="Municipalities" value={data?.total_municipalities ?? 0} icon={<FiBriefcase size={24} />} color="#1976d2" />
             </Grid>
-            <Grid item xs={12} sm={6} md={3}>
+            <Grid size={{ xs: 12, sm: 6, md: 3 }}>
               <StatCard title="Departments" value={data?.total_departments ?? 0} icon={<FiGrid size={24} />} color="#7b1fa2" />
             </Grid>
-            <Grid item xs={12} sm={6} md={3}>
+            <Grid size={{ xs: 12, sm: 6, md: 3 }}>
               <StatCard title="Staff" value={data?.total_staff ?? 0} icon={<FiUsers size={24} />} color="#2e7d32" />
             </Grid>
-            <Grid item xs={12} sm={6} md={3}>
+            <Grid size={{ xs: 12, sm: 6, md: 3 }}>
               <StatCard title="Citizens" value={data?.total_citizens ?? 0} icon={<MdOutlinePeople size={24} />} color="#ed6c02" />
             </Grid>
           </Grid>
 
           <Typography variant="h6" sx={{ mb: 2, fontWeight: 600, color: "text.secondary" }}>User Status</Typography>
           <Grid container spacing={3} sx={{ mb: 4 }}>
-            <Grid item xs={12} sm={6} md={3}>
+            <Grid size={{ xs: 12, sm: 6, md: 3 }}>
               <StatCard title="Active Users" value={data?.total_active_users ?? 0} icon={<FiUser size={24} />} color="#2e7d32" />
             </Grid>
-            <Grid item xs={12} sm={6} md={3}>
+            <Grid size={{ xs: 12, sm: 6, md: 3 }}>
               <StatCard title="Suspended Users" value={data?.total_suspended_users ?? 0} icon={<FiAlertTriangle size={24} />} color="#d32f2f" />
             </Grid>
           </Grid>
 
           <Typography variant="h6" sx={{ mb: 2, fontWeight: 600, color: "text.secondary" }}>Complaints</Typography>
           <Grid container spacing={3}>
-            <Grid item xs={12} sm={6} md={3}>
+            <Grid size={{ xs: 12, sm: 6, md: 3 }}>
               <StatCard title="Pending" value={data?.total_pending_complaints ?? 0} icon={<FiAlertTriangle size={24} />} color="#ed6c02" />
             </Grid>
-            <Grid item xs={12} sm={6} md={3}>
+            <Grid size={{ xs: 12, sm: 6, md: 3 }}>
               <StatCard title="Resolved" value={data?.total_resolved_complaints ?? 0} icon={<FiCheckCircle size={24} />} color="#2e7d32" />
             </Grid>
           </Grid>

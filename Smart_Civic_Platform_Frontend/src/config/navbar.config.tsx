@@ -17,8 +17,9 @@ import {
   FiClock,
   FiLogOut,
   FiMenu,
+  FiVolume2,
 } from "react-icons/fi";
-import { MdOutlinePeople } from "react-icons/md";
+import { MdOutlinePeople, MdGroups2 } from "react-icons/md";
 
 // Slugify label to href
 const toHref = (label: string): string =>
@@ -63,10 +64,12 @@ const reportAnalyticsItem = createNavItem(
   "Report & Analytics",
   <FiBarChart2 />,
 );
+const adminNoticesItem = createNavItem("Notices", <FiVolume2 />);
 const notificationItem = createNavItem("Notification", <FiBell />);
 const profileItem = createNavItem("Profile", <FiUser />);
 const staffItem = createNavItem("Staff", <FiUsers />);
 const teamItem = createNavItem("Team", <MdOutlinePeople />);
+const crossDeptTeamItem = createNavItem("Cross-Dept Teams", <MdGroups2 />);
 const complaintItem = createNavItem("Complaint", <FiAlertTriangle />);
 const submitComplaintItem = createNavItem(
   "Submit Complaint",
@@ -101,8 +104,10 @@ export const NavbarItems: NavbarConfig = {
       dashboardItem.desktop,
       manageDepartmentStaffItem.desktop,
       manageStaffItem.desktop,
+      crossDeptTeamItem.desktop,
       complaintDetailItem.desktop,
       reportAnalyticsItem.desktop,
+      adminNoticesItem.desktop,
       notificationItem.desktop,
       profileItem.desktop,
       logoutItem.desktop,
@@ -112,11 +117,13 @@ export const NavbarItems: NavbarConfig = {
         dashboardItem.mobile,
         manageDepartmentStaffItem.mobile,
         manageStaffItem.mobile,
-        reportAnalyticsItem.mobile, // Heavy tables/graphs usually viewed on desktop
+        crossDeptTeamItem.mobile,
+        reportAnalyticsItem.mobile,
       ],
       secondary: [
-        notificationItem.mobile, // Alerts for new issues
-        complaintQueueItem.mobile, // Crucial for quick resolution checks
+        adminNoticesItem.mobile,
+        notificationItem.mobile,
+        complaintQueueItem.mobile,
         profileItem.mobile,
         logoutItem.mobile,
       ],

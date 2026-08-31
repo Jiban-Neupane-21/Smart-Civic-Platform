@@ -53,13 +53,7 @@ export class TrackingIdService {
 
     const wardStr = wardNumber ? `WARD${wardNumber}` : "GENERAL";
 
-    // 3. Calculate sequential ticket number for current year
-    const { count } = await this.supabaseAdmin
-      .from("complaints")
-      .select("co_uid", { count: "exact", head: true });
-
-    const sequence = String((count || 0) + 1).padStart(6, "0");
-
-    return `${muniCode}-${wardStr}-${catCode}-${year}-${sequence}`;
+    const rand = Math.floor(Math.random() * 100000).toString().padStart(5, "0");
+    return `TKT-${year}-${rand}-${Date.now().toString().slice(-4)}`;
   }
 }

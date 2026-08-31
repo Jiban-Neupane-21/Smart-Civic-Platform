@@ -7,7 +7,7 @@ import {
   Switch, Paper, Chip
 } from "@mui/material";
 import Swal from "sweetalert2";
-import { publicApi, complaintsApi, fetchWithAuth, BASE_URL } from "../../api";
+import { publicApi, complaintsApi, apiClient } from "../../api";
 import { useAuth } from "../../hooks/useAuth";
 import type { Province, District, Municipality, Ward, ComplaintCategory, SubmitComplaintPayload } from "../../api/types";
 
@@ -22,10 +22,13 @@ export const SubmitComplaint: React.FC = () => {
   const [profile, setProfile] = useState<any>(null);
   
   useEffect(() => {
-    fetchWithAuth(`${BASE_URL}/auth/me`)
-      .then(res => res.json())
+    apiClient.get('/auth/me')
       .then(res => {
-        if (res.success) setProfile(res.data);
+        if (res.data?.success && res.data?.data) {
+          setProfile(res.data.data);
+        } else if (res.data) {
+          setProfile(res.data);
+        }
       })
       .catch(console.error);
   }, []);
@@ -208,7 +211,7 @@ export const SubmitComplaint: React.FC = () => {
           text: `Tracking ID: ${res.data?.tracking_id || (res.data as any)?.ticketNumber || 'N/A'}`,
           confirmButtonColor: "#059669",
         }).then(() => {
-          navigate("/citizen/complaints");
+          navigate("/citizen/complaint-history");
         });
       } else {
         setSubmitError((res as any).message || "Failed to submit complaint.");
@@ -285,7 +288,7 @@ export const SubmitComplaint: React.FC = () => {
                   />
                   {locationSource === 'manual' && (
                     <Grid container spacing={2} sx={{ mt: 1, ml: 2, width: 'calc(100% - 16px)' }}>
-                      <Grid item xs={12} sm={6}>
+                      <Grid size={{ xs: 12, sm: 6 }}>
                         <FormControl fullWidth size="small">
                           <InputLabel>Province</InputLabel>
                           <Select value={provId} label="Province" onChange={(e) => setProvId(e.target.value)}>
@@ -293,7 +296,7 @@ export const SubmitComplaint: React.FC = () => {
                           </Select>
                         </FormControl>
                       </Grid>
-                      <Grid item xs={12} sm={6}>
+                      <Grid size={{ xs: 12, sm: 6 }}>
                         <FormControl fullWidth size="small" disabled={!provId}>
                           <InputLabel>District</InputLabel>
                           <Select value={distId} label="District" onChange={(e) => setDistId(e.target.value)}>
@@ -301,15 +304,15 @@ export const SubmitComplaint: React.FC = () => {
                           </Select>
                         </FormControl>
                       </Grid>
-                      <Grid item xs={12} sm={6}>
+                      <Grid size={{ xs: 12, sm: 6 }}>
                         <FormControl fullWidth size="small" disabled={!distId}>
                           <InputLabel>Municipality</InputLabel>
                           <Select value={muniId} label="Municipality" onChange={(e) => setMuniId(e.target.value)}>
-                            {municipalities.map(m => <MenuItem key={m.id} value={m.id}>{m.name}</MenuItem>)}
+                            {municipalities.map(m => <MenuItem key={m.id} value={m.id}>{m.official_name || (m as any).name}</MenuItem>)}
                           </Select>
                         </FormControl>
                       </Grid>
-                      <Grid item xs={12} sm={6}>
+                      <Grid size={{ xs: 12, sm: 6 }}>
                         <FormControl fullWidth size="small" disabled={!muniId}>
                           <InputLabel>Ward</InputLabel>
                           <Select value={wardId} label="Ward" onChange={(e) => setWardId(e.target.value)}>
@@ -430,7 +433,7 @@ export const SubmitComplaint: React.FC = () => {
 
             <Typography variant="subtitle1" sx={{ mt: 3, mb: 1, fontWeight: 600 }}>Severity Level *</Typography>
             <Grid container spacing={2}>
-              <Grid item xs={4}>
+              <Grid size={{ xs: 4 }}>
                 <Paper
                   variant="outlined"
                   sx={{ 
@@ -444,7 +447,7 @@ export const SubmitComplaint: React.FC = () => {
                   <Typography variant="caption">Minor issue</Typography>
                 </Paper>
               </Grid>
-              <Grid item xs={4}>
+              <Grid size={{ xs: 4 }}>
                 <Paper
                   variant="outlined"
                   sx={{ 
@@ -458,7 +461,7 @@ export const SubmitComplaint: React.FC = () => {
                   <Typography variant="caption">Requires attention</Typography>
                 </Paper>
               </Grid>
-              <Grid item xs={4}>
+              <Grid size={{ xs: 4 }}>
                 <Paper
                   variant="outlined"
                   sx={{ 
@@ -482,7 +485,7 @@ export const SubmitComplaint: React.FC = () => {
             <Typography variant="h6" gutterBottom>Review & Submit</Typography>
             <Paper variant="outlined" sx={{ p: 3, borderRadius: 2, mb: 3 }}>
               <Grid container spacing={2}>
-                <Grid item xs={12}>
+                <Grid size={{ xs: 12 }}>
                   <Typography variant="caption" color="text.secondary">Location</Typography>
                   <Typography variant="body1" fontWeight={500}>
                     {locationSource === 'registered_address' && `Registered Address (${registeredAddressStr || 'Unknown'})`}
@@ -491,7 +494,7 @@ export const SubmitComplaint: React.FC = () => {
                   </Typography>
                 </Grid>
                 
-                <Grid item xs={12}>
+                <Grid size={{ xs: 12 }}>
                   <Typography variant="caption" color="text.secondary">Category</Typography>
                   <Typography variant="body1" fontWeight={500}>
                     Primary: {categories.find(c => c.id === primaryCategoryId)?.category_name}
@@ -503,13 +506,13 @@ export const SubmitComplaint: React.FC = () => {
                   )}
                 </Grid>
 
-                <Grid item xs={12}>
+                <Grid size={{ xs: 12 }}>
                   <Typography variant="caption" color="text.secondary">Issue Details</Typography>
                   <Typography variant="h6">{title}</Typography>
                   <Typography variant="body2" sx={{ mt: 1, whiteSpace: 'pre-wrap' }}>{description}</Typography>
                 </Grid>
 
-                <Grid item xs={12}>
+                <Grid size={{ xs: 12 }}>
                   <Typography variant="caption" color="text.secondary">Severity</Typography>
                   <Box mt={0.5}>
                     <Chip 

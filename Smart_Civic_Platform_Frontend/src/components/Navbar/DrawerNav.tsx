@@ -20,6 +20,7 @@ import {
 import { FiMenu } from "react-icons/fi";
 import type { DesktopNavItem } from "../../types/navbar.types";
 import type { UserRole } from "../../types/userRole.type";
+import { NotificationDropdown } from "../notification/NotificationDropdown";
 
 interface DrawerNavProps {
   items: DesktopNavItem[];
@@ -247,11 +248,13 @@ export function DrawerNav({
                 {showText && (
                   <ListItemText
                     primary={item.label}
-                    primaryTypographyProps={{
-                      fontSize: "0.9rem",
-                      fontWeight: isActive ? 600 : 500,
-                      color: isActive ? "text.primary" : "text.secondary",
-                      noWrap: true,
+                    slotProps={{
+                      primary: {
+                        fontSize: "0.9rem",
+                        fontWeight: isActive ? 600 : 500,
+                        color: isActive ? "text.primary" : "text.secondary",
+                        noWrap: true,
+                      },
                     }}
                   />
                 )}
@@ -298,11 +301,13 @@ export function DrawerNav({
                     {showText && (
                       <ListItemText
                         primary={item.label}
-                        primaryTypographyProps={{
-                          fontSize: "0.9rem",
-                          fontWeight: 500,
-                          color: "text.secondary",
-                          noWrap: true,
+                        slotProps={{
+                          primary: {
+                            fontSize: "0.9rem",
+                            fontWeight: 500,
+                            color: "text.secondary",
+                            noWrap: true,
+                          },
                         }}
                       />
                     )}
@@ -416,6 +421,10 @@ export function DrawerNav({
                   </Typography>
                 </Box>
               </Box>
+            </Box>
+
+            <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+              <NotificationDropdown role={role || 'citizen'} />
             </Box>
           </Toolbar>
         </Container>

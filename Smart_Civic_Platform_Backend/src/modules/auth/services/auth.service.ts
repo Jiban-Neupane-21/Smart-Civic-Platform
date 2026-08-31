@@ -87,7 +87,7 @@ export const loginService = async (email: string, password: string) => {
   let { data: profile, error: profileError } = await supabaseAdmin
     .from("profiles")
     .select(
-      "id, full_name, email, role, municipality_id, department_id, account_status, force_password_reset",
+      "id, full_name, email, role, municipality_id, department_id, account_status, force_password_reset, identity_type, identity_number, identity_document_url, identity_verified_at",
     )
     .eq("id", data.user.id)
     .maybeSingle();
@@ -144,7 +144,7 @@ export const loginService = async (email: string, password: string) => {
     const { data: healedProfile, error: healedProfileErr } = await supabaseAdmin
       .from("profiles")
       .select(
-        "id, full_name, email, role, municipality_id, department_id, account_status, force_password_reset",
+        "id, full_name, email, role, municipality_id, department_id, account_status, force_password_reset, identity_type, identity_number, identity_document_url, identity_verified_at",
       )
       .eq("id", data.user.id)
       .single();
@@ -300,7 +300,7 @@ export const createUserService = async (body: {
   if (profileUpsertErr) throw new Error(`Failed to save user profile: ${profileUpsertErr.message}`);
 
   // 4. For staff-level roles, ensure the staff table record exists with all required details
-  if (["staff", "department_head"].includes(body.role)) {
+  if (body.role === "staff") {
     if (body.municipality_id && body.department_id) {
       const { error: staffUpsertErr } = await supabaseAdmin
         .from("staff")
@@ -361,13 +361,25 @@ export const changePasswordService = async (
     email: profile.email,
     password: body.current_password,
   });
-  if (loginErr) throw new Error("Current password is incorrect");
+  if (loginErr) {
+    console.error("[changePasswordService] signInWithPassword error:", loginErr.message);
+    throw new Error(
+      loginErr.message?.toLowerCase().includes("rate")
+        ? "Too many attempts. Please wait a moment and try again."
+        : "Current password is incorrect"
+    );
+  }
 
   const { error: updateErr } = await supabaseAdmin.auth.admin.updateUserById(
     userId,
     { password: body.new_password },
   );
   if (updateErr) throw new Error(updateErr.message);
+
+  await supabaseAdmin
+    .from("profiles")
+    .update({ force_password_reset: false, password_updated_at: new Date().toISOString() })
+    .eq("id", userId);
 
   return { message: "Password changed successfully" };
 };

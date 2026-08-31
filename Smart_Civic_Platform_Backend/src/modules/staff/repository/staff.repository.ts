@@ -156,4 +156,73 @@ export class StaffRepository {
     if (error) throw error;
     return data;
   }
+
+  // ===== KYC METHODS =====
+
+  async getStaffKyc(userId: string) {
+    const { data, error } = await this.supabaseAdmin
+      .from('staff')
+      .select(`
+        *,
+        profile:profiles!profile_id(id, full_name, email, phone, role, account_status, identity_verified_at, identity_document_url),
+        department:departments!primary_department_id(id, department_name, department_category),
+        municipality:municipalities!municipality_id(id, official_name)
+      `)
+      .eq('profile_id', userId)
+      .maybeSingle();
+
+    if (error) throw error;
+    return data;
+  }
+
+  async submitStaffKyc(userId: string, payload: any) {
+    const nowIso = new Date().toISOString();
+    const staffUpdates: any = {
+      kyc_status: 'pending',
+      kyc_submitted_at: nowIso,
+      updated_at: nowIso,
+      contact_number: payload.contact_number || payload.phone,
+      gender: payload.gender || null,
+      date_of_birth: payload.date_of_birth || null,
+      personal_address: payload.personal_address || payload.current_address || null,
+      designation: payload.designation || null,
+      expertise: payload.expertise || null,
+      emergency_contact_name: payload.emergency_contact_name || null,
+      emergency_contact_phone: payload.emergency_contact_phone || null,
+      identity_type: payload.identity_type || null,
+      identity_number: payload.identity_number || null,
+      identity_front_url: payload.identity_front_url || null,
+      identity_back_url: payload.identity_back_url || null,
+      appointment_letter_url: payload.appointment_letter_url || null,
+      photo_url: payload.photo_url || null,
+    };
+
+    if (payload.employee_id) {
+      staffUpdates.employee_id = payload.employee_id;
+    }
+
+    const { data, error } = await this.supabaseAdmin
+      .from('staff')
+      .update(staffUpdates)
+      .eq('profile_id', userId)
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    // Sync profiles table contact and identity document details
+    const profileUpdates: any = { updated_at: nowIso };
+    if (payload.full_name) profileUpdates.full_name = payload.full_name;
+    if (payload.phone || payload.contact_number) profileUpdates.phone = payload.phone || payload.contact_number;
+    if (payload.identity_type) profileUpdates.identity_type = payload.identity_type;
+    if (payload.identity_number) profileUpdates.identity_number = payload.identity_number;
+    if (payload.identity_front_url) profileUpdates.identity_document_url = payload.identity_front_url;
+
+    await this.supabaseAdmin
+      .from('profiles')
+      .update(profileUpdates)
+      .eq('id', userId);
+
+    return await this.getStaffKyc(userId);
+  }
 }

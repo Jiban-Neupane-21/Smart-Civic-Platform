@@ -15,6 +15,10 @@ import type {
   CreateStaffUserDto,
   UpdateStaffDto,
   MunicipComplaint,
+  CrossDeptTeam,
+  CreateCrossDeptTeamDto,
+  StaffAvailabilityResult,
+  MunicipTeamComplaintAssignment,
 } from '../types';
 
 export const municipalityApi = {
@@ -59,10 +63,41 @@ export const municipalityApi = {
   },
 
   /**
-   * Fetch municipality dashboard analytics (for municipality_head)
+   * Fetch municipality operational analytics (for municipality_head)
    */
   getDashboard: async (): Promise<ApiResponse<MunicipalityDashboardData>> => {
     const response = await apiClient.get<ApiResponse<MunicipalityDashboardData>>('/municipality/analytics');
+    return response.data;
+  },
+
+  /**
+   * Fetch own municipality full profile including KYC status
+   */
+  getMyProfile: async (): Promise<ApiResponse<any>> => {
+    const response = await apiClient.get<ApiResponse<any>>('/municipality/profile');
+    return response.data;
+  },
+
+  /**
+   * Update municipality profile and/or submit KYC documents (base64 images)
+   */
+  updateMyProfile: async (data: {
+    official_name?: string;
+    official_email?: string;
+    official_contact_no?: string;
+    about_description?: string;
+    mayor_chairperson_name?: string;
+    deputy_mayor_vice_chairperson_name?: string;
+    head_name?: string;
+    head_email?: string;
+    head_contact_no?: string;
+    head_identity_type?: string;
+    head_identity_number?: string;
+    head_identity_front_base64?: string;
+    head_identity_back_base64?: string;
+    registration_document_base64?: string;
+  }): Promise<ApiResponse<any>> => {
+    const response = await apiClient.patch<ApiResponse<any>>('/municipality/profile', data);
     return response.data;
   },
 
@@ -72,6 +107,12 @@ export const municipalityApi = {
     const response = await apiClient.get<ApiResponse<{ departments: Department[] }>>(
       `/municipality/${municipalityId}/departments`
     );
+    return response.data;
+  },
+
+  /** Context-resolved: uses middleware municipalityId */
+  getMyDepartments: async (): Promise<ApiResponse<{ departments: Department[] }>> => {
+    const response = await apiClient.get<ApiResponse<{ departments: Department[] }>>('/municipality/departments');
     return response.data;
   },
 
@@ -118,6 +159,14 @@ export const municipalityApi = {
     return response.data;
   },
 
+  reviewDepartmentKyc: async (municipalityId: string, departmentId: string, data: { status: "verified" | "rejected"; rejection_reason?: string }): Promise<ApiResponse<Department>> => {
+    const response = await apiClient.patch<ApiResponse<Department>>(
+      `/municipality/${municipalityId}/departments/${departmentId}/kyc`,
+      data
+    );
+    return response.data;
+  },
+
   // ===== Staff Methods =====
 
   getStaff: async (municipalityId: string, departmentId?: string): Promise<ApiResponse<StaffMember[]>> => {
@@ -126,6 +175,13 @@ export const municipalityApi = {
       `/municipality/${municipalityId}/staff`,
       { params }
     );
+    return response.data;
+  },
+
+  /** Context-resolved: uses middleware municipalityId */
+  getMyStaff: async (departmentId?: string): Promise<ApiResponse<StaffMember[]>> => {
+    const params = departmentId ? { department_id: departmentId } : {};
+    const response = await apiClient.get<ApiResponse<StaffMember[]>>('/municipality/staff', { params });
     return response.data;
   },
 
@@ -197,6 +253,57 @@ export const municipalityApi = {
       `/municipality/${municipalityId}/complaints/${complaintId}/intervene`,
       data
     );
+    return response.data;
+  },
+
+  // ===== Cross-Department Team Methods =====
+
+  getCrossDeptTeams: async (): Promise<ApiResponse<CrossDeptTeam[]>> => {
+    const response = await apiClient.get<ApiResponse<CrossDeptTeam[]>>('/municipality/teams');
+    return response.data;
+  },
+
+  createCrossDeptTeam: async (data: CreateCrossDeptTeamDto): Promise<ApiResponse<CrossDeptTeam>> => {
+    const response = await apiClient.post<ApiResponse<CrossDeptTeam>>('/municipality/teams', data);
+    return response.data;
+  },
+
+  deactivateCrossDeptTeam: async (teamId: string): Promise<ApiResponse<void>> => {
+    const response = await apiClient.delete<ApiResponse<void>>(`/municipality/teams/${teamId}`);
+    return response.data;
+  },
+
+  getCrossDeptTeamDetail: async (teamId: string): Promise<ApiResponse<CrossDeptTeam>> => {
+    const response = await apiClient.get<ApiResponse<CrossDeptTeam>>(`/municipality/teams/${teamId}`);
+    return response.data;
+  },
+
+  checkStaffAvailability: async (staffIds: string[], startDate: string, endDate: string): Promise<ApiResponse<StaffAvailabilityResult[]>> => {
+    const response = await apiClient.post<ApiResponse<StaffAvailabilityResult[]>>('/municipality/staff/availability', {
+      staff_ids: staffIds,
+      start_date: startDate,
+      end_date: endDate,
+    });
+    return response.data;
+  },
+
+  assignComplaintToTeam: async (teamId: string, complaintId: string): Promise<ApiResponse<MunicipTeamComplaintAssignment>> => {
+    const response = await apiClient.post<ApiResponse<MunicipTeamComplaintAssignment>>(`/municipality/teams/${teamId}/assign-complaint`, {
+      complaint_id: complaintId,
+    });
+    return response.data;
+  },
+
+  getTeamComplaints: async (teamId: string): Promise<ApiResponse<MunicipTeamComplaintAssignment[]>> => {
+    const response = await apiClient.get<ApiResponse<MunicipTeamComplaintAssignment[]>>(`/municipality/teams/${teamId}/complaints`);
+    return response.data;
+  },
+
+  reviewStaffKyc: async (
+    staffId: string,
+    data: { status: 'verified' | 'rejected'; rejection_reason?: string }
+  ): Promise<ApiResponse<any>> => {
+    const response = await apiClient.patch<ApiResponse<any>>(`/municipality/staff/${staffId}/kyc`, data);
     return response.data;
   },
 };

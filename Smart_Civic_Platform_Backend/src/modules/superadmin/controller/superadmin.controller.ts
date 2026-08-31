@@ -310,6 +310,32 @@ export class SuperadminController {
     }
   };
 
+  reviewMunicipalityKyc = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const id = req.params.id as string;
+      const { status, rejection_reason } = req.body;
+      const verifiedBy = (req as any).user.id;
+
+      if (!id) {
+        res.status(400).json({ success: false, error: "Municipality ID is required." });
+        return;
+      }
+      if (!status || !['verified', 'rejected'].includes(status)) {
+        res.status(400).json({ success: false, error: "Valid status ('verified' or 'rejected') is required." });
+        return;
+      }
+      if (status === 'rejected' && !rejection_reason) {
+        res.status(400).json({ success: false, error: "Rejection reason is required when rejecting KYC." });
+        return;
+      }
+
+      const updated = await this.service.reviewMunicipalityKyc(id, status, verifiedBy, rejection_reason);
+      res.status(200).json({ success: true, data: updated });
+    } catch (error: any) {
+      res.status(400).json({ success: false, error: error.message });
+    }
+  };
+
   deleteMunicipality = async (req: Request, res: Response): Promise<void> => {
     try {
       const id = req.params.id as string;
@@ -318,28 +344,16 @@ export class SuperadminController {
         return;
       }
 
-      // 1. Fetch the municipality to get the linked head profile ID
-      const municipality = await this.service.fetchMunicipalityById(id);
-      const headProfileId = municipality?.head_profile_id;
+      const deletedBy = (req as any).user?.id;
+      const result = await this.service.removeMunicipality(id, deletedBy);
 
-      if (headProfileId) {
-        // 2. Break the FK link first
-        await this.service.modifyMunicipality(id, { head_profile_id: null });
-
-        try {
-          // 3. Delete the profile row
-          await this.service.removeProfile(headProfileId);
-          // 4. Delete the Supabase Auth user
-          await this.service.removeAuthUser(headProfileId);
-        } catch (userError: any) {
-          console.error("Failed to clean up user on municipality delete:", userError.message);
-        }
-      }
-
-      // 5. Delete the municipality itself
-      await this.service.removeMunicipality(id);
-      res.status(200).json({ success: true, message: "Municipality and linked user deleted successfully." });
+      res.status(200).json({
+        success: true,
+        message: "Municipality, associated departments, and staff were successfully soft-deleted and archived. The municipality is reset and ready for re-provisioning.",
+        data: result,
+      });
     } catch (error: any) {
+      console.error("deleteMunicipality error:", error);
       res.status(500).json({ success: false, error: error.message });
     }
   };

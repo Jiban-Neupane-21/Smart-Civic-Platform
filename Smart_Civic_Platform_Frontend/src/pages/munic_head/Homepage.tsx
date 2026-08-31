@@ -130,7 +130,7 @@ export default function Homepage() {
 
       {/* Main Metrics */}
       <Grid container spacing={3} sx={{ mb: 5 }}>
-        <Grid item xs={12} sm={6} md={4}>
+        <Grid size={{ xs: 12, sm: 6, md: 4 }}>
           <StatCard
             title="Total Complaints"
             value={data.total_complaints}
@@ -138,7 +138,7 @@ export default function Homepage() {
             gradient="linear-gradient(135deg, #6366F1 0%, #4F46E5 100%)"
           />
         </Grid>
-        <Grid item xs={12} sm={6} md={4}>
+        <Grid size={{ xs: 12, sm: 6, md: 4 }}>
           <StatCard
             title="Resolution Rate"
             value={`${data.dynamic_resolution_rate}%`}
@@ -146,7 +146,7 @@ export default function Homepage() {
             gradient="linear-gradient(135deg, #10B981 0%, #059669 100%)"
           />
         </Grid>
-        <Grid item xs={12} sm={6} md={4}>
+        <Grid size={{ xs: 12, sm: 6, md: 4 }}>
           <StatCard
             title="Pending Actions"
             value={data.pending_count}
@@ -161,7 +161,7 @@ export default function Homepage() {
         Detailed Status Breakdown
       </Typography>
       <Grid container spacing={3}>
-        <Grid item xs={12} sm={4}>
+        <Grid size={{ xs: 12, sm: 4 }}>
           <Paper
             elevation={0}
             sx={{
@@ -187,7 +187,7 @@ export default function Homepage() {
             </Box>
           </Paper>
         </Grid>
-        <Grid item xs={12} sm={4}>
+        <Grid size={{ xs: 12, sm: 4 }}>
           <Paper
             elevation={0}
             sx={{
@@ -213,7 +213,7 @@ export default function Homepage() {
             </Box>
           </Paper>
         </Grid>
-        <Grid item xs={12} sm={4}>
+        <Grid size={{ xs: 12, sm: 4 }}>
           <Paper
             elevation={0}
             sx={{

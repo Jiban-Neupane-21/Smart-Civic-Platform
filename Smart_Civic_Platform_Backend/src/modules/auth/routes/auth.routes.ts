@@ -164,6 +164,8 @@ router.post(
   AuthController.refresh,
 );
 
+import { forcePasswordReset } from "../../../middleware/forcePasswordReset";
+
 /**
  * @swagger
  * /api/auth/logout:
@@ -190,6 +192,7 @@ router.post(
 router.post(
   "/logout",
   authenticate,
+  forcePasswordReset,
   validateBody(refreshTokenSchema),
   AuthController.logout,
 );
@@ -220,7 +223,7 @@ router.post(
  *       401:
  *         $ref: '#/components/responses/Unauthorized'
  */
-router.get("/me", authenticate, AuthController.getMe);
+router.get("/me", authenticate, forcePasswordReset, AuthController.getMe);
 
 /**
  * @swagger
@@ -244,6 +247,7 @@ router.get("/me", authenticate, AuthController.getMe);
 router.patch(
   "/change-password",
   authenticate,
+  forcePasswordReset,
   validateBody(changePasswordSchema),
   AuthController.changePassword,
 );

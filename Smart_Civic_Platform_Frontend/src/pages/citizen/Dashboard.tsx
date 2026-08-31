@@ -424,8 +424,10 @@ export const CitizenDashboard: React.FC = () => {
                     >
                       <ListItemText
                         primary={notif.title}
-                        primaryTypographyProps={{
-                          fontWeight: notif.is_read ? "normal" : "bold",
+                        slotProps={{
+                          primary: {
+                            fontWeight: notif.is_read ? "normal" : "bold",
+                          },
                         }}
                         secondary={
                           <>

@@ -34,6 +34,9 @@ import BusinessIcon from "@mui/icons-material/Business";
 import { useAuth } from "../../hooks/useAuth";
 import { municipalityApi } from "../../api";
 import type { Department, CreateDepartmentDto } from "../../api/types";
+import VerifiedIcon from "@mui/icons-material/Verified";
+import PendingActionsIcon from "@mui/icons-material/PendingActions";
+import VisibilityIcon from "@mui/icons-material/Visibility";
 
 interface DepartmentForm {
   department_name: string;
@@ -76,6 +79,10 @@ export default function ManageDept() {
   const [categories, setCategories] = useState<string[]>([]);
 
   const [newCredentials, setNewCredentials] = useState<{ email: string; password: string; department_name: string } | null>(null);
+
+  const [kycTarget, setKycTarget] = useState<Department | null>(null);
+  const [kycSubmitting, setKycSubmitting] = useState(false);
+  const [kycRejectionReason, setKycRejectionReason] = useState("");
 
   const fetchCategories = async () => {
     try {
@@ -219,6 +226,29 @@ export default function ManageDept() {
     }
   };
 
+  const handleKycReview = async (status: "verified" | "rejected") => {
+    if (!kycTarget) return;
+    if (status === "rejected" && !kycRejectionReason.trim()) {
+      alert("Please provide a reason for rejection.");
+      return;
+    }
+
+    setKycSubmitting(true);
+    try {
+      await municipalityApi.reviewDepartmentKyc(municipalityId, kycTarget.id, {
+        status,
+        rejection_reason: status === "rejected" ? kycRejectionReason : undefined,
+      });
+      setKycTarget(null);
+      setKycRejectionReason("");
+      await fetchDepartments();
+    } catch (err: any) {
+      alert(err?.response?.data?.error || err?.message || "Failed to update KYC status.");
+    } finally {
+      setKycSubmitting(false);
+    }
+  };
+
   if (!municipalityId) {
     return (
       <Box sx={{ p: 4 }}>
@@ -283,7 +313,7 @@ export default function ManageDept() {
           <Table sx={{ minWidth: 700 }}>
             <TableHead sx={{ bgcolor: "primary.main" }}>
               <TableRow>
-                {["Department Name", "Official Email", "Head Name", "Staff Count", "Status", "Created", "Actions"].map(
+                {["Department Name", "Official Email", "Head Name", "Staff Count", "Status", "KYC Status", "Created", "Actions"].map(
                   (h) => (
                     <TableCell key={h} sx={{ color: "#fff", fontWeight: 700 }}>
                       {h}
@@ -331,9 +361,25 @@ export default function ManageDept() {
                       />
                     </TableCell>
                     <TableCell>
+                      {dept.kyc_status === "verified" ? (
+                        <Chip icon={<VerifiedIcon />} label="Verified" color="success" size="small" />
+                      ) : dept.kyc_status === "pending" ? (
+                        <Chip icon={<PendingActionsIcon />} label="Pending" color="warning" size="small" />
+                      ) : dept.kyc_status === "rejected" ? (
+                        <Chip label="Rejected" color="error" size="small" />
+                      ) : (
+                        <Chip label="Unverified" color="default" size="small" />
+                      )}
+                    </TableCell>
+                    <TableCell>
                       {new Date(dept.created_at).toLocaleDateString()}
                     </TableCell>
                     <TableCell>
+                      <Tooltip title="View KYC Details">
+                        <IconButton color="info" size="small" onClick={() => setKycTarget(dept)}>
+                          <VisibilityIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
                       <Tooltip title="Edit">
                         <IconButton color="primary" size="small" onClick={() => openEdit(dept)}>
                           <EditIcon fontSize="small" />
@@ -473,7 +519,6 @@ export default function ManageDept() {
         </DialogActions>
       </Dialog>
 
-      {/* New Credentials Dialog */}
       <Dialog open={!!newCredentials} onClose={() => setNewCredentials(null)} maxWidth="sm" fullWidth>
         <DialogTitle sx={{ fontWeight: 700, color: "success.main" }}>
           Department Created Successfully!
@@ -516,6 +561,87 @@ export default function ManageDept() {
           <Button variant="contained" onClick={() => setNewCredentials(null)} sx={{ fontWeight: 600 }}>
             Done
           </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* KYC Review Dialog */}
+      <Dialog open={!!kycTarget} onClose={() => !kycSubmitting && setKycTarget(null)} maxWidth="sm" fullWidth>
+        <DialogTitle fontWeight={700}>Review Department Head KYC</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" sx={{ mb: 2 }}>
+            Review the submitted identity documents for <strong>{kycTarget?.head_name}</strong> (Department: {kycTarget?.department_name}).
+          </Typography>
+
+          <Paper variant="outlined" sx={{ p: 2, mb: 3 }}>
+            <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 2, mb: 2 }}>
+              <Box>
+                <Typography variant="caption" color="text.secondary">Identity Type</Typography>
+                <Typography variant="body2" fontWeight={600}>{kycTarget?.head_identity_type?.toUpperCase() || "N/A"}</Typography>
+              </Box>
+              <Box>
+                <Typography variant="caption" color="text.secondary">Identity Number</Typography>
+                <Typography variant="body2" fontWeight={600}>{kycTarget?.head_identity_number || "N/A"}</Typography>
+              </Box>
+            </Box>
+            
+            {kycTarget?.head_identity_front_url ? (
+              <Box sx={{ mt: 2 }}>
+                <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 1 }}>
+                  Document Image
+                </Typography>
+                <Box
+                  component="img"
+                  src={kycTarget.head_identity_front_url}
+                  alt="Identity Document"
+                  sx={{
+                    width: "100%",
+                    maxHeight: 250,
+                    objectFit: "contain",
+                    border: "1px solid",
+                    borderColor: "divider",
+                    borderRadius: 1,
+                    bgcolor: "#f5f5f5"
+                  }}
+                />
+              </Box>
+            ) : (
+              <Alert severity="warning" sx={{ mt: 2 }}>No document image provided.</Alert>
+            )}
+          </Paper>
+
+          <Typography variant="subtitle2" sx={{ mb: 1 }}>If Rejecting, provide a reason:</Typography>
+          <TextField
+            fullWidth
+            multiline
+            rows={2}
+            placeholder="E.g., Document image is blurry..."
+            value={kycRejectionReason}
+            onChange={(e) => setKycRejectionReason(e.target.value)}
+          />
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 3, justifyContent: "space-between" }}>
+          <Button onClick={() => setKycTarget(null)} disabled={kycSubmitting}>
+            Cancel
+          </Button>
+          <Box sx={{ display: "flex", gap: 1 }}>
+            <Button
+              variant="outlined"
+              color="error"
+              disabled={kycSubmitting}
+              onClick={() => handleKycReview("rejected")}
+            >
+              Reject
+            </Button>
+            <Button
+              variant="contained"
+              color="success"
+              disabled={kycSubmitting}
+              onClick={() => handleKycReview("verified")}
+              startIcon={<VerifiedIcon />}
+            >
+              Approve & Verify
+            </Button>
+          </Box>
         </DialogActions>
       </Dialog>
     </Box>
