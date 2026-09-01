@@ -1,8 +1,1 @@
-export {
-  UserController,
-  AdminController,
-  StatsController,
-  AuditLogController,
-  FeatureFlagController,
-  MunicipalityController,
-} from "./superadmin.controller";
+export { SuperadminController } from "./superadmin.controller";

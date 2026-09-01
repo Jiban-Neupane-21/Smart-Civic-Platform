@@ -13,7 +13,7 @@
  *                    ⚠️  NEVER expose this key or client to the frontend.
  */
 
-import { createClient, SupabaseClient } from "@supabase/supabase-js";
+import { createClient } from "@supabase/supabase-js";
 import type { Database } from "../types/database.type";
 import { env } from "./env";
 
@@ -49,11 +49,11 @@ const sharedOptions = {
  * Or pass the user's JWT in Supabase's Authorization header by constructing
  * a per-request client using createClient with the user's token.
  */
-export const supabase = createClient(
+export const supabase = createClient<any>(
   SUPABASE_URL,
   SUPABASE_ANON_KEY,
   sharedOptions,
-) as SupabaseClient<Database>;
+);
 
 // ─── Admin client (bypasses RLS) ──────────────────────────────────────────────
 
@@ -70,8 +70,7 @@ export const supabase = createClient(
  * Never use this client in a route handler that receives arbitrary user input
  * without validating the caller's role and scope first in middleware.
  */
-/** Untyped client avoids strict generic inference issues with hand-maintained Database types */
-export const supabaseAdmin = createClient(
+export const supabaseAdmin = createClient<any>(
   SUPABASE_URL,
   SUPABASE_SERVICE_ROLE_KEY,
   sharedOptions,
@@ -92,7 +91,7 @@ export const supabaseAdmin = createClient(
  * @param accessToken  The Bearer JWT from the Authorization header
  */
 export function createUserClient(accessToken: string) {
-  return createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+  return createClient<any>(SUPABASE_URL, SUPABASE_ANON_KEY, {
     ...sharedOptions,
     global: {
       headers: {
@@ -101,3 +100,15 @@ export function createUserClient(accessToken: string) {
     },
   });
 }
+
+/**
+ * Creates an ephemeral auth client strictly for credential verification.
+ * Do NOT use the global `supabaseAdmin` for `signInWithPassword` as it mutates
+ * the global singleton's session, leading to severe concurrency and RLS bugs.
+ */
+export function createAuthClient() {
+  return createClient<any>(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    auth: { persistSession: false, autoRefreshToken: false }
+  });
+}
+

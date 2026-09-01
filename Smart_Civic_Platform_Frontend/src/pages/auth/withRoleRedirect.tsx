@@ -11,16 +11,31 @@ export const withRoleRedirect = <P extends object>(
 
     useEffect(() => {
       if (isAuthenticated && user) {
+        if (user.force_password_reset && !["superadmin", "citizen"].includes(user.role)) {
+          navigate("/change-password");
+          return;
+        }
+
+        // Redirect based on the user's KYC status if required
+        const kycCompleted = user.role === "citizen"
+          ? user.citizen_details?.kyc_status === "verified"
+          : Boolean(user.identity_type && user.identity_number && user.identity_document_url);
+        
+        if (["municipality_head", "department_head", "staff"].includes(user.role) && !kycCompleted) {
+          navigate("/kyc");
+          return;
+        }
+
         // Redirect based on the user's role
         switch (user.role as string) {
           case "superadmin":
             navigate("/superadmin/dashboard");
             break;
           case "municipality_head":
-            navigate("/municipality/dashboard");
+            navigate("/municipality_head/dashboard");
             break;
           case "department_head":
-            navigate("/department/dashboard");
+            navigate("/department_head/dashboard");
             break;
           case "staff":
             navigate("/staff/dashboard");

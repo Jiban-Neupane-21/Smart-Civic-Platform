@@ -2,20 +2,104 @@ import "./config/env";
 import express, { Request, Response, NextFunction } from "express";
 import cors from "cors";
 import helmet from "helmet";
-import rateLimit from "express-rate-limit";
 import swaggerUi from "swagger-ui-express";
 
 import { getSwaggerSpec } from "./config/swagger";
+import { supabaseAdmin } from "./config/supabase";
+import { globalRateLimiter } from "./middleware/rateLimiter";
+
 import authRoutes from "./modules/auth/routes/auth.routes";
-import superadminRoutes from "./modules/superadmin/routes/superadmin.routes";
-import municipalityRoutes from "./modules/municipality/routes/municipality.routes";
-import departmentRoutes from "./modules/department/routes/department.route";
-import staffRoutes from "./modules/staff/routes/staff.routes";
+import { createSuperadminRouter } from "./modules/superadmin/routes/superadmin.routes";
+import { SuperadminController } from "./modules/superadmin/controller/superadmin.controller";
+import { SuperadminService } from "./modules/superadmin/services/superadmin.services";
+import { SuperadminRepository } from "./modules/superadmin/middleware/superadmin.repository";
+import { createMunicipalityRouter } from "./modules/municipality/routes/municipality.routes";
+import { MunicipalityController } from "./modules/municipality/controller/municipality.controller";
+import { MunicipalityService } from "./modules/municipality/services/municipality.service";
+import { MunicipalityRepository } from "./modules/municipality/repository/municipality.repository";
+import { createDepartmentRouter } from "./modules/department/routes/department.route";
+import { DepartmentController } from "./modules/department/controller/department.controller";
+import { DepartmentService } from "./modules/department/services/department.service";
+import { DepartmentRepository } from "./modules/department/repository/department.repository";
+import { createStaffRouter } from "./modules/staff/routes/staff.routes";
+import { StaffController } from "./modules/staff/controller/staff.controller";
+import { StaffService } from "./modules/staff/services/staff.service";
+import { StaffRepository } from "./modules/staff/repository/staff.repository";
+import { createComplaintsRouter } from "./modules/complaints/routes/complaints.routes";
+import { ComplaintsController } from "./modules/complaints/controller/complaint.controller";
+import { ComplaintsService } from "./modules/complaints/services/complaints.service";
+import { ComplaintsRepository } from "./modules/complaints/repository/complaints.repository";
+import { createNotificationsRouter } from "./modules/notification/routes/notification.routes";
+import { NotificationsController } from "./modules/notification/controller/notification.controller";
+import { NotificationsService } from "./modules/notification/service/notification.service";
+import { NotificationsRepository } from "./modules/notification/repository/notification.repository";
 import citizenRoutes from "./modules/citizen/routes/citizen.routes";
+import publicRoutes from "./modules/public/routes/public.routes";
 import healthRoutes from "./routes/health.routes";
+
+import { createOnboardingRouter } from "./modules/onboarding/routes/onboarding.routes";
+import { OnboardingController } from "./modules/onboarding/controller/onboarding.controller";
+import { OnboardingService } from "./modules/onboarding/service/onboarding.service";
+import { OnboardingRepository } from "./modules/onboarding/repository/onboarding.repository";
+
+import { createProfileRouter } from "./modules/profile/routes/profile.routes";
+import { ProfileController } from "./modules/profile/controller/profile.controller";
+import { ProfileService } from "./modules/profile/service/profile.service";
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+const superadminRouter = createSuperadminRouter(
+  supabaseAdmin,
+  new SuperadminController(
+    new SuperadminService(new SuperadminRepository(supabaseAdmin)),
+  ),
+);
+
+const municipalityRouter = createMunicipalityRouter(
+  supabaseAdmin,
+  new MunicipalityController(
+    new MunicipalityService(new MunicipalityRepository(supabaseAdmin)),
+  ),
+);
+
+const departmentRouter = createDepartmentRouter(
+  supabaseAdmin,
+  new DepartmentController(
+    new DepartmentService(new DepartmentRepository(supabaseAdmin)),
+  ),
+);
+
+const staffRouter = createStaffRouter(
+  supabaseAdmin,
+  new StaffController(new StaffService(new StaffRepository(supabaseAdmin))),
+);
+
+const complaintsRouter = createComplaintsRouter(
+  supabaseAdmin,
+  new ComplaintsController(
+    new ComplaintsService(new ComplaintsRepository(supabaseAdmin)),
+  ),
+);
+
+const notificationsRouter = createNotificationsRouter(
+  supabaseAdmin,
+  new NotificationsController(
+    new NotificationsService(new NotificationsRepository(supabaseAdmin)),
+  ),
+);
+
+const onboardingRouter = createOnboardingRouter(
+  supabaseAdmin,
+  new OnboardingController(
+    new OnboardingService(new OnboardingRepository(supabaseAdmin))
+  )
+);
+
+const profileRouter = createProfileRouter(
+  supabaseAdmin,
+  new ProfileController(new ProfileService(supabaseAdmin))
+);
 
 app.use(
   helmet({
@@ -32,7 +116,11 @@ app.use(
     credentials: true,
   }),
 );
-app.use(express.json());
+app.use(express.json({ limit: "50mb" }));
+app.use(express.urlencoded({ extended: true, limit: "50mb" }));
+
+// Health and Swagger documentation routes (exempt from API rate limiting)
+app.use("/health", healthRoutes);
 
 const swaggerUiOptions: any = {
   customSiteTitle: "Smart Civic Platform API Docs",
@@ -49,17 +137,11 @@ app.get("/api/docs/swagger.json", (_req, res) => {
   console.log(getSwaggerSpec());
 });
 
-/**
- * Mount Swagger UI. Using the consolidated approach ensures relative paths
- * for CSS/JS assets and the OpenAPI JSON are resolved correctly.
- */
 app.use(
   "/api/docs",
   swaggerUi.serve,
   swaggerUi.setup(undefined, swaggerUiOptions),
 );
-
-app.use(rateLimit({ windowMs: 15 * 60 * 1000, max: 100 }));
 
 app.get("/", (_req, res) => {
   res.json({
@@ -69,13 +151,21 @@ app.get("/", (_req, res) => {
   });
 });
 
-app.use("/health", healthRoutes);
+// Apply global rate limiter to API routes (returns JSON on 429)
+app.use("/api", globalRateLimiter);
+
+// Mount API routers
+app.use("/api/public", publicRoutes);
 app.use("/api/auth", authRoutes);
-app.use("/api/superadmin", superadminRoutes);
-app.use("/api/municipality", municipalityRoutes);
-app.use("/api/department", departmentRoutes);
-app.use("/api/staff", staffRoutes);
+app.use("/api/onboarding", onboardingRouter);
+app.use("/api/superadmin", superadminRouter);
+app.use("/api/municipality", municipalityRouter);
+app.use("/api/department", departmentRouter);
+app.use("/api/staff", staffRouter);
+app.use("/api/complaints", complaintsRouter);
+app.use("/api/notifications", notificationsRouter);
 app.use("/api/citizen", citizenRoutes);
+app.use("/api/profile", profileRouter);
 
 app.use((_req, res) => {
   res.status(404).json({ success: false, message: "Route not found" });

@@ -43,17 +43,15 @@ export const auditLogger = (
             .from("audit_logs")
             .insert({
               action_by: req.user.id,
-              action_role: req.user.role as any,
+              action_by_role: req.user.role as any,
               municipality_id: req.user.municipality_id,
-              department_id: req.user.department_id,
               table_name: tableName,
               record_id: recordId,
               action: action as any,
               old_value: getOldValue ? getOldValue(req) : null,
               new_value: getNewValue ? getNewValue(req) : null,
-              ip_address: req.ip,
-              user_agent: req.get("user-agent"),
-            })
+              severity: 'info',
+            } as any)
             .then(({ error }) => {
               if (error) console.error("[AUDIT LOG ERROR]", error);
             });

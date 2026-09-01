@@ -12,10 +12,15 @@ export const forcePasswordReset = (
 ) => {
   // Check if the profile requires a password reset
   if (req.user && req.user.force_password_reset) {
+    // Explicitly bypass for superadmin and citizen roles
+    if (req.user.role === "superadmin" || req.user.role === "citizen") {
+      return next();
+    }
+
     // Let them hit the change password endpoints, otherwise block
     if (
-      !req.originalUrl.includes("/reset-password") &&
-      !req.originalUrl.includes("/change-password")
+      !req.path.includes("/reset-password") &&
+      !req.path.includes("/change-password")
     ) {
       return res.status(403).json({
         success: false,

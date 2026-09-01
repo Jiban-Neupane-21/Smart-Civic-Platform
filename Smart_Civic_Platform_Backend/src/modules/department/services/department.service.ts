@@ -1,370 +1,463 @@
+import { DepartmentRepository } from "../repository/department.repository";
+import type { ComplaintStatus, Database } from "../../../types/database.type";
+import { CollaborationService } from "../../../service/collaboration.service";
+import { ExportService } from "../../../service/export.service";
+import { StorageService } from "../../../service/storage.service";
 import { supabaseAdmin } from "../../../config/supabase";
-import {
-  ConflictError,
-  NotFoundError,
-} from "../../../utils/errors";
-import { recordAudit } from "../../../utils/auditHelper";
-import type { DepartmentType } from "../../../types/database.type";
-
-export { NotFoundError, ConflictError };
-export { ForbiddenError } from "../../../utils/errors";
-
-export interface DepartmentFilters {
-  page?: number;
-  limit?: number;
-  search?: string;
-  status?: string;
-  headStaffId?: string;
-}
-
-function paginate(page: number, limit: number) {
-  const p = Math.max(1, page);
-  const l = Math.min(100, limit);
-  return { from: (p - 1) * l, to: (p - 1) * l + l - 1, page: p, limit: l };
-}
-
-function mapBody(municipalityId: string, body: Record<string, unknown>) {
-  return {
-    municipality_id: municipalityId,
-    dept_name: (body.name ?? body.dept_name) as string,
-    department_type: (body.department_type ?? body.type) as
-      | DepartmentType
-      | undefined,
-    dept_contact: (body.contactPhone ?? body.dept_contact) as string | undefined,
-    dept_email: (body.contactEmail ?? body.headEmail ?? body.dept_email) as
-      | string
-      | undefined,
-    operating_budget: body.operating_budget as number | undefined,
-    head_id: (body.headStaffId ?? body.head_id) as string | undefined,
-    is_active: body.status ? body.status === "active" : undefined,
-  };
-}
 
 export class DepartmentService {
-  static async list(municipalityId: string, filters: DepartmentFilters) {
-    const { from, to, page, limit } = paginate(
-      filters.page || 1,
-      filters.limit || 20,
-    );
+  constructor(private repo: DepartmentRepository) { }
 
-    let query = supabaseAdmin
+  async updateLogo(departmentId: string, base64Data: string) {
+    const storageService = new StorageService(supabaseAdmin);
+    const fileKey = `departments/${departmentId}/logo_${Date.now()}.jpg`;
+    
+    const publicUrl = await storageService.upload("logos", fileKey, base64Data);
+
+    const { data, error } = await supabaseAdmin
       .from("departments")
-      .select("*", { count: "exact" })
-      .eq("municipality_id", municipalityId)
-      .eq("is_deleted", false)
-      .order("dept_name")
-      .range(from, to);
+      .update({ department_logo: publicUrl })
+      .eq("id", departmentId)
+      .select("department_logo")
+      .single();
 
-    if (filters.search?.trim()) {
-      const s = `%${filters.search.trim()}%`;
-      query = query.or(`dept_name.ilike.${s},dept_email.ilike.${s}`);
-    }
-    if (filters.status === "inactive") query = query.eq("is_active", false);
-    if (filters.status === "active") query = query.eq("is_active", true);
-    if (filters.headStaffId) query = query.eq("head_id", filters.headStaffId);
+    if (error) throw new Error(`Failed to update department logo: ${error.message}`);
+    return data;
+  }
 
-    const { data, count, error } = await query;
-    if (error) throw new Error(error.message);
-    const total = count ?? 0;
+  async getDepartmentProfile(departmentId: string, userId: string) {
+    const { data: deptData, error: deptError } = await supabaseAdmin
+      .from("departments")
+      .select("department_name, department_category, official_email, department_logo, head_name, head_email, kyc_status, kyc_rejection_reason")
+      .eq("id", departmentId)
+      .single();
+
+    if (deptError) throw new Error(`Failed to fetch department details: ${deptError.message}`);
+
+    const { data: profileData, error: profileError } = await supabaseAdmin
+      .from("profiles")
+      .select("phone, identity_type, identity_number, identity_document_url, identity_verified_at")
+      .eq("id", userId)
+      .single();
+
+    if (profileError) throw new Error(`Failed to fetch head profile: ${profileError.message}`);
 
     return {
-      departments: data,
-      pagination: {
-        page,
-        limit,
-        total,
-        totalPages: Math.ceil(total / limit),
-      },
+      ...deptData,
+      head_contact_no: profileData.phone,
+      head_identity_type: profileData.identity_type,
+      head_identity_number: profileData.identity_number,
+      head_identity_front_url: profileData.identity_document_url,
+      identity_verified_at: profileData.identity_verified_at,
     };
   }
 
-  static async getById(id: string, municipalityId?: string) {
-    let query = supabaseAdmin
-      .from("departments")
-      .select(
-        `
-        *,
-        municipalities ( m_uid, official_name, slug, region_state ),
-        staff (
-          s_uid, profile_id, employee_id, staff_role, employee_status,
-          profiles ( full_name, email, phone )
-        )
-      `,
-      )
-      .eq("d_uid", id)
-      .eq("is_deleted", false);
+  async setupDepartmentProfile(
+    departmentId: string,
+    userId: string,
+    payload: any
+  ) {
+    const storageService = new StorageService(supabaseAdmin);
+    let logoUrl = payload.department_logo_base64 ? undefined : payload.department_logo;
 
-    if (municipalityId) query = query.eq("municipality_id", municipalityId);
+    if (payload.department_logo_base64) {
+      const fileKey = `departments/${departmentId}/logo_${Date.now()}.jpg`;
+      logoUrl = await storageService.upload("logos", fileKey, payload.department_logo_base64);
+    }
 
-    const { data, error } = await query.single();
-    if (error || !data) throw new NotFoundError(`Department ${id} not found.`);
+    let identityFrontUrl = payload.head_identity_front_base64 ? undefined : payload.head_identity_front_url;
+    if (payload.head_identity_front_base64) {
+      identityFrontUrl = await storageService.uploadIdentityDocument(
+        userId,
+        payload.head_identity_front_base64,
+        "identity_front"
+      );
+    }
 
-    const { count: staffCount } = await supabaseAdmin
-      .from("staff")
-      .select("s_uid", { count: "exact", head: true })
-      .eq("department_id", id)
-      .eq("is_deleted", false);
+    let identityBackUrl = payload.head_identity_back_base64 ? undefined : payload.head_identity_back_url;
+    if (payload.head_identity_back_base64) {
+      identityBackUrl = await storageService.uploadIdentityDocument(
+        userId,
+        payload.head_identity_back_base64,
+        "identity_back"
+      );
+    }
 
-    const { count: complaintCount } = await supabaseAdmin
-      .from("complaints")
-      .select("co_uid", { count: "exact", head: true })
-      .eq("department_id", id)
-      .eq("is_deleted", false);
+    // Update departments table
+    const deptUpdates: any = {};
+    if (payload.official_email !== undefined) deptUpdates.official_email = payload.official_email;
+    if (logoUrl !== undefined) deptUpdates.department_logo = logoUrl;
+    if (payload.head_name !== undefined) deptUpdates.head_name = payload.head_name;
+    if (payload.head_email !== undefined) deptUpdates.head_email = payload.head_email;
 
-    return {
+    // Set KYC status to pending when documents are submitted
+    if (identityFrontUrl) {
+      deptUpdates.kyc_status = 'pending';
+      deptUpdates.kyc_rejection_reason = null;
+    }
+
+    if (Object.keys(deptUpdates).length > 0) {
+      const { error: deptErr } = await supabaseAdmin
+        .from("departments")
+        .update(deptUpdates)
+        .eq("id", departmentId);
+      if (deptErr) throw new Error(`Failed to update department: ${deptErr.message}`);
+    }
+
+    // Update profiles table
+    const profileUpdates: any = {};
+    if (payload.head_identity_type !== undefined) profileUpdates.identity_type = payload.head_identity_type;
+    if (payload.head_identity_number !== undefined) profileUpdates.identity_number = payload.head_identity_number;
+    if (identityFrontUrl !== undefined) profileUpdates.identity_document_url = identityFrontUrl;
+    if (payload.head_contact_no !== undefined) profileUpdates.phone = payload.head_contact_no;
+
+    if (Object.keys(profileUpdates).length > 0) {
+      const { error: profErr } = await supabaseAdmin
+        .from("profiles")
+        .update(profileUpdates)
+        .eq("id", userId);
+      if (profErr) throw new Error(`Failed to update head profile: ${profErr.message}`);
+    }
+
+    return await this.getDepartmentProfile(departmentId, userId);
+  }
+
+  async buildDeploymentTeam(
+    departmentId: string,
+    teamName: string,
+    startDate: string,
+    endDate: string,
+    createdBy?: string,
+    description?: string,
+    memberStaffIds?: string[],
+    leaderStaffId?: string,
+    isEmergencyOverride = false,
+    overrideReason?: string
+  ) {
+    const startMs = Date.parse(startDate);
+    const endMs = Date.parse(endDate);
+    if (isNaN(startMs) || isNaN(endMs) || startMs >= endMs) {
+      throw new Error("Invalid team duration. start_date must be before end_date.");
+    }
+
+    // Schedule conflict checking (unless emergency override)
+    if (memberStaffIds && memberStaffIds.length > 0 && !isEmergencyOverride) {
+      const { ScheduleService } = require("../../../service/schedule.service");
+      const scheduleService = new ScheduleService((this.repo as any).supabaseAdmin);
+      const availResults = await scheduleService.checkBulkAvailability(memberStaffIds, startDate, endDate);
+
+      const conflicts = availResults.filter((r: any) => !r.is_available);
+      if (conflicts.length > 0) {
+        const names = conflicts.map((c: any) => `${c.staff_id} (assigned to ${c.conflicting_team_name})`).join(", ");
+        throw new Error(`Schedule conflict detected for staff member(s): ${names}. Use emergency override if required.`);
+      }
+    }
+
+    const team = await this.repo.createTeam({
+      department_id: departmentId,
+      team_name: teamName,
+      team_type: "single_department",
+      start_date: startDate,
+      end_date: endDate,
+      created_by: createdBy || null,
+      ...(description ? { description } : {}),
+    });
+
+    const teamPk = this.repo.extractTeamPk(team);
+
+    if (teamPk && memberStaffIds && memberStaffIds.length > 0) {
+      for (const staffId of memberStaffIds) {
+        await this.repo.addTeamMember({
+          team_id: teamPk,
+          staff_id: staffId,
+          is_leader: staffId === leaderStaffId,
+        });
+
+        // Insert staff_assignments row
+        await (this.repo as any).supabaseAdmin.from("staff_assignments").insert({
+          staff_id: staffId,
+          team_id: teamPk,
+          assigned_by: createdBy || null,
+          start_date: startDate,
+          end_date: endDate,
+          is_emergency_override: isEmergencyOverride,
+          override_reason: overrideReason || null,
+        });
+      }
+    }
+
+    return team;
+  }
+
+  async assignStaffToSquad(
+    departmentId: string,
+    data: Database["public"]["Tables"]["team_members"]["Insert"],
+  ) {
+    const teamPk = await this.repo.resolveTeamPk(data.team_id, departmentId);
+    return await this.repo.addTeamMember({
       ...data,
-      _count: {
-        staff: staffCount ?? 0,
-        complaints: complaintCount ?? 0,
-      },
-    };
-  }
-
-  static async create(
-    dto: Record<string, unknown> & { municipalityId: string },
-    createdBy: string,
-  ) {
-    const mapped = mapBody(dto.municipalityId, dto);
-    if (!mapped.dept_name) throw new Error("dept_name is required");
-
-    const { data: muni } = await supabaseAdmin
-      .from("municipalities")
-      .select("m_uid")
-      .eq("m_uid", dto.municipalityId)
-      .maybeSingle();
-    if (!muni) {
-      throw new NotFoundError(`Municipality ${dto.municipalityId} not found.`);
-    }
-
-    const { data: dup } = await supabaseAdmin
-      .from("departments")
-      .select("d_uid")
-      .eq("municipality_id", dto.municipalityId)
-      .eq("dept_name", mapped.dept_name)
-      .eq("is_deleted", false)
-      .maybeSingle();
-    if (dup) {
-      throw new ConflictError(
-        `Department '${mapped.dept_name}' already exists in this municipality.`,
-      );
-    }
-
-    const { data, error } = await supabaseAdmin
-      .from("departments")
-      .insert({ ...mapped, is_active: mapped.is_active ?? true })
-      .select()
-      .single();
-    if (error) throw new Error(error.message);
-
-    await recordAudit({
-      actionBy: createdBy,
-      actionRole: "municipality_head",
-      municipalityId: dto.municipalityId,
-      tableName: "departments",
-      recordId: data.d_uid,
-      action: "INSERT",
-      newValue: data as unknown as Record<string, unknown>,
+      team_id: teamPk,
     });
-
-    return data;
   }
 
-  static async update(
-    id: string,
-    municipalityId: string,
-    dto: Record<string, unknown>,
-    updatedBy: string,
+  async resolveGrievance(
+    departmentId: string,
+    complaintId: string,
+    action: Exclude<ComplaintStatus, "pending">,
+    notes: { resolution_note?: string; rejection_reason?: string },
   ) {
-    await this.getById(id, municipalityId);
-    const mapped = mapBody(municipalityId, dto);
-    const { data, error } = await supabaseAdmin
-      .from("departments")
-      .update(mapped)
-      .eq("d_uid", id)
-      .select()
-      .single();
-    if (error) throw new Error(error.message);
+    const updatePayload: any = { status: action };
 
-    await recordAudit({
-      actionBy: updatedBy,
-      actionRole: "municipality_head",
-      municipalityId,
-      departmentId: id,
-      tableName: "departments",
-      recordId: id,
-      action: "UPDATE",
-      newValue: mapped,
-    });
-
-    return data;
-  }
-
-  static async delete(
-    id: string,
-    municipalityId: string,
-    permanent: boolean,
-    deletedBy: string,
-  ) {
-    const dept = await this.getById(id, municipalityId);
-    if ((dept._count?.staff ?? 0) > 0) {
-      throw new ConflictError(
-        "Cannot delete department with active staff. Reassign staff first.",
-      );
-    }
-
-    if (permanent) {
-      const { error } = await supabaseAdmin
-        .from("departments")
-        .delete()
-        .eq("d_uid", id);
-      if (error) throw new Error(error.message);
+    if (action === "resolved") {
+      updatePayload.resolution_note = notes.resolution_note;
+      updatePayload.resolution_date = new Date().toISOString();
+    } else if (action === "rejected") {
+      updatePayload.rejection_reason = notes.rejection_reason;
+      updatePayload.resolution_date = new Date().toISOString();
     } else {
-      const { error } = await supabaseAdmin
-        .from("departments")
-        .update({
-          is_deleted: true,
-          deleted_at: new Date().toISOString(),
-          is_active: false,
-        })
-        .eq("d_uid", id);
-      if (error) throw new Error(error.message);
+      updatePayload.resolution_date = null;
     }
 
-    await recordAudit({
-      actionBy: deletedBy,
-      actionRole: "municipality_head",
-      municipalityId,
-      departmentId: id,
-      tableName: "departments",
-      recordId: id,
-      action: permanent ? "DELETE" : "UPDATE",
-      note: permanent ? "permanent delete" : "soft delete",
-    });
-
-    return {
-      deletedId: id,
-      permanent,
-      message: permanent
-        ? "Department permanently deleted."
-        : "Department deactivated.",
-    };
+    return await this.repo.updateComplaintStatus(
+      complaintId,
+      departmentId,
+      updatePayload,
+    );
   }
 
-  static async getStats(id: string, municipalityId: string) {
-    const dept = await this.getById(id, municipalityId);
-
-    const statuses = ["pending", "in_progress", "resolved", "rejected"] as const;
-    const counts: Record<string, number> = {};
-    for (const status of statuses) {
-      const { count } = await supabaseAdmin
-        .from("complaints")
-        .select("co_uid", { count: "exact", head: true })
-        .eq("department_id", id)
-        .eq("status", status)
-        .eq("is_deleted", false);
-      counts[status] = count ?? 0;
-    }
-
-    const total = Object.values(counts).reduce((a, b) => a + b, 0);
-    const resolved = counts.resolved ?? 0;
-
-    return {
-      department: {
-        id: dept.d_uid,
-        name: dept.dept_name,
-      },
-      staff: { total: dept._count?.staff ?? 0 },
-      complaints: {
-        total,
-        byStatus: counts,
-        resolutionRate: total > 0 ? Math.round((resolved / total) * 100) : 0,
-      },
-      generatedAt: new Date(),
-    };
+  async listRoster(departmentId: string) {
+    return await this.repo.getDepartmentStaff(departmentId);
   }
 
-  static async getSelectList(municipalityId: string) {
-    const { data, error } = await supabaseAdmin
-      .from("departments")
-      .select("d_uid, dept_name, head_id, is_active")
-      .eq("municipality_id", municipalityId)
-      .eq("is_active", true)
-      .eq("is_deleted", false)
-      .order("dept_name");
-    if (error) throw new Error(error.message);
-    return data?.map((d) => ({
-      id: d.d_uid,
-      name: d.dept_name,
-      headStaffId: d.head_id,
-    }));
+  async getMunicipalityId(departmentId: string): Promise<string> {
+    return await this.repo.getDepartmentMunicipalityId(departmentId);
   }
 
-  static async reassignStaff(
-    fromDepartmentId: string,
-    toDepartmentId: string,
-    municipalityId: string,
-    reassignedBy: string,
+  async getDepartmentCategoryAndName(departmentId: string) {
+    return await this.repo.getDepartmentCategoryAndName(departmentId);
+  }
+
+  async modifyStaff(
+    staffId: string,
+    departmentId: string,
+    payload: {
+      full_name?: string;
+      email?: string;
+      phone?: string;
+      expertise?: string;
+      contact_number?: string;
+      employee_status?: string;
+      gender?: string;
+      date_of_birth?: string;
+      personal_address?: string;
+    },
   ) {
-    const { data: updated, error } = await supabaseAdmin
-      .from("staff")
-      .update({ department_id: toDepartmentId })
-      .eq("department_id", fromDepartmentId)
-      .eq("municipality_id", municipalityId)
-      .select("s_uid");
-    if (error) throw new Error(error.message);
+    return await this.repo.updateStaffRecord(staffId, departmentId, payload);
+  }
 
-    await recordAudit({
-      actionBy: reassignedBy,
-      actionRole: "municipality_head",
-      municipalityId,
-      departmentId: toDepartmentId,
-      tableName: "staff",
-      recordId: toDepartmentId,
-      action: "REASSIGN",
-      newValue: {
-        fromDepartmentId,
-        toDepartmentId,
-        count: updated?.length ?? 0,
-      },
-    });
+  async setStaffExpertise(
+    profileId: string,
+    departmentId: string,
+    expertise: string,
+  ) {
+    return await this.repo.updateStaffExpertiseByProfileId(
+      profileId,
+      departmentId,
+      expertise,
+    );
+  }
+
+  async checkEmailExists(email: string): Promise<boolean> {
+    return await this.repo.checkEmailExists(email);
+  }
+
+  async removeStaff(staffId: string, departmentId: string, deletedBy: string) {
+    return await this.repo.archiveAndDeleteStaff(
+      staffId,
+      departmentId,
+      deletedBy,
+    );
+  }
+
+  async updateStaffAccountStatus(staffId: string, departmentId: string, status: string) {
+    return await this.repo.updateStaffAccountStatus(staffId, departmentId, status);
+  }
+
+  async resetStaffPassword(staffId: string, departmentId: string, newPassword: string) {
+    return await this.repo.resetStaffPassword(staffId, departmentId, newPassword);
+  }
+
+  async getDashboard(departmentId: string) {
+    const summary = await this.repo.getDepartmentSummary(departmentId);
+
+    const counts: Record<string, number> = {
+      pending: 0,
+      under_review: 0,
+      in_progress: 0,
+      resolved: 0,
+      rejected: 0,
+      closed: 0,
+    };
+
+    for (const complaint of summary.complaints) {
+      if (complaint.status in counts) {
+        counts[complaint.status] += 1;
+      }
+    }
+
+    const totalComplaints = summary.totalComplaints;
+
+    const resolvedCount = counts.resolved + counts.closed;
+    const resolutionRate =
+      totalComplaints > 0
+        ? Math.round((resolvedCount / totalComplaints) * 100)
+        : 0;
 
     return {
-      reassignedCount: updated?.length ?? 0,
-      fromDepartmentId,
-      toDepartmentId,
+      department_name: summary.department_name,
+      department_category: summary.department_category,
+      totalComplaints,
+      pending: counts.pending,
+      under_review: counts.under_review,
+      in_progress: counts.in_progress,
+      resolved: counts.resolved,
+      rejected: counts.rejected,
+      closed: counts.closed,
+      resolutionRate,
+      totalStaff: summary.totalStaff,
+      activeTeams: summary.activeTeams,
+      recentComplaints: summary.complaints.map((c: any) => ({
+        co_uid: c.co_uid,
+        title: c.title,
+        status: c.status,
+        submitted_date: c.submitted_date,
+        category_id: c.category_id,
+      })),
     };
   }
 
-  static async export(municipalityId: string, filters: DepartmentFilters) {
-    const { departments } = await this.list(municipalityId, {
-      ...filters,
-      limit: 10000,
-    });
-    const headers = [
-      "Name",
-      "Type",
-      "Email",
-      "Contact",
-      "Budget",
-      "Active",
-      "Created",
-    ];
-    const rows = (departments ?? []).map((d) => [
-      d.dept_name,
-      d.department_type ?? "",
-      d.dept_email ?? "",
-      d.dept_contact ?? "",
-      d.operating_budget ?? "",
-      d.is_active,
-      d.created_at,
-    ]);
-    return [
-      headers.join(","),
-      ...rows.map((row) =>
-        row.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(","),
-      ),
-    ].join("\n");
+  // ===== MULTI-DEPARTMENT & COLLABORATION METHODS =====
+
+  async getDepartmentQueue(departmentId: string, statusFilter?: string) {
+    return await this.repo.getDepartmentComplaintsQueue(departmentId, statusFilter);
+  }
+
+  async getCollaborations(departmentId: string) {
+    return await this.repo.getCollaborationRequests(departmentId);
+  }
+
+  async requestCollaboration(
+    departmentId: string,
+    complaintId: string,
+    supportingDeptId: string,
+    initiatedBy: string,
+    inspectionNote?: string
+  ) {
+    const collabService = new CollaborationService((this.repo as any).supabaseAdmin);
+    return await collabService.requestStaffEscalation(
+      complaintId,
+      departmentId,
+      supportingDeptId,
+      initiatedBy,
+      inspectionNote
+    );
+  }
+
+  async submitSignOff(
+    departmentId: string,
+    complaintId: string,
+    signedBy: string,
+    roleAtTime: string,
+    decision: "approved" | "rejected",
+    note?: string
+  ) {
+    const collabService = new CollaborationService((this.repo as any).supabaseAdmin);
+    return await collabService.recordSignOff(
+      complaintId,
+      departmentId,
+      signedBy,
+      roleAtTime,
+      decision,
+      note
+    );
+  }
+
+  async exportComplaintsCsv(departmentId: string) {
+    const exportService = new ExportService((this.repo as any).supabaseAdmin);
+    return await exportService.exportDepartmentComplaintsCsv(departmentId);
+  }
+
+  // ─── Team Management ─────────────────────────────────────────────────────────
+
+  async listTeams(departmentId: string) {
+    return await this.repo.getDepartmentTeams(departmentId);
+  }
+
+  async getTeamDetails(teamName: string, departmentId: string) {
+    return await this.repo.getTeamByName(teamName, departmentId);
+  }
+
+  async updateTeamInfo(
+    teamName: string,
+    departmentId: string,
+    payload: { team_name?: string; description?: string; is_active?: boolean },
+  ) {
+    return await this.repo.updateTeam(teamName, departmentId, payload);
+  }
+
+  async removeMemberFromTeam(
+    teamName: string,
+    staffId: string,
+    departmentId: string,
+  ) {
+    return await this.repo.removeTeamMember(teamName, staffId, departmentId);
+  }
+
+  async setTeamLeader(
+    teamName: string,
+    staffId: string,
+    departmentId: string,
+    isLeader: boolean,
+  ) {
+    return await this.repo.toggleTeamLeader(
+      teamName,
+      staffId,
+      departmentId,
+      isLeader,
+    );
+  }
+
+  async assignComplaintToTeam(
+    departmentId: string,
+    teamName: string,
+    complaintId: string,
+    assignedBy: string,
+    notes?: string
+  ) {
+    const team = await this.repo.getTeamByName(teamName, departmentId);
+    if (!team) throw new Error("Team not found in department.");
+    return await this.repo.assignComplaintToTeam(complaintId, team.id, assignedBy, notes);
+  }
+
+  async getTeamComplaints(departmentId: string, teamName: string) {
+    const team = await this.repo.getTeamByName(teamName, departmentId);
+    if (!team) throw new Error("Team not found in department.");
+    return await this.repo.getTeamComplaints(team.id);
+  }
+
+  async reviewStaffKyc(
+    staffId: string,
+    departmentId: string,
+    reviewerId: string,
+    status: "verified" | "rejected",
+    rejectionReason?: string
+  ) {
+    return await this.repo.reviewStaffKyc(
+      staffId,
+      departmentId,
+      reviewerId,
+      status,
+      rejectionReason
+    );
   }
 }
-
-export default DepartmentService;

@@ -78,25 +78,7 @@ export const sendMail = async ({
 //  PREBUILT EMAIL HELPERS
 // ===============================
 
-// 1️ Staff Invite Email
-export const sendInviteEmail = async (email: string, token: string) => {
-  const link = `${env.CLIENT_URL}/accept-invite?token=${token}`;
-
-  const html = `
-    <h2>You're invited to join Smart Civic Platform</h2>
-    <p>Click the link below to accept your invitation:</p>
-    <a href="${link}">Accept Invitation</a>
-    <p>This link will expire in 72 hours.</p>
-  `;
-
-  return sendMail({
-    to: email,
-    subject: "Invitation to Smart Civic Platform",
-    html,
-  });
-};
-
-// 2️ Password Reset Email
+// 1️⃣ Password Reset Email
 export const sendPasswordResetEmail = async (email: string, token: string) => {
   const link = `${env.CLIENT_URL}/reset-password?token=${token}`;
 

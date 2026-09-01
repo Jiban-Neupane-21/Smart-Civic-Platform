@@ -6,10 +6,12 @@ import { validateBody } from "../../../middleware/validateBody";
 import {
   registerSchema,
   loginSchema,
-  inviteSchema,
-  acceptInviteSchema,
   forgotPasswordSchema,
   refreshTokenSchema,
+  changePasswordSchema,
+  sendOtpSchema,
+  verifyOtpSchema,
+  loginMobileSchema,
 } from "../../../validation/auth.validation";
 
 const router = Router();
@@ -72,6 +74,66 @@ router.post("/login", validateBody(loginSchema), AuthController.login);
 
 /**
  * @swagger
+ * /api/auth/send-otp:
+ *   post:
+ *     tags: [Auth]
+ *     summary: Send OTP code via SMS for mobile authentication or password reset
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/SendOtpRequest'
+ *     responses:
+ *       200:
+ *         description: OTP code generated and dispatched cleanly.
+ *       400:
+ *         description: Validation error or phone format failure.
+ */
+router.post("/send-otp", validateBody(sendOtpSchema), AuthController.sendOtp);
+
+/**
+ * @swagger
+ * /api/auth/verify-otp:
+ *   post:
+ *     tags: [Auth]
+ *     summary: Verify SMS OTP code
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/VerifyOtpRequest'
+ *     responses:
+ *       200:
+ *         description: OTP code verified successfully.
+ *       400:
+ *         description: Invalid or expired OTP code.
+ */
+router.post("/verify-otp", validateBody(verifyOtpSchema), AuthController.verifyOtp);
+
+/**
+ * @swagger
+ * /api/auth/login-mobile:
+ *   post:
+ *     tags: [Auth]
+ *     summary: Mobile phone OTP passwordless login
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/MobileLoginRequest'
+ *     responses:
+ *       200:
+ *         description: Mobile login successful. Access & refresh tokens generated.
+ *       400:
+ *         description: OTP verification failure or user record absent.
+ */
+router.post("/login-mobile", validateBody(loginMobileSchema), AuthController.loginMobile);
+
+/**
+ * @swagger
  * /api/auth/refresh:
  *   post:
  *     tags: [Auth]
@@ -102,6 +164,8 @@ router.post(
   AuthController.refresh,
 );
 
+import { forcePasswordReset } from "../../../middleware/forcePasswordReset";
+
 /**
  * @swagger
  * /api/auth/logout:
@@ -128,6 +192,7 @@ router.post(
 router.post(
   "/logout",
   authenticate,
+  forcePasswordReset,
   validateBody(refreshTokenSchema),
   AuthController.logout,
 );
@@ -158,73 +223,33 @@ router.post(
  *       401:
  *         $ref: '#/components/responses/Unauthorized'
  */
-router.get("/me", authenticate, AuthController.getMe);
+router.get("/me", authenticate, forcePasswordReset, AuthController.getMe);
 
 /**
  * @swagger
- * /api/auth/invite:
- *   post:
+ * /api/auth/change-password:
+ *   patch:
  *     tags: [Auth]
- *     summary: Send staff invite (superadmin, municipality_head, or department_head)
+ *     summary: Change password (requires current password)
  *     security: [{ BearerAuth: [] }]
  *     requestBody:
  *       required: true
  *       content:
  *         application/json:
  *           schema:
- *             $ref: '#/components/schemas/InviteRequest'
- *     responses:
- *       201:
- *         description: Invitation sent
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/SuccessResponse'
- *       400:
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/ErrorResponse'
- *       401:
- *         $ref: '#/components/responses/Unauthorized'
- */
-router.post(
-  "/invite",
-  authenticate,
-  authorize("superadmin", "municipality_head", "department_head"),
-  validateBody(inviteSchema),
-  AuthController.inviteStaff,
-);
-
-/**
- * @swagger
- * /api/auth/accept-invite:
- *   post:
- *     tags: [Auth]
- *     summary: Accept a staff invitation and set password
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             $ref: '#/components/schemas/AcceptInviteRequest'
+ *             $ref: '#/components/schemas/ChangePasswordRequest'
  *     responses:
  *       200:
- *         description: Invitation accepted
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/SuccessResponse'
+ *         description: Password changed
  *       400:
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/ErrorResponse'
+ *         description: Current password incorrect or validation error
  */
-router.post(
-  "/accept-invite",
-  validateBody(acceptInviteSchema),
-  AuthController.acceptInvite,
+router.patch(
+  "/change-password",
+  authenticate,
+  forcePasswordReset,
+  validateBody(changePasswordSchema),
+  AuthController.changePassword,
 );
 
 /**

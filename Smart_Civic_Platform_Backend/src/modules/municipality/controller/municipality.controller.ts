@@ -1,514 +1,728 @@
 import { Response } from "express";
-import { AuthenticatedRequest } from "../middleware";
-import { supabaseAdmin } from "../../../config/supabase";
-import {
-  MunicipalityService,
-  DepartmentService,
-  StaffService,
-  ComplaintService,
-  NoticeService,
-  AuditLogService,
-  NotFoundError,
-  ForbiddenError,
-  ConflictError,
-} from "../services/municipality.service";
+import crypto from "crypto";
+import type { ComplaintStatus } from "../../../types/database.type";
+import { MunicipalityService } from "../services/municipality.service";
+import { createUserService } from "../../auth/services/auth.service";
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+export class MunicipalityController {
+  constructor(private service: MunicipalityService) {}
 
-const asyncHandler =
-  (fn: (req: AuthenticatedRequest, res: Response) => Promise<void>) =>
-  (req: AuthenticatedRequest, res: Response): void => {
-    fn(req, res).catch((err: unknown) => {
-      if (
-        err instanceof NotFoundError ||
-        err instanceof ForbiddenError ||
-        err instanceof ConflictError
-      ) {
-        res.status((err as { statusCode: number }).statusCode).json({
+  getAnalytics = async (req: any, res: Response): Promise<void> => {
+    try {
+      const stats = await this.service.getDashboardAnalytics(
+        req.municipalityId,
+      );
+      res.status(200).json({ success: true, data: stats });
+    } catch (error: any) {
+      res.status(500).json({ success: false, error: error.message });
+    }
+  };
+
+  updateLogo = async (req: any, res: Response): Promise<void> => {
+    try {
+      if (!req.body.logo) {
+        res.status(400).json({ success: false, error: "logo base64 string is required" });
+        return;
+      }
+      const data = await this.service.updateLogo(req.municipalityId, req.body.logo);
+      res.status(200).json({ success: true, data, message: "Logo updated successfully" });
+    } catch (error: any) {
+      res.status(500).json({ success: false, error: error.message });
+    }
+  };
+
+  getMunicipalityProfile = async (req: any, res: Response): Promise<void> => {
+    try {
+      const data = await this.service.getMunicipalityProfile(req.municipalityId);
+      res.status(200).json({ success: true, data });
+    } catch (error: any) {
+      res.status(500).json({ success: false, error: error.message });
+    }
+  };
+
+  updateMunicipalityProfile = async (req: any, res: Response): Promise<void> => {
+    try {
+      const data = await this.service.updateMunicipalityProfile(req.municipalityId, req.body, req.user?.id);
+      res.status(200).json({
+        success: true,
+        data,
+        message: data.kyc_status === "pending"
+          ? "Profile updated and submitted for KYC verification!"
+          : "Profile updated successfully.",
+      });
+    } catch (error: any) {
+      res.status(500).json({ success: false, error: error.message });
+    }
+  };
+
+  getDepartments = async (req: any, res: Response): Promise<void> => {
+    try {
+      const depts = await this.service.getDepartments(req.municipalityId);
+      res.status(200).json({ success: true, data: { departments: depts } });
+    } catch (error: any) {
+      res.status(500).json({ success: false, error: error.message });
+    }
+  };
+
+  getDepartmentDetail = async (req: any, res: Response): Promise<void> => {
+    try {
+      const { id } = req.params;
+      const dept = await this.service.getDepartmentById(id);
+      if (!dept) {
+        res.status(404).json({ success: false, error: "Department not found." });
+        return;
+      }
+      res.status(200).json({ success: true, data: dept });
+    } catch (error: any) {
+      res.status(500).json({ success: false, error: error.message });
+    }
+  };
+
+  getDepartmentCategories = async (req: any, res: Response): Promise<void> => {
+    try {
+      const categories = await this.service.getDepartmentCategories();
+      res.status(200).json({ success: true, data: categories });
+    } catch (error: any) {
+      res.status(500).json({ success: false, error: error.message });
+    }
+  };
+
+  reviewDepartmentKyc = async (req: any, res: Response): Promise<void> => {
+    try {
+      const { id: departmentId } = req.params;
+      const { status, rejection_reason } = req.body;
+
+      if (!status || !["verified", "rejected"].includes(status)) {
+        res.status(400).json({ success: false, error: "status must be 'verified' or 'rejected'." });
+        return;
+      }
+
+      const updated = await this.service.reviewDepartmentKyc(
+        req.municipalityId,
+        departmentId,
+        req.user.id,
+        status,
+        rejection_reason
+      );
+
+      res.status(200).json({
+        success: true,
+        message: `Department KYC status updated to '${status}'.`,
+        data: updated,
+      });
+    } catch (error: any) {
+      res.status(400).json({ success: false, error: error.message });
+    }
+  };
+
+  provisionDepartment = async (req: any, res: Response): Promise<void> => {
+    try {
+      const { department_name, official_email, head_name, head_email, head_password: customPassword } = req.body;
+
+      if (!department_name || !official_email || !head_name || !head_email) {
+        res.status(400).json({
           success: false,
-          message: err.message,
+          error: "Missing fundamental structural department elements.",
         });
         return;
       }
-      console.error("[MUNICIPALITY CONTROLLER ERROR]", err);
-      res
-        .status(500)
-        .json({ success: false, message: "Internal server error." });
-    });
+
+      // Check for duplicate department name within this municipality
+      const existingDepts = await this.service.getDepartments(req.municipalityId);
+      if (existingDepts?.some((d: any) => d.department_name.toLowerCase() === department_name.toLowerCase())) {
+        res.status(409).json({
+          success: false,
+          error: "A department with this name already exists in your municipality.",
+        });
+        return;
+      }
+
+      // 1. Generate or use password for department head
+      const head_password = customPassword || crypto.randomBytes(6).toString("hex");
+
+      // 2. Register department
+      const { department_category } = req.body;
+      const departmentData = {
+        department_name,
+        official_email,
+        head_name,
+        head_email,
+        ...(department_category && { department_category }),
+      };
+
+      const dept = await this.service.registerDepartment(
+        req.municipalityId,
+        departmentData,
+      );
+
+      try {
+        // 3. Create the department head user profile (using dept.id)
+        const userProfile = await createUserService({
+          email: head_email,
+          password: head_password,
+          full_name: head_name,
+          role: "department_head",
+          municipality_id: req.municipalityId,
+          department_id: dept.id,
+          phone: req.body.head_contact_no || undefined,
+          created_by: req.user?.id || "municipality_head",
+        });
+
+        // 4. Update department record with head profile ID (using dept.id)
+        await this.service.updateDepartment(dept.id, {
+          head_profile_id: userProfile.id,
+        });
+
+        res.status(201).json({
+          success: true,
+          data: {
+            ...dept,
+            head_password,
+            head_email,
+            department_name,
+          },
+        });
+      } catch (userError: any) {
+        // Rollback department creation if user fails (using dept.id)
+        await this.service.deleteDepartment(dept.id);
+        throw new Error(`Failed to create head user account. Department creation rolled back. Reason: ${userError.message}`);
+      }
+    } catch (error: any) {
+      res.status(400).json({ success: false, error: error.message });
+    }
   };
 
-const param = (value: string | string[] | undefined) =>
-  String(Array.isArray(value) ? value[0] : (value ?? ""));
+  updateDepartment = async (req: any, res: Response): Promise<void> => {
+    try {
+      const { id } = req.params;
+      const { head_contact_no, head_name, head_email, ...deptFields } = req.body;
 
-const getPagination = (req: AuthenticatedRequest) => ({
-  page: parseInt(req.query.page as string) || 1,
-  limit: parseInt(req.query.limit as string) || 20,
-  search: (req.query.search as string) || "",
-});
-
-// ─── Municipality Controller ──────────────────────────────────────────────────
-
-export class MunicipalityController {
-  /**
-   * GET /municipalities
-   * List all municipalities (superadmin view).
-   */
-  static list = asyncHandler(async (req, res) => {
-    const result = await MunicipalityService.list(getPagination(req));
-    res.json({ success: true, data: result });
-  });
-
-  /**
-   * GET /municipalities/:municipalityId
-   * Get full profile of a municipality including department list.
-   */
-  static getById = asyncHandler(async (req, res) => {
-    const muni = await MunicipalityService.getById(
-      param(req.params.municipalityId),
-    );
-    res.json({ success: true, data: muni });
-  });
-
-  /**
-   * POST /municipalities
-   * Create a new municipality (superadmin only).
-   * Body: { name, code, province, district, address, type, ... }
-   */
-  static create = asyncHandler(async (req, res) => {
-    const { name, email, region, head_name, head_email, head_password } =
-      req.body;
-
-    // 1. Create the Municipality first to generate its UUID
-    const { data: municipality, error: munError } = await supabaseAdmin
-      .from("municipalities")
-      .insert({
-        official_name: name,
-        region_state: region,
-        login_email: email,
-      })
-      .select("m_uid")
-      .single();
-
-    if (munError) {
-      // Handle PostgreSQL Unique Constraint Violation for Municipality Email
-      if (munError.code === "23505") {
-        throw new ConflictError("Municipality contact email already exists.");
+      // Sync linked profile if head_name, head_email, or contact number changed
+      if (head_name || head_email || head_contact_no) {
+        const department = await this.service.getDepartmentById(id);
+        if (department?.head_profile_id) {
+          const profileUpdate: any = {};
+          if (head_name) profileUpdate.full_name = head_name;
+          if (head_email) profileUpdate.email = head_email;
+          if (head_contact_no) profileUpdate.phone = head_contact_no;
+          await this.service.updateProfile(department.head_profile_id, profileUpdate);
+        }
       }
-      throw munError;
-    }
 
-    // 2. Create the Municipality Head User (Database trigger handles the rest!)
-    const { data: authUser, error: authError } =
-      await supabaseAdmin.auth.admin.createUser({
-        email: head_email,
-        password: head_password,
-        email_confirm: true, // Bypass email verification
-        user_metadata: {
-          full_name: head_name,
-          role: "municipality_head",
-          municipality_id: municipality.m_uid, // Crucial: Links the trigger's staff row!
-        },
+      const dept = await this.service.updateDepartment(id, {
+        ...deptFields,
+        ...(head_name && { head_name }),
+        ...(head_email && { head_email }),
       });
 
-    if (authError) {
-      // Rollback: Delete the municipality we just created if user creation fails
-      await supabaseAdmin
-        .from("municipalities")
-        .delete()
-        .eq("m_uid", municipality.m_uid);
+      res.status(200).json({ success: true, data: dept });
+    } catch (error: any) {
+      res.status(400).json({ success: false, error: error.message });
+    }
+  };
 
-      if (authError.message.toLowerCase().includes("already registered")) {
-        throw new ConflictError(
-          "Municipality head email is already registered to another user.",
-        );
+  deleteDepartment = async (req: any, res: Response): Promise<void> => {
+    try {
+      const { id } = req.params;
+
+      // 1. Fetch department to get linked head profile ID
+      const department = await this.service.getDepartmentById(id);
+      const headProfileId = department?.head_profile_id;
+
+      if (headProfileId) {
+        // 2. Break FK link
+        await this.service.updateDepartment(id, { head_profile_id: null });
+
+        try {
+          // 3. Delete profile and auth user
+          await this.service.removeProfile(headProfileId);
+          await this.service.removeAuthUser(headProfileId);
+        } catch (userError: any) {
+          console.error("Failed to clean up user on department delete:", userError.message);
+        }
       }
-      throw authError;
+
+      // 4. Delete department row
+      await this.service.deleteDepartment(id);
+      res.status(200).json({ success: true, message: "Department and linked user deleted successfully." });
+    } catch (error: any) {
+      res.status(400).json({ success: false, error: error.message });
     }
+  };
 
-    // Ensure the profile is explicitly created/updated in case the database trigger is missing or failed
-    await supabaseAdmin.from("profiles").upsert({
-      id: authUser.user.id,
-      email: head_email,
-      full_name: head_name,
-      role: "municipality_head",
-      municipality_id: municipality.m_uid,
-      account_status: "active",
-    });
+  replaceDepartmentHead = async (req: any, res: Response): Promise<void> => {
+    try {
+      const { id } = req.params;
+      const { head_name, head_email, head_contact_no, head_password: customPassword } = req.body;
 
-    // Ensure the staff record is explicitly created/updated
-    await supabaseAdmin.from("staff").upsert(
-      {
-        profile_id: authUser.user.id,
-        municipality_id: municipality.m_uid,
-        staff_role: "municipality_head",
-        employee_status: "active",
-      },
-      { onConflict: "profile_id" },
-    );
+      if (!head_name || !head_email) {
+        res.status(400).json({ success: false, error: "head_name and head_email are required." });
+        return;
+      }
 
-    // 3. Link the new Auth User's ID back to the Municipality as the head_id
-    await supabaseAdmin
-      .from("municipalities")
-      .update({ head_id: authUser.user.id })
-      .eq("m_uid", municipality.m_uid);
+      const department = await this.service.getDepartmentById(id);
+      if (!department) {
+        res.status(404).json({ success: false, error: "Department not found." });
+        return;
+      }
 
-    // 4. Return success mapped to the frontend's expected format
-    res.status(201).json({
-      success: true,
-      message: "Municipality and Head account created successfully.",
-      data: {
-        id: municipality.m_uid,
-        name: name,
-        region: region || "N/A",
-        email: email,
-        status: "Active",
-      },
-    });
-  });
+      // 1. Unlink old head if exists
+      if (department.head_profile_id) {
+        await this.service.updateDepartment(id, { head_profile_id: null });
+      }
 
-  /**
-   * PATCH /municipalities/:municipalityId
-   * Update municipality details.
-   */
-  static update = asyncHandler(async (req, res) => {
-    const id = param(req.params.municipalityId) || param(req.params.id);
-    const { name, email, region, status } = req.body;
+      // 2. Create new head user
+      const head_password = customPassword || crypto.randomBytes(6).toString("hex");
+      const userProfile = await createUserService({
+        email: head_email,
+        password: head_password,
+        full_name: head_name,
+        role: "department_head",
+        municipality_id: req.municipalityId,
+        department_id: id,
+        phone: head_contact_no || undefined,
+        created_by: req.user?.id || "municipality_head",
+      });
 
-    const updateData: any = {};
-    if (name !== undefined) updateData.official_name = name;
-    if (email !== undefined) updateData.login_email = email;
-    if (region !== undefined) updateData.region_state = region;
-    if (status !== undefined) updateData.is_active = status === "Active";
+      // 3. Link new head profile to department
+      const updatedDept = await this.service.updateDepartment(id, {
+        head_profile_id: userProfile.id,
+        head_name,
+        head_email,
+      });
 
-    const { data: muni, error } = await supabaseAdmin
-      .from("municipalities")
-      .update(updateData)
-      .eq("m_uid", id)
-      .select()
-      .single();
-
-    if (error) {
-      if (error.code === "23505")
-        throw new ConflictError("Municipality contact email already exists.");
-      throw error;
+      res.status(200).json({
+        success: true,
+        data: {
+          ...updatedDept,
+          head_password,
+        },
+      });
+    } catch (error: any) {
+      res.status(400).json({ success: false, error: error.message });
     }
+  };
 
-    res.json({
-      success: true,
-      message: "Municipality updated.",
-      data: {
-        id: muni.m_uid,
-        name: muni.official_name,
-        region: muni.region_state || "N/A",
-        email: muni.login_email,
-        status: muni.is_active ? "Active" : "Inactive",
-      },
-    });
-  });
+  // ===== STAFF CRUD HANDLERS =====
 
-  /**
-   * DELETE /municipalities/:municipalityId
-   * Delete a municipality (superadmin only).
-   */
-  static delete = asyncHandler(async (req, res) => {
-    const id = param(req.params.municipalityId) || param(req.params.id);
+  listStaff = async (req: any, res: Response): Promise<void> => {
+    try {
+      const department_id = req.query.department_id as string | undefined;
+      const staffList = await this.service.getStaff(req.municipalityId, department_id);
+      res.status(200).json({ success: true, data: staffList });
+    } catch (error: any) {
+      res.status(500).json({ success: false, error: error.message });
+    }
+  };
 
-    // Soft delete
-    const { error } = await supabaseAdmin
-      .from("municipalities")
-      .update({ is_deleted: true, deleted_at: new Date().toISOString() })
-      .eq("m_uid", id);
+  createStaff = async (req: any, res: Response): Promise<void> => {
+    try {
+      const { full_name, email, role, department_id, phone } = req.body;
 
-    if (error) throw error;
+      if (!email || !role || !department_id) {
+        res.status(400).json({
+          success: false,
+          error: "Missing required fields: email, role, department_id.",
+        });
+        return;
+      }
 
-    res.json({ success: true, message: "Municipality deleted.", data: { id } });
-  });
+      if (!["staff", "department_head"].includes(role)) {
+        res.status(400).json({
+          success: false,
+          error: "Role must be 'staff' or 'department_head'.",
+        });
+        return;
+      }
 
-  /**
-   * GET /municipalities/:municipalityId/stats
-   * Dashboard statistics for a municipality.
-   */
-  static stats = asyncHandler(async (req, res) => {
-    const stats = await MunicipalityService.getStats(
-      param(req.params.municipalityId),
-    );
-    res.json({ success: true, data: stats });
-  });
-}
+      const { RoleInviteService } = require("../../../service/role-invite.service");
+      const inviteService = new RoleInviteService((this.service as any).repo.supabaseAdmin);
 
-// ─── Department Controller ────────────────────────────────────────────────────
+      const invite = await inviteService.createInvite({
+        invited_by: req.user.id,
+        email,
+        phone,
+        role,
+        municipality_id: req.municipalityId,
+        department_id,
+        additional_data: { full_name },
+      });
 
-export class DepartmentController {
-  /**
-   * GET /municipalities/:municipalityId/departments
-   * List all departments in a municipality.
-   */
-  static list = asyncHandler(async (req, res) => {
-    const departments = await DepartmentService.listByMunicipality(
-      param(req.params.municipalityId),
-    );
-    res.json({ success: true, data: departments });
-  });
+      res.status(201).json({
+        success: true,
+        message: "Staff role invitation dispatched successfully.",
+        data: {
+          invite_id: invite.id,
+          email: invite.email,
+          role: invite.role,
+          invite_token: invite.token,
+          expires_at: invite.expires_at,
+          invite_link: `/accept-invite?token=${invite.token}`,
+        },
+      });
+    } catch (error: any) {
+      res.status(400).json({ success: false, error: error.message });
+    }
+  };
 
-  /**
-   * GET /municipalities/:municipalityId/departments/:departmentId
-   * Get a single department with staff list.
-   */
-  static getById = asyncHandler(async (req, res) => {
-    const dept = await DepartmentService.getById(
-      param(req.params.departmentId),
-      param(req.params.municipalityId),
-    );
-    res.json({ success: true, data: dept });
-  });
+  updateStaff = async (req: any, res: Response): Promise<void> => {
+    try {
+      const { staffId } = req.params;
+      const updated = await this.service.updateStaff(req.municipalityId, staffId, req.body);
+      res.status(200).json({ success: true, data: updated });
+    } catch (error: any) {
+      res.status(400).json({ success: false, error: error.message });
+    }
+  };
 
-  /**
-   * POST /municipalities/:municipalityId/departments
-   * Create a new department.
-   * Body: { name, code, description?, headName?, headEmail?, headPhone? }
-   */
-  static create = asyncHandler(async (req, res) => {
-    const dept = await DepartmentService.create({
-      ...req.body,
-      municipalityId: param(req.params.municipalityId),
-    });
-    res
-      .status(201)
-      .json({ success: true, message: "Department created.", data: dept });
-  });
+  deleteStaff = async (req: any, res: Response): Promise<void> => {
+    try {
+      const { staffId } = req.params;
+      await this.service.archiveAndDeleteStaff(staffId, req.municipalityId, req.user.id);
+      res.status(200).json({ success: true, message: "Staff member deleted successfully." });
+    } catch (error: any) {
+      res.status(400).json({ success: false, error: error.message });
+    }
+  };
 
-  /**
-   * PATCH /municipalities/:municipalityId/departments/:departmentId
-   * Update department details.
-   */
-  static update = asyncHandler(async (req, res) => {
-    const dept = await DepartmentService.update(
-      param(req.params.departmentId),
-      param(req.params.municipalityId),
-      req.body,
-    );
-    res.json({ success: true, message: "Department updated.", data: dept });
-  });
+  updateStaffStatus = async (req: any, res: Response): Promise<void> => {
+    try {
+      const { staffId } = req.params;
+      const { status } = req.body;
+      if (!status) {
+        res.status(400).json({ success: false, error: "Status field is required." });
+        return;
+      }
+      await this.service.updateStaffAccountStatus(req.municipalityId, staffId, status);
+      res.status(200).json({ success: true, message: "Staff account status updated successfully." });
+    } catch (error: any) {
+      res.status(400).json({ success: false, error: error.message });
+    }
+  };
 
-  /**
-   * DELETE /municipalities/:municipalityId/departments/:departmentId
-   * Delete a department.
-   */
-  static delete = asyncHandler(async (req, res) => {
-    const result = await DepartmentService.delete(
-      param(req.params.departmentId),
-      param(req.params.municipalityId),
-    );
-    res.json({ success: true, message: "Department deleted.", data: result });
-  });
-}
+  resetStaffPassword = async (req: any, res: Response): Promise<void> => {
+    try {
+      const { staffId } = req.params;
+      const newPassword = crypto.randomBytes(6).toString("hex");
+      await this.service.resetStaffPassword(req.municipalityId, staffId, newPassword);
+      res.status(200).json({ success: true, data: { temp_password: newPassword } });
+    } catch (error: any) {
+      res.status(400).json({ success: false, error: error.message });
+    }
+  };
 
-// ─── Staff Controller ─────────────────────────────────────────────────────────
+  reviewStaffKyc = async (req: any, res: Response): Promise<void> => {
+    try {
+      const { id: staffId } = req.params;
+      const { status, rejection_reason } = req.body;
 
-export class StaffController {
-  /**
-   * GET /municipalities/:municipalityId/staff
-   * Paginated list of all staff in a municipality.
-   */
-  static list = asyncHandler(async (req, res) => {
-    const result = await StaffService.listByMunicipality(
-      param(req.params.municipalityId),
-      getPagination(req),
-    );
-    res.json({ success: true, data: result });
-  });
+      if (!status || !["verified", "rejected"].includes(status)) {
+        res.status(400).json({
+          success: false,
+          error: "Status must be 'verified' or 'rejected'.",
+        });
+        return;
+      }
 
-  /**
-   * POST /municipalities/:municipalityId/staff
-   * Create a new staff account.
-   * Body: { name, email, password, role, departmentId, designation? }
-   */
-  static create = asyncHandler(async (req, res) => {
-    const staff = await StaffService.create({
-      ...req.body,
-      municipalityId: param(req.params.municipalityId),
-    });
-    res
-      .status(201)
-      .json({ success: true, message: "Staff account created.", data: staff });
-  });
+      if (status === "rejected" && !rejection_reason) {
+        res.status(400).json({
+          success: false,
+          error: "Rejection reason is required when rejecting KYC.",
+        });
+        return;
+      }
 
-  /**
-   * PATCH /municipalities/:municipalityId/staff/:staffId/status
-   * Activate or deactivate a staff member.
-   * Body: { status: 'active' | 'inactive' }
-   */
-  static updateStatus = asyncHandler(async (req, res) => {
-    const staff = await StaffService.updateStatus(
-      param(req.params.staffId),
-      param(req.params.municipalityId),
-      req.body.status,
-    );
-    res.json({
-      success: true,
-      message: `Staff status updated to '${req.body.status}'.`,
-      data: staff,
-    });
-  });
+      const updated = await this.service.reviewStaffKyc(
+        req.municipalityId,
+        staffId,
+        req.user.id,
+        status,
+        rejection_reason
+      );
 
-  /**
-   * DELETE /municipalities/:municipalityId/staff/:staffId
-   * Remove a staff member.
-   */
-  static delete = asyncHandler(async (req, res) => {
-    const result = await StaffService.delete(
-      param(req.params.staffId),
-      param(req.params.municipalityId),
-    );
-    res.json({ success: true, message: "Staff member removed.", data: result });
-  });
-}
+      res.status(200).json({
+        success: true,
+        message: `Staff KYC ${status === "verified" ? "approved" : "rejected"} successfully.`,
+        data: updated,
+      });
+    } catch (error: any) {
+      res.status(400).json({ success: false, error: error.message });
+    }
+  };
 
-// ─── Complaint Controller ─────────────────────────────────────────────────────
+  onboardStaffProfile = async (req: any, res: Response): Promise<void> => {
+    try {
+      const { profile_id, primary_department_id, employee_id, expertise } = req.body;
+      if (!profile_id || !primary_department_id || !employee_id || !expertise) {
+        res.status(400).json({
+          success: false,
+          error: "Missing core components required for staff enrollment.",
+        });
+        return;
+      }
 
-export class ComplaintController {
-  /**
-   * GET /municipalities/:municipalityId/complaints
-   * Paginated list of complaints. Filter by ?status= or ?departmentId=
-   */
-  static list = asyncHandler(async (req, res) => {
-    const result = await ComplaintService.list(
-      param(req.params.municipalityId),
-      {
-        ...getPagination(req),
-        status: req.query.status as string,
-        departmentId: req.query.departmentId as string,
-      },
-    );
-    res.json({ success: true, data: result });
-  });
+      const staff = await this.service.registerStaffMember(
+        req.municipalityId,
+        req.body,
+      );
+      res.status(201).json({ success: true, data: staff });
+    } catch (error: any) {
+      res.status(400).json({ success: false, error: error.message });
+    }
+  };
 
-  /**
-   * GET /municipalities/:municipalityId/complaints/:complaintId
-   * Full complaint details with timeline.
-   */
-  static getById = asyncHandler(async (req, res) => {
-    const complaint = await ComplaintService.getById(
-      param(req.params.complaintId),
-      param(req.params.municipalityId),
-    );
-    res.json({ success: true, data: complaint });
-  });
+  getComplaints = async (req: any, res: Response): Promise<void> => {
+    try {
+      const statusFilter = req.query.status as ComplaintStatus | undefined;
+      const list = await this.service.getComplaintsLog(
+        req.municipalityId,
+        statusFilter,
+      );
+      res.status(200).json({ success: true, data: list });
+    } catch (error: any) {
+      res.status(500).json({ success: false, error: error.message });
+    }
+  };
 
-  /**
-   * POST /municipalities/:municipalityId/complaints
-   * Submit a new complaint (typically called from citizen-facing API).
-   * Body: { citizenId, category, title, description, location?, wardNo?, attachments? }
-   */
-  static create = asyncHandler(async (req, res) => {
-    const complaint = await ComplaintService.create({
-      ...req.body,
-      municipalityId: param(req.params.municipalityId),
-    });
-    res.status(201).json({
-      success: true,
-      message: "Complaint submitted successfully.",
-      data: complaint,
-    });
-  });
+  createUser = async (req: any, res: Response): Promise<void> => {
+    try {
+      const { email, password, full_name, role, department_id, phone } = req.body;
 
-  /**
-   * PATCH /municipalities/:municipalityId/complaints/:complaintId
-   * Update complaint status, assign staff, or add resolution note.
-   * Body: { status?, assignedTo?, resolutionNote?, priority? }
-   */
-  static update = asyncHandler(async (req, res) => {
-    const complaint = await ComplaintService.update(
-      param(req.params.complaintId),
-      param(req.params.municipalityId),
-      req.body,
-      req.user!.userId,
-    );
-    res.json({ success: true, message: "Complaint updated.", data: complaint });
-  });
-}
+      if (!email || !full_name || !role) {
+        res.status(400).json({
+          success: false,
+          error: "Missing required fields: email, full_name, role.",
+        });
+        return;
+      }
 
-// ─── Notice Controller (announcements table) ──────────────────────────────────
+      if (!["department_head", "staff"].includes(role)) {
+        res.status(400).json({
+          success: false,
+          error: "Municipality head can only create department_head or staff users.",
+        });
+        return;
+      }
 
-export class NoticeController {
-  /**
-   * GET /municipalities/:municipalityId/notices
-   * Paginated notice list. Filter by ?category=
-   */
-  static list = asyncHandler(async (req, res) => {
-    const result = await NoticeService.list(param(req.params.municipalityId), {
-      ...getPagination(req),
-      category: req.query.category as string,
-    });
-    res.json({ success: true, data: result });
-  });
+      if (!department_id) {
+        res.status(400).json({
+          success: false,
+          error: "department_id is required when creating department_head or staff.",
+        });
+        return;
+      }
 
-  /**
-   * GET /municipalities/:municipalityId/notices/:noticeId
-   * Get a single notice.
-   */
-  static getById = asyncHandler(async (req, res) => {
-    const notice = await NoticeService.getById(
-      param(req.params.noticeId),
-      param(req.params.municipalityId),
-    );
-    res.json({ success: true, data: notice });
-  });
+      const generatedPassword = password || crypto.randomBytes(6).toString("hex");
 
-  /**
-   * POST /municipalities/:municipalityId/notices
-   * Publish a new notice.
-   * Body: { title, body, category, expiresAt?, attachments? }
-   */
-  static create = asyncHandler(async (req, res) => {
-    const notice = await NoticeService.create({
-      ...req.body,
-      municipalityId: param(req.params.municipalityId),
-      publishedBy: req.user!.userId,
-    });
-    res
-      .status(201)
-      .json({ success: true, message: "Notice published.", data: notice });
-  });
+      const profile = await createUserService({
+        email,
+        password: generatedPassword,
+        full_name,
+        role,
+        municipality_id: req.municipalityId,
+        department_id,
+        phone,
+        created_by: req.user.id,
+      });
 
-  /**
-   * PATCH /municipalities/:municipalityId/notices/:noticeId
-   * Update a notice.
-   */
-  static update = asyncHandler(async (req, res) => {
-    const notice = await NoticeService.update(
-      param(req.params.noticeId),
-      param(req.params.municipalityId),
-      req.body,
-    );
-    res.json({ success: true, message: "Notice updated.", data: notice });
-  });
+      res.status(201).json({
+        success: true,
+        data: {
+          ...profile,
+          password: generatedPassword,
+        },
+      });
+    } catch (error: any) {
+      res.status(400).json({ success: false, error: error.message });
+    }
+  };
 
-  /**
-   * DELETE /municipalities/:municipalityId/notices/:noticeId
-   * Delete a notice.
-   */
-  static delete = asyncHandler(async (req, res) => {
-    const result = await NoticeService.delete(
-      param(req.params.noticeId),
-      param(req.params.municipalityId),
-    );
-    res.json({ success: true, message: "Notice deleted.", data: result });
-  });
-}
+  // ===== KYC VERIFICATION HANDLERS =====
 
-// ─── Audit Log Controller ─────────────────────────────────────────────────────
+  getPendingKycList = async (req: any, res: Response): Promise<void> => {
+    try {
+      const list = await this.service.getPendingKycList(req.municipalityId);
+      res.status(200).json({ success: true, data: list });
+    } catch (error: any) {
+      res.status(500).json({ success: false, error: error.message });
+    }
+  };
 
-export class AuditLogController {
-  /**
-   * GET /municipalities/:municipalityId/audit-logs
-   * Paginated audit log for a municipality.
-   */
-  static list = asyncHandler(async (req, res) => {
-    const result = await AuditLogService.listByMunicipality(
-      param(req.params.municipalityId),
-      getPagination(req),
-    );
-    res.json({ success: true, data: result });
-  });
+  getKycCitizenDetail = async (req: any, res: Response): Promise<void> => {
+    try {
+      const { citizenId } = req.params;
+      const detail = await this.service.getKycCitizenDetail(req.municipalityId, citizenId);
+      if (!detail) {
+        res.status(404).json({ success: false, error: "Citizen record not found." });
+        return;
+      }
+      res.status(200).json({ success: true, data: detail });
+    } catch (error: any) {
+      res.status(500).json({ success: false, error: error.message });
+    }
+  };
+
+  reviewKyc = async (req: any, res: Response): Promise<void> => {
+    try {
+      const { citizenId } = req.params;
+      const { status, rejection_reason } = req.body;
+
+      if (!status || !["verified", "rejected"].includes(status)) {
+        res.status(400).json({ success: false, error: "status must be 'verified' or 'rejected'." });
+        return;
+      }
+
+      const updated = await this.service.reviewKyc(
+        req.municipalityId,
+        citizenId,
+        req.user.id,
+        status,
+        rejection_reason
+      );
+
+      res.status(200).json({
+        success: true,
+        message: `KYC verification status updated to '${status}'.`,
+        data: updated,
+      });
+    } catch (error: any) {
+      res.status(400).json({ success: false, error: error.message });
+    }
+  };
+
+  // ===== CROSS-DEPARTMENT TEAM HANDLERS =====
+
+  getCrossDeptTeams = async (req: any, res: Response): Promise<void> => {
+    try {
+      const teams = await this.service.getCrossDeptTeams(req.municipalityId);
+      res.status(200).json({ success: true, data: teams });
+    } catch (error: any) {
+      res.status(500).json({ success: false, error: error.message });
+    }
+  };
+
+  createCrossDeptTeam = async (req: any, res: Response): Promise<void> => {
+    try {
+      const {
+        team_name,
+        description,
+        start_date,
+        end_date,
+        member_staff_ids,
+        leader_staff_id,
+        is_emergency_override,
+        override_reason,
+      } = req.body;
+
+      if (!team_name || !start_date || !end_date) {
+        res.status(400).json({
+          success: false,
+          error: "team_name, start_date, and end_date are required fields.",
+        });
+        return;
+      }
+
+      const team = await this.service.createCrossDeptTeam(req.municipalityId, {
+        team_name,
+        description,
+        start_date,
+        end_date,
+        created_by: req.user.id,
+        member_staff_ids: Array.isArray(member_staff_ids) ? member_staff_ids : [],
+        leader_staff_id,
+        is_emergency_override,
+        override_reason,
+      });
+
+      res.status(201).json({ success: true, data: team });
+    } catch (error: any) {
+      res.status(400).json({ success: false, error: error.message });
+    }
+  };
+
+  deactivateCrossDeptTeam = async (req: any, res: Response): Promise<void> => {
+    try {
+      const { teamId } = req.params;
+      const deactivated = await this.service.deactivateCrossDeptTeam(teamId, req.municipalityId);
+      res.status(200).json({ success: true, message: "Cross-department team deactivated.", data: deactivated });
+    } catch (error: any) {
+      res.status(400).json({ success: false, error: error.message });
+    }
+  };
+
+  assignComplaintToTeam = async (req: any, res: Response): Promise<void> => {
+    try {
+      const { teamId } = req.params;
+      const { complaint_id, notes } = req.body;
+
+      if (!complaint_id) {
+        res.status(400).json({ success: false, error: "complaint_id is required." });
+        return;
+      }
+
+      const data = await this.service.assignComplaintToTeam(
+        req.municipalityId,
+        teamId,
+        complaint_id,
+        req.user.id,
+        notes
+      );
+
+      res.status(201).json({
+        success: true,
+        message: "Grievance ticket assigned to cross-department team.",
+        data,
+      });
+    } catch (error: any) {
+      res.status(400).json({ success: false, error: error.message });
+    }
+  };
+
+  getTeamComplaints = async (req: any, res: Response): Promise<void> => {
+    try {
+      const { teamId } = req.params;
+      const data = await this.service.getTeamComplaints(req.municipalityId, teamId);
+      res.status(200).json({ success: true, data });
+    } catch (error: any) {
+      res.status(500).json({ success: false, error: error.message });
+    }
+  };
+
+  // ===== ESCALATED COMPLAINTS & INTERVENTION HANDLERS =====
+
+  getEscalatedComplaints = async (req: any, res: Response): Promise<void> => {
+    try {
+      const complaints = await this.service.getEscalatedComplaints(req.municipalityId);
+      res.status(200).json({ success: true, data: complaints });
+    } catch (error: any) {
+      res.status(500).json({ success: false, error: error.message });
+    }
+  };
+
+  interveneInComplaint = async (req: any, res: Response): Promise<void> => {
+    try {
+      const { id: complaintId } = req.params;
+      const { action, note } = req.body;
+
+      if (!action || !["reassign", "resolve", "reject"].includes(action)) {
+        res.status(400).json({ success: false, error: "action must be 'reassign', 'resolve', or 'reject'." });
+        return;
+      }
+
+      const result = await this.service.interveneInComplaint(
+        req.municipalityId,
+        complaintId,
+        action,
+        note
+      );
+
+      res.status(200).json({
+        success: true,
+        message: `Municipality Head intervention recorded cleanly (${action}).`,
+        data: result,
+      });
+    } catch (error: any) {
+      res.status(400).json({ success: false, error: error.message });
+    }
+  };
 }

@@ -1,276 +1,590 @@
-import { Response } from 'express';
-import { AuthenticatedRequest } from '../middleware';
-import {
-  DepartmentService,
-  NotFoundError,
-  ForbiddenError,
-  ConflictError,
-} from '../services/department.service';
+import { Response } from "express";
+import crypto from "crypto";
+import { DepartmentService } from "../services/department.service";
+import { createUserService } from "../../auth/services/auth.service";
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+export class DepartmentController {
+  constructor(private service: DepartmentService) { }
 
-const asyncHandler =
-  (fn: (req: AuthenticatedRequest, res: Response) => Promise<void>) =>
-  (req: AuthenticatedRequest, res: Response): void => {
-    fn(req, res).catch((err: unknown) => {
-      if (
-        err instanceof NotFoundError ||
-        err instanceof ForbiddenError ||
-        err instanceof ConflictError
-      ) {
-        res.status((err as { statusCode: number }).statusCode).json({
+  updateLogo = async (req: any, res: Response): Promise<void> => {
+    try {
+      if (!req.body.logo) {
+        res.status(400).json({ success: false, error: "logo base64 string is required" });
+        return;
+      }
+      const data = await this.service.updateLogo(req.departmentId, req.body.logo);
+      res.status(200).json({ success: true, data, message: "Department logo updated successfully" });
+    } catch (error: any) {
+      res.status(500).json({ success: false, error: error.message });
+    }
+  };
+
+  getDepartmentProfile = async (req: any, res: Response): Promise<void> => {
+    try {
+      const data = await this.service.getDepartmentProfile(req.departmentId, req.user.id);
+      res.status(200).json({ success: true, data });
+    } catch (error: any) {
+      res.status(500).json({ success: false, error: error.message });
+    }
+  };
+
+  setupDepartmentProfile = async (req: any, res: Response): Promise<void> => {
+    try {
+      const payload = req.body;
+      const data = await this.service.setupDepartmentProfile(req.departmentId, req.user.id, payload);
+      res.status(200).json({ success: true, data, message: "Department KYC updated successfully" });
+    } catch (error: any) {
+      res.status(400).json({ success: false, error: error.message });
+    }
+  };
+
+  setupTeam = async (req: any, res: Response): Promise<void> => {
+    try {
+      const {
+        team_name,
+        description,
+        start_date,
+        end_date,
+        member_staff_ids,
+        leader_staff_id,
+        is_emergency_override,
+        override_reason,
+      } = req.body;
+
+      if (!team_name || !start_date || !end_date) {
+        res.status(400).json({
           success: false,
-          message: err.message,
+          error: "team_name, start_date, and end_date are required fields.",
         });
         return;
       }
-      console.error('[DEPARTMENT CONTROLLER ERROR]', err);
-      res.status(500).json({ success: false, message: 'Internal server error.' });
-    });
+
+      const team = await this.service.buildDeploymentTeam(
+        req.departmentId,
+        team_name,
+        start_date,
+        end_date,
+        req.user?.id,
+        description,
+        Array.isArray(member_staff_ids) ? member_staff_ids : [],
+        leader_staff_id,
+        is_emergency_override ?? false,
+        override_reason
+      );
+      res.status(201).json({ success: true, data: team });
+    } catch (error: any) {
+      res.status(400).json({ success: false, error: error.message });
+    }
   };
 
-const param = (value: string | string[] | undefined) =>
-  String(Array.isArray(value) ? value[0] : value ?? "");
+  attachStaff = async (req: any, res: Response): Promise<void> => {
+    try {
+      const { team_id, staff_id, is_leader } = req.body;
+      if (!team_id || !staff_id) {
+        res
+          .status(400)
+          .json({
+            success: false,
+            error:
+              "Target squad ID mapping and clear staff profile connection required.",
+          });
+        return;
+      }
 
-const getFilters = (req: AuthenticatedRequest) => ({
-  page: parseInt(req.query.page as string) || 1,
-  limit: parseInt(req.query.limit as string) || 20,
-  search: (req.query.search as string) || '',
-  status: (req.query.status as string) || '',
-  headStaffId: (req.query.headStaffId as string) || '',
-});
-
-// ─── Department Controller ────────────────────────────────────────────────────
-
-export class DepartmentController {
-  /**
-   * GET /departments?municipalityId=xxx
-   * GET /municipalities/:municipalityId/departments
-   * List all departments with pagination
-   */
-  static list = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-    const municipalityId = param(
-      req.params.municipalityId || (req.query.municipalityId as string),
-    );
-
-    if (!municipalityId) {
-      res.status(400).json({
-        success: false,
-        message: 'municipalityId is required.',
-      });
-      return;
-    }
-
-    const result = await DepartmentService.list(municipalityId, getFilters(req));
-    res.json({ success: true, data: result });
-  });
-
-  /**
-   * GET /departments/:departmentId?municipalityId=xxx
-   * GET /municipalities/:municipalityId/departments/:departmentId
-   * Get detailed department information
-   */
-  static getById = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-    const municipalityId = param(
-      req.params.municipalityId || (req.query.municipalityId as string),
-    );
-    const department = await DepartmentService.getById(
-      param(req.params.departmentId),
-      municipalityId
-    );
-    res.json({ success: true, data: department });
-  });
-
-  /**
-   * POST /departments
-   * POST /municipalities/:municipalityId/departments
-   * Create a new department
-   * Body: { name, code, description?, headName?, headEmail?, headPhone?, ... }
-   */
-  static create = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-    const municipalityId = param(
-      req.params.municipalityId || req.body.municipalityId,
-    );
-
-    if (!municipalityId) {
-      res.status(400).json({
-        success: false,
-        message: 'municipalityId is required.',
-      });
-      return;
-    }
-
-    const department = await DepartmentService.create(
-      { ...req.body, municipalityId },
-      req.user!.userId
-    );
-
-    res.status(201).json({
-      success: true,
-      message: 'Department created successfully.',
-      data: department,
-    });
-  });
-
-  /**
-   * PATCH /departments/:departmentId
-   * PATCH /municipalities/:municipalityId/departments/:departmentId
-   * Update department details
-   */
-  static update = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-    const municipalityId = param(
-      req.params.municipalityId || req.body.municipalityId,
-    );
-
-    const department = await DepartmentService.update(
-      param(req.params.departmentId),
-      municipalityId,
-      req.body,
-      req.user!.userId
-    );
-
-    res.json({
-      success: true,
-      message: 'Department updated successfully.',
-      data: department,
-    });
-  });
-
-  /**
-   * DELETE /departments/:departmentId?permanent=false
-   * DELETE /municipalities/:municipalityId/departments/:departmentId
-   * Delete a department (soft delete by default)
-   */
-  static delete = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-    const municipalityId = param(
-      req.params.municipalityId || (req.query.municipalityId as string),
-    );
-    const permanent = req.query.permanent === 'true';
-
-    const result = await DepartmentService.delete(
-      param(req.params.departmentId),
-      municipalityId,
-      permanent,
-      req.user!.userId
-    );
-
-    res.json({
-      success: true,
-      message: result.message,
-      data: result,
-    });
-  });
-
-  /**
-   * GET /departments/:departmentId/stats
-   * GET /municipalities/:municipalityId/departments/:departmentId/stats
-   * Get department statistics (complaints, staff, resolution rates)
-   */
-  static getStats = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-    const municipalityId = param(
-      req.params.municipalityId || (req.query.municipalityId as string),
-    );
-
-    const stats = await DepartmentService.getStats(
-      param(req.params.departmentId),
-      municipalityId
-    );
-
-    res.json({ success: true, data: stats });
-  });
-
-  /**
-   * GET /departments/select-list?municipalityId=xxx
-   * GET /municipalities/:municipalityId/departments/select-list
-   * Get simplified department list for dropdowns
-   */
-  static getSelectList = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-    const municipalityId = param(
-      req.params.municipalityId || (req.query.municipalityId as string),
-    );
-
-    if (!municipalityId) {
-      res.status(400).json({
-        success: false,
-        message: 'municipalityId is required.',
-      });
-      return;
-    }
-
-    const departments = await DepartmentService.getSelectList(municipalityId);
-    res.json({ success: true, data: departments });
-  });
-
-  /**
-   * POST /departments/reassign-staff
-   * POST /municipalities/:municipalityId/departments/reassign-staff
-   * Reassign all staff from one department to another
-   * Body: { fromDepartmentId, toDepartmentId }
-   */
-  static reassignStaff = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-    const municipalityId = param(
-      req.params.municipalityId || req.body.municipalityId,
-    );
-
-    const { fromDepartmentId, toDepartmentId } = req.body;
-
-    if (!fromDepartmentId || !toDepartmentId) {
-      res.status(400).json({
-        success: false,
-        message: 'fromDepartmentId and toDepartmentId are required.',
-      });
-      return;
-    }
-
-    const result = await DepartmentService.reassignStaff(
-      fromDepartmentId,
-      toDepartmentId,
-      municipalityId,
-      req.user!.userId
-    );
-
-    res.json({
-      success: true,
-      message: `${result.reassignedCount} staff members reassigned successfully.`,
-      data: result,
-    });
-  });
-
-  /**
-   * GET /departments/export?municipalityId=xxx&format=csv
-   * GET /municipalities/:municipalityId/departments/export
-   * Export departments as CSV
-   */
-  static export = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-    const municipalityId = param(
-      req.params.municipalityId || (req.query.municipalityId as string),
-    );
-    const format = (req.query.format as string) || 'csv';
-
-    if (!municipalityId) {
-      res.status(400).json({
-        success: false,
-        message: 'municipalityId is required.',
-      });
-      return;
-    }
-
-    const csvData = await DepartmentService.export(
-      municipalityId,
-      getFilters(req),
-    );
-
-    if (format === 'csv') {
-      res.setHeader('Content-Type', 'text/csv');
-      res.setHeader(
-        'Content-Disposition',
-        `attachment; filename=departments_export_${Date.now()}.csv`
+      const assignment = await this.service.assignStaffToSquad(
+        req.departmentId,
+        {
+          team_id,
+          staff_id,
+          is_leader: !!is_leader,
+        },
       );
-      res.send(csvData);
-    } else {
-      res.json({ success: true, data: csvData });
+      res.status(201).json({ success: true, data: assignment });
+    } catch (error: any) {
+      res.status(400).json({ success: false, error: error.message });
     }
-  });
-}
+  };
 
-export default DepartmentController;
+  processGrievanceState = async (req: any, res: Response): Promise<void> => {
+    try {
+      const { complaintId } = req.params;
+      const { action, resolution_note, rejection_reason } = req.body;
+
+      if (!action || !["in_progress", "resolved", "rejected", "closed", "under_review"].includes(action)) {
+        res
+          .status(400)
+          .json({
+            success: false,
+            error:
+              "Valid operational state modifier required (under_review, in_progress, resolved, rejected, closed).",
+          });
+        return;
+      }
+
+      const result = await this.service.resolveGrievance(
+        req.departmentId,
+        complaintId,
+        action,
+        { resolution_note, rejection_reason },
+      );
+      res.status(200).json({ success: true, data: result });
+    } catch (error: any) {
+      res.status(400).json({ success: false, error: error.message });
+    }
+  };
+
+  updateStaff = async (req: any, res: Response): Promise<void> => {
+    try {
+      const { staffId } = req.params;
+      const { full_name, email, phone, expertise, contact_number, employee_status, gender, date_of_birth, personal_address } = req.body;
+
+      if (!staffId) {
+        res.status(400).json({ success: false, error: "Staff ID is required." });
+        return;
+      }
+
+      // At least one field must be provided
+      const hasUpdate = [full_name, email, phone, expertise, contact_number, employee_status, gender, date_of_birth, personal_address].some(
+        (v) => v !== undefined && v !== null && v !== "",
+      );
+      if (!hasUpdate) {
+        res.status(400).json({ success: false, error: "No update fields provided." });
+        return;
+      }
+
+      const updated = await this.service.modifyStaff(staffId, req.departmentId, {
+        full_name,
+        email,
+        phone,
+        expertise,
+        contact_number,
+        employee_status,
+        gender,
+        date_of_birth,
+        personal_address,
+      });
+
+      res.status(200).json({ success: true, data: updated });
+    } catch (error: any) {
+      res.status(400).json({ success: false, error: error.message });
+    }
+  };
+
+  removeStaff = async (req: any, res: Response): Promise<void> => {
+    try {
+      const { staffId } = req.params;
+
+      if (!staffId) {
+        res.status(400).json({ success: false, error: "Staff ID is required." });
+        return;
+      }
+
+      await this.service.removeStaff(staffId, req.departmentId, req.user.id);
+      res.status(200).json({ success: true, message: "Staff member removed successfully." });
+    } catch (error: any) {
+      res.status(400).json({ success: false, error: error.message });
+    }
+  };
+
+  getStaffRoster = async (req: any, res: Response): Promise<void> => {
+    try {
+      const roster = await this.service.listRoster(req.departmentId);
+      res.status(200).json({ success: true, data: roster });
+    } catch (error: any) {
+      res.status(500).json({ success: false, error: error.message });
+    }
+  };
+
+  getDashboard = async (req: any, res: Response): Promise<void> => {
+    try {
+      const data = await this.service.getDashboard(req.departmentId);
+      res.status(200).json({ success: true, data });
+    } catch (error: any) {
+      res.status(500).json({ success: false, error: error.message });
+    }
+  };
+
+  createStaff = async (req: any, res: Response): Promise<void> => {
+    try {
+      const { email, password, full_name, phone, expertise, role } = req.body;
+
+      if (!email || !full_name) {
+        res.status(400).json({
+          success: false,
+          error: "Missing required fields: email, full_name.",
+        });
+        return;
+      }
+
+      // Department head can ONLY create staff role accounts
+      if (role && role !== "staff") {
+        res.status(403).json({
+          success: false,
+          error: "Department head can only create staff role accounts.",
+        });
+        return;
+      }
+
+      // Check duplicate email
+      const emailExists = await this.service.checkEmailExists(email);
+      if (emailExists) {
+        res.status(409).json({
+          success: false,
+          error: "A user with this email already exists.",
+        });
+        return;
+      }
+
+      const municipalityId = await this.service.getMunicipalityId(req.departmentId);
+      const generatedPassword = password || crypto.randomBytes(6).toString("hex");
+
+      const profile = await createUserService({
+        email,
+        password: generatedPassword,
+        full_name,
+        role: "staff",
+        municipality_id: municipalityId,
+        department_id: req.departmentId,
+        phone,
+        created_by: req.user.id,
+      });
+
+      if (expertise && profile?.id) {
+        try {
+          await this.service.setStaffExpertise(profile.id, req.departmentId, expertise);
+        } catch (err: any) {
+          console.warn("Failed to set staff expertise:", err.message);
+        }
+      }
+
+      res.status(201).json({
+        success: true,
+        message: "Staff member created successfully.",
+        data: {
+          ...profile,
+          expertise: expertise || null,
+          password: generatedPassword,
+        },
+      });
+    } catch (error: any) {
+      res.status(400).json({ success: false, error: error.message });
+    }
+  };
+
+  createUser = async (req: any, res: Response): Promise<void> => {
+    return this.createStaff(req, res);
+  };
+
+  updateStaffStatus = async (req: any, res: Response): Promise<void> => {
+    try {
+      const { staffId } = req.params;
+      const { status } = req.body;
+      if (!status || !["active", "inactive", "suspended"].includes(status)) {
+        res.status(400).json({ success: false, error: "Status must be active, inactive, or suspended." });
+        return;
+      }
+      await this.service.updateStaffAccountStatus(staffId, req.departmentId, status);
+      res.status(200).json({ success: true, message: "Staff account status updated successfully." });
+    } catch (error: any) {
+      res.status(400).json({ success: false, error: error.message });
+    }
+  };
+
+  resetStaffPassword = async (req: any, res: Response): Promise<void> => {
+    try {
+      const { staffId } = req.params;
+      const newPassword = crypto.randomBytes(6).toString("hex");
+      await this.service.resetStaffPassword(staffId, req.departmentId, newPassword);
+      res.status(200).json({ success: true, data: { temp_password: newPassword } });
+    } catch (error: any) {
+      res.status(400).json({ success: false, error: error.message });
+    }
+  };
+
+  // ─── Team Management ─────────────────────────────────────────────────────────
+
+  getTeams = async (req: any, res: Response): Promise<void> => {
+    try {
+      const teams = await this.service.listTeams(req.departmentId);
+      res.status(200).json({ success: true, data: teams });
+    } catch (error: any) {
+      res.status(500).json({ success: false, error: error.message });
+    }
+  };
+
+  getTeamDetails = async (req: any, res: Response): Promise<void> => {
+    try {
+      const { teamName } = req.params;
+      if (!teamName) {
+        res.status(400).json({ success: false, error: "Team name is required." });
+        return;
+      }
+      const team = await this.service.getTeamDetails(
+        decodeURIComponent(teamName),
+        req.departmentId,
+      );
+      res.status(200).json({ success: true, data: team });
+    } catch (error: any) {
+      res.status(400).json({ success: false, error: error.message });
+    }
+  };
+
+  updateTeam = async (req: any, res: Response): Promise<void> => {
+    try {
+      const { teamName } = req.params;
+      const { team_name, description, is_active } = req.body;
+
+      if (!teamName) {
+        res.status(400).json({ success: false, error: "Team name is required." });
+        return;
+      }
+
+      const hasUpdate = [team_name, description, is_active].some(
+        (v) => v !== undefined && v !== null,
+      );
+      if (!hasUpdate) {
+        res.status(400).json({ success: false, error: "No update fields provided." });
+        return;
+      }
+
+      const updated = await this.service.updateTeamInfo(
+        decodeURIComponent(teamName),
+        req.departmentId,
+        { team_name, description, is_active },
+      );
+      res.status(200).json({ success: true, data: updated });
+    } catch (error: any) {
+      res.status(400).json({ success: false, error: error.message });
+    }
+  };
+
+  removeMember = async (req: any, res: Response): Promise<void> => {
+    try {
+      const { teamName, staffId } = req.params;
+      if (!teamName || !staffId) {
+        res.status(400).json({ success: false, error: "Team name and Staff ID are required." });
+        return;
+      }
+      await this.service.removeMemberFromTeam(
+        decodeURIComponent(teamName),
+        staffId,
+        req.departmentId,
+      );
+      res.status(200).json({ success: true, message: "Member removed from team." });
+    } catch (error: any) {
+      res.status(400).json({ success: false, error: error.message });
+    }
+  };
+
+  toggleLeader = async (req: any, res: Response): Promise<void> => {
+    try {
+      const { teamName, staffId } = req.params;
+      const { is_leader } = req.body;
+
+      if (!teamName || !staffId) {
+        res.status(400).json({ success: false, error: "Team name and Staff ID are required." });
+        return;
+      }
+
+      if (typeof is_leader !== "boolean") {
+        res.status(400).json({ success: false, error: "is_leader must be a boolean." });
+        return;
+      }
+
+      await this.service.setTeamLeader(
+        decodeURIComponent(teamName),
+        staffId,
+        req.departmentId,
+        is_leader,
+      );
+      res.status(200).json({ success: true, message: `Member ${is_leader ? "promoted to" : "demoted from"} leader.` });
+    } catch (error: any) {
+      res.status(400).json({ success: false, error: error.message });
+    }
+  };
+
+  // ===== MULTI-DEPARTMENT & COLLABORATION HANDLERS =====
+
+  getQueue = async (req: any, res: Response): Promise<void> => {
+    try {
+      const statusFilter = req.query.status as string | undefined;
+      const data = await this.service.getDepartmentQueue(req.departmentId, statusFilter);
+      res.status(200).json({ success: true, data });
+    } catch (error: any) {
+      res.status(500).json({ success: false, error: error.message });
+    }
+  };
+
+  getCollaborations = async (req: any, res: Response): Promise<void> => {
+    try {
+      const data = await this.service.getCollaborations(req.departmentId);
+      res.status(200).json({ success: true, data });
+    } catch (error: any) {
+      res.status(500).json({ success: false, error: error.message });
+    }
+  };
+
+  requestCollaboration = async (req: any, res: Response): Promise<void> => {
+    try {
+      const { complaintId } = req.params;
+      const { supporting_department_id, inspection_note } = req.body;
+
+      if (!supporting_department_id) {
+        res.status(400).json({ success: false, error: "supporting_department_id is required." });
+        return;
+      }
+
+      const data = await this.service.requestCollaboration(
+        req.departmentId,
+        complaintId,
+        supporting_department_id,
+        req.user.id,
+        inspection_note
+      );
+
+      res.status(201).json({
+        success: true,
+        message: "Multi-department collaboration requested.",
+        data,
+      });
+    } catch (error: any) {
+      res.status(400).json({ success: false, error: error.message });
+    }
+  };
+
+  submitSignOff = async (req: any, res: Response): Promise<void> => {
+    try {
+      const { complaintId } = req.params;
+      const { decision, note } = req.body;
+
+      if (!decision || !["approved", "rejected"].includes(decision)) {
+        res.status(400).json({ success: false, error: "decision must be 'approved' or 'rejected'." });
+        return;
+      }
+
+      const result = await this.service.submitSignOff(
+        req.departmentId,
+        complaintId,
+        req.user.id,
+        req.user.role || "department_head",
+        decision,
+        note
+      );
+
+      res.status(200).json({
+        success: true,
+        message: "Sign-off recorded successfully.",
+        data: result,
+      });
+    } catch (error: any) {
+      res.status(400).json({ success: false, error: error.message });
+    }
+  };
+
+  checkStaffAvailability = async (req: any, res: Response): Promise<void> => {
+    try {
+      const { staff_ids, start_date, end_date } = req.body;
+      if (!staff_ids || !start_date || !end_date) {
+        res.status(400).json({ success: false, error: "staff_ids, start_date, and end_date are required." });
+        return;
+      }
+      const { ScheduleService } = require("../../../service/schedule.service");
+      const scheduleService = new ScheduleService((this.service as any).repo.supabaseAdmin);
+      const data = await scheduleService.checkBulkAvailability(staff_ids, start_date, end_date);
+      res.status(200).json({ success: true, data });
+    } catch (error: any) {
+      res.status(500).json({ success: false, error: error.message });
+    }
+  };
+
+  exportComplaintsCsv = async (req: any, res: Response): Promise<void> => {
+    try {
+      const csvData = await this.service.exportComplaintsCsv(req.departmentId);
+      res.setHeader("Content-Type", "text/csv");
+      res.setHeader("Content-Disposition", `attachment; filename="department_complaints.csv"`);
+      res.status(200).send(csvData);
+    } catch (error: any) {
+      res.status(500).json({ success: false, error: error.message });
+    }
+  };
+
+  assignComplaintToTeam = async (req: any, res: Response): Promise<void> => {
+    try {
+      const { teamName } = req.params;
+      const { complaint_id, notes } = req.body;
+
+      if (!complaint_id) {
+        res.status(400).json({ success: false, error: "complaint_id is required." });
+        return;
+      }
+
+      const data = await this.service.assignComplaintToTeam(
+        req.departmentId,
+        decodeURIComponent(teamName),
+        complaint_id,
+        req.user.id,
+        notes
+      );
+
+      res.status(201).json({
+        success: true,
+        message: "Grievance ticket assigned to operational team.",
+        data,
+      });
+    } catch (error: any) {
+      res.status(400).json({ success: false, error: error.message });
+    }
+  };
+
+  getTeamComplaints = async (req: any, res: Response): Promise<void> => {
+    try {
+      const { teamName } = req.params;
+      const data = await this.service.getTeamComplaints(
+        req.departmentId,
+        decodeURIComponent(teamName)
+      );
+      res.status(200).json({ success: true, data });
+    } catch (error: any) {
+      res.status(500).json({ success: false, error: error.message });
+    }
+  };
+
+  reviewStaffKyc = async (req: any, res: Response): Promise<void> => {
+    try {
+      const { id: staffId } = req.params;
+      const { status, rejection_reason } = req.body;
+
+      if (!status || !["verified", "rejected"].includes(status)) {
+        res.status(400).json({
+          success: false,
+          error: "Status must be 'verified' or 'rejected'.",
+        });
+        return;
+      }
+
+      if (status === "rejected" && !rejection_reason) {
+        res.status(400).json({
+          success: false,
+          error: "Rejection reason is required when rejecting KYC.",
+        });
+        return;
+      }
+
+      const updated = await this.service.reviewStaffKyc(
+        staffId,
+        req.departmentId,
+        req.user.id,
+        status,
+        rejection_reason
+      );
+
+      res.status(200).json({
+        success: true,
+        message: `Staff KYC ${status === "verified" ? "approved" : "rejected"} successfully.`,
+        data: updated,
+      });
+    } catch (error: any) {
+      res.status(400).json({ success: false, error: error.message });
+    }
+  };
+}

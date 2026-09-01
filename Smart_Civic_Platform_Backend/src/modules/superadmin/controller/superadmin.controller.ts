@@ -1,493 +1,360 @@
-import { Request ,Response } from "express";
-import { supabaseAdmin } from "../../../config/supabase";
+import { Request, Response } from "express";
+import crypto from "crypto";
+import { SuperadminService } from "../services/superadmin.services";
+import { createUserService } from "../../auth/services/auth.service";
 
-import { AuthenticatedRequest } from "../middleware";
-import {
-  UserService,
-  AdminService,
-  StatsService,
-  AuditLogService,
-  FeatureFlagService,
-  NotFoundError,
-  ForbiddenError,
-  ConflictError,
-} from "../services/superadmin.services";
+export class SuperadminController {
+  constructor(private service: SuperadminService) {}
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+  getMetrics = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const metrics = await this.service.getDashboardMetrics();
+      res.status(200).json({ success: true, data: metrics });
+    } catch (error: any) {
+      res.status(500).json({ success: false, error: error.message });
+    }
+  };
 
-/**
- * Wraps async controller handlers and forwards errors to Express error handler.
- */
-const asyncHandler =
-  (fn: (req: AuthenticatedRequest, res: Response) => Promise<void>) =>
-  (req: AuthenticatedRequest, res: Response): void => {
-    fn(req, res).catch((err: unknown) => {
-      if (
-        err instanceof NotFoundError ||
-        err instanceof ForbiddenError ||
-        err instanceof ConflictError
-      ) {
-        res.status((err as { statusCode: number }).statusCode).json({
+  provisionMunicipality = async (
+    req: Request,
+    res: Response,
+  ): Promise<void> => {
+    try {
+      const {
+        municipality_id,
+        head_name,
+        head_email,
+        head_password: customPassword,
+      } = req.body;
+
+      if (!municipality_id || !head_name || !head_email) {
+        res.status(400).json({
           success: false,
-          message: err.message,
+          error: "municipality_id, head_name, and head_email are required.",
         });
         return;
       }
-      console.error("[SUPERADMIN CONTROLLER ERROR]", err);
-      res
-        .status(500)
-        .json({ success: false, message: "Internal server error." });
-    });
+
+      // 1. Fetch target municipality and verify it exists and is inactive
+      const municipality = await this.service.fetchMunicipalityById(municipality_id);
+      if (!municipality) {
+        res.status(404).json({
+          success: false,
+          error: "Selected municipality entity not found.",
+        });
+        return;
+      }
+      if (municipality.is_active) {
+        res.status(400).json({
+          success: false,
+          error: "Selected municipality is already activated.",
+        });
+        return;
+      }
+
+      // 2. Check if head_email already exists
+      const emailExists = await this.service.checkEmailExists(head_email);
+      if (emailExists) {
+        res.status(400).json({
+          success: false,
+          error: "A user with the provided head email already exists.",
+        });
+        return;
+      }
+
+      // 3. Generate or use password
+      const head_password = customPassword || crypto.randomBytes(6).toString("hex");
+
+      // 4. Create auth user and profile
+      let profile;
+      try {
+        profile = await createUserService({
+          email: head_email,
+          password: head_password,
+          full_name: head_name,
+          role: "municipality_head",
+          municipality_id: municipality_id,
+          created_by: (req as any).user?.id,
+        });
+      } catch (userError: any) {
+        res.status(400).json({
+          success: false,
+          error: `Failed to create municipality head account: ${userError.message}`,
+        });
+        return;
+      }
+
+      // 5. Activate municipality and link head profile
+      let activatedMuni;
+      try {
+        activatedMuni = await this.service.activateMunicipality(
+          municipality_id,
+          profile.id,
+          head_name,
+          head_email
+        );
+      } catch (activateError: any) {
+        // Rollback created user account
+        try {
+          await this.service.removeProfile(profile.id);
+          await this.service.removeAuthUser(profile.id);
+        } catch (cleanupError: any) {
+          console.error("Rollback cleanup error:", cleanupError.message);
+        }
+        res.status(500).json({
+          success: false,
+          error: `Municipality activation failed, user rolled back: ${activateError.message}`,
+        });
+        return;
+      }
+
+      // 6. Auto-create wards (1 to total_wards)
+      try {
+        const totalWards = municipality.total_wards || 1;
+        await this.service.createWards(municipality_id, totalWards);
+      } catch (wardError: any) {
+        console.error("Ward auto-creation warning:", wardError.message);
+      }
+
+      res.status(201).json({
+        success: true,
+        data: {
+          municipality_id,
+          official_name: activatedMuni.official_name,
+          head_email,
+          head_password,
+          local_level_type: activatedMuni.local_level_type,
+          total_wards: activatedMuni.total_wards,
+        },
+      });
+    } catch (error: any) {
+      res.status(400).json({ success: false, error: error.message });
+    }
   };
 
-const getPagination = (req: AuthenticatedRequest) => ({
-  page: parseInt(req.query.page as string) || 1,
-  limit: parseInt(req.query.limit as string) || 20,
-  search: (req.query.search as string) || "",
-});
-
-// ─── User Controller ──────────────────────────────────────────────────────────
-
-export class UserController {
-  /**
-   * GET /superadmin/users
-   * List all users with pagination and search.
-   */
-  static list = asyncHandler(async (req, res) => {
-    const result = await UserService.listUsers(getPagination(req));
-    res.json({ success: true, data: result });
-  });
-
-  /**
-   * GET /superadmin/users/:id
-   * Get a single user's full profile.
-   */
-  static getById = asyncHandler(async (req, res) => {
-    const user = await UserService.getUserById(String(req.params.id));
-    res.json({ success: true, data: user });
-  });
-
-  /**
-   * PATCH /superadmin/users/:id/status
-   * Ban, suspend, or reactivate a user.
-   * Body: { status: 'banned' | 'suspended' | 'active', reason?: string }
-   */
-  static updateStatus = asyncHandler(async (req, res) => {
-    const { status, reason } = req.body;
-    const user = await UserService.updateUserStatus({
-      userId: String(req.params.id),
-      status,
-      reason,
-      performedBy: req.user!.userId,
-    });
-    res.json({
-      success: true,
-      message: `User status updated to '${status}'.`,
-      data: user,
-    });
-  });
-
-  /**
-   * DELETE /superadmin/users/:id
-   * Permanently delete a user account.
-   */
-  static delete = asyncHandler(async (req, res) => {
-    const result = await UserService.deleteUser(String(req.params.id));
-    res.json({
-      success: true,
-      message: "User deleted successfully.",
-      data: result,
-    });
-  });
-
-  /**
-   * POST /superadmin/users/:id/impersonate
-   * Generate a 30-minute token to impersonate a user.
-   */
-  static impersonate = asyncHandler(async (req, res) => {
-    const result = await UserService.impersonateUser(
-      String(req.params.id),
-      req.user!.userId,
-    );
-    res.json({
-      success: true,
-      message: "Impersonation link generated.",
-      data: result,
-    });
-  });
-}
-
-// ─── Municipality Controller ──────────────────────────────────────────────────
-
-export class MunicipalityController {
-  /**
-   * POST /superadmin/municipalities
-   * Create a new municipality.
-   */
-  static create = asyncHandler(async (req, res) => {
-    const { name, region, email, head_name, head_email, head_password } = req.body;
-
-    // Validate required head fields
-    if (!head_name || !head_email || !head_password) {
-      res.status(400).json({
-        success: false,
-        message: "head_name, head_email, and head_password are required to create the municipality head account.",
-      });
-      return;
+  getProvinces = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const provinces = await this.service.getProvinces();
+      res.status(200).json({ success: true, data: provinces });
+    } catch (error: any) {
+      res.status(500).json({ success: false, error: error.message });
     }
+  };
 
-    // Check if head_email belongs to an ACTIVE (non-deleted) profile
-    const { data: activeProfile } = await supabaseAdmin
-      .from("profiles")
-      .select("id")
-      .eq("email", head_email)
-      .eq("is_deleted", false)
-      .maybeSingle();
-    if (activeProfile) {
-      throw new ConflictError(`A user with email '${head_email}' already exists.`);
+  getDistricts = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const province_id = req.query.province_id as string | undefined;
+      const districts = await this.service.getDistricts(province_id);
+      res.status(200).json({ success: true, data: districts });
+    } catch (error: any) {
+      res.status(500).json({ success: false, error: error.message });
     }
+  };
 
-    // If a soft-deleted profile exists for this email, purge the stale auth user
-    // so the email is freed up (profile.id === auth user id in Supabase)
-    const { data: staleProfile } = await supabaseAdmin
-      .from("profiles")
-      .select("id")
-      .eq("email", head_email)
-      .eq("is_deleted", true)
-      .maybeSingle();
-    if (staleProfile) {
-      await supabaseAdmin.auth.admin.deleteUser(staleProfile.id);
-    }
+  getReferenceMunicipalities = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const district_id = req.query.district_id as string | undefined;
+      const is_active_param = req.query.is_active as string | undefined;
+      const isActiveBool = is_active_param !== undefined ? is_active_param === "true" : undefined;
 
-    // Generate a simple slug from the name (e.g., "Kathmandu Metro" -> "kathmandu-metro-1234")
-    const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-") + "-" + Date.now().toString().slice(-4);
-
-    // Step 1: Create the municipality row
-    const { data: muni, error: muniErr } = await supabaseAdmin
-      .from("municipalities")
-      .insert({
-        official_name: name,
-        region_state: region,
-        login_email: email,
-        slug,
-      })
-      .select()
-      .single();
-
-    if (muniErr) throw new ConflictError(muniErr.message);
-
-    // Step 2: Create the Supabase Auth user for the municipality head
-    // The handle_new_user DB trigger fires on createUser and inserts a bare profiles row.
-    const { data: authData, error: authErr } = await supabaseAdmin.auth.admin.createUser({
-      email: head_email,
-      password: head_password,
-      email_confirm: true,
-      user_metadata: {
-        full_name: head_name,
-        role: "municipality_head",
-        municipality_id: muni.m_uid,
-      },
-    });
-
-    if (authErr) {
-      // Rollback: soft-delete the municipality so we don't leave an orphaned row
-      await supabaseAdmin
-        .from("municipalities")
-        .update({ is_deleted: true, is_active: false, deleted_at: new Date().toISOString() })
-        .eq("m_uid", muni.m_uid);
-      throw new Error(`Municipality created but head user creation failed: ${authErr.message}`);
-    }
-
-    const headUserId = authData.user.id;
-
-    // Step 3: Update the profile row (created by the DB trigger) with full details
-    await supabaseAdmin
-      .from("profiles")
-      .update({
-        full_name: head_name,
-        role: "municipality_head",
-        municipality_id: muni.m_uid,
-        force_password_reset: true,  // Require head to change temp password on first login
-      })
-      .eq("id", headUserId);
-
-    // Step 4: Insert a staff row linking the head to the municipality
-    await supabaseAdmin.from("staff").insert({
-      profile_id: headUserId,
-      municipality_id: muni.m_uid,
-      staff_role: "municipality_head",
-      employee_status: "active",
-      onboarded_at: new Date().toISOString(),
-    });
-
-    // Step 5: Set head_id on the municipality row
-    await supabaseAdmin
-      .from("municipalities")
-      .update({ head_id: headUserId })
-      .eq("m_uid", muni.m_uid);
-
-    const formattedData = {
-      id: muni.m_uid,
-      name: muni.official_name,
-      region: muni.region_state || "N/A",
-      email: muni.login_email || "N/A",
-      status: muni.is_active && !muni.is_deleted ? "Active" : "Inactive",
-      head: {
-        id: headUserId,
-        name: head_name,
-        email: head_email,
-      },
-    };
-
-    res.status(201).json({
-      success: true,
-      message: "Municipality and head user account created successfully.",
-      data: formattedData,
-    });
-  });
-
-  /**
-   * GET /superadmin/municipalities
-   * Get all municipalities for superadmin.
-   */
-  static list = asyncHandler(async (req, res) => {
-    // Step 1: Fetch all active municipalities
-    const { data: munis, error: muniErr } = await supabaseAdmin
-      .from("municipalities")
-      .select("m_uid, official_name, region_state, login_email, is_active, is_deleted, created_at, head_id")
-      .eq("is_deleted", false)
-      .order("created_at", { ascending: false });
-
-    if (muniErr) throw muniErr;
-
-    // Step 2: Batch-fetch head profiles for all municipalities that have a head_id
-    const headIds = (munis || [])
-      .map((m: any) => m.head_id)
-      .filter(Boolean) as string[];
-
-    let profileMap: Record<string, { full_name: string; email: string }> = {};
-
-    if (headIds.length > 0) {
-      const { data: profiles } = await supabaseAdmin
-        .from("profiles")
-        .select("id, full_name, email")
-        .in("id", headIds);
-
-      profileMap = (profiles || []).reduce(
-        (acc: Record<string, { full_name: string; email: string }>, p: any) => {
-          acc[p.id] = { full_name: p.full_name, email: p.email };
-          return acc;
-        },
-        {},
+      const municipalities = await this.service.getReferenceMunicipalities(
+        district_id,
+        isActiveBool
       );
+      res.status(200).json({ success: true, data: municipalities });
+    } catch (error: any) {
+      res.status(500).json({ success: false, error: error.message });
     }
+  };
 
-    // Step 3: Merge and format
-    const formattedData = (munis || []).map((mun: any) => {
-      const head = mun.head_id ? profileMap[mun.head_id] : null;
-      return {
-        id: mun.m_uid,
-        name: mun.official_name,
-        region: mun.region_state || "N/A",
-        official_email: mun.login_email || "N/A",
-        head_name: head?.full_name || "N/A",
-        head_email: head?.email || "N/A",
-        status: mun.is_active && !mun.is_deleted ? "Active" : "Inactive",
-        created_at: mun.created_at,
-      };
-    });
+  getMunicipalityDetail = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const id = req.params.id as string;
+      if (!id) {
+        res.status(400).json({ success: false, error: "Municipality ID is required." });
+        return;
+      }
 
-    res.status(200).json(formattedData);
-  });
-
-  /**
-   * DELETE /superadmin/municipalities/:id
-   * Soft-delete a municipality and fully clean up the head user account
-   * so their email can be reused for a future municipality head.
-   */
-  static delete = asyncHandler(async (req, res) => {
-    const { id } = req.params;
-
-    // Fetch the municipality to get head_id before deleting
-    const { data: muni } = await supabaseAdmin
-      .from("municipalities")
-      .select("m_uid, head_id")
-      .eq("m_uid", id)
-      .maybeSingle();
-
-    if (!muni) {
-      throw new NotFoundError(`Municipality ${id} not found.`);
+      const detail = await this.service.getMunicipalityDetail(id);
+      res.status(200).json({ success: true, data: detail });
+    } catch (error: any) {
+      res.status(500).json({ success: false, error: error.message });
     }
+  };
 
-    // Step 1: Soft-delete the municipality row
-    const { error: muniErr } = await supabaseAdmin
-      .from("municipalities")
-      .update({
-        is_deleted: true,
-        is_active: false,
-        deleted_at: new Date().toISOString(),
-      })
-      .eq("m_uid", id);
-    if (muniErr) throw muniErr;
+  getWards = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const municipality_id = req.params.municipality_id as string;
+      if (!municipality_id) {
+        res.status(400).json({ success: false, error: "Municipality ID is required." });
+        return;
+      }
 
-    // Step 2: Clean up the head user if one exists
-    if (muni.head_id) {
-      // Soft-delete the profile so the email appears free
-      await supabaseAdmin
-        .from("profiles")
-        .update({
-          is_deleted: true,
-          deleted_at: new Date().toISOString(),
-          account_status: "inactive",
-        })
-        .eq("id", muni.head_id);
-
-      // Deactivate the staff record
-      await supabaseAdmin
-        .from("staff")
-        .update({ employee_status: "inactive", is_deleted: true, deleted_at: new Date().toISOString() })
-        .eq("profile_id", muni.head_id);
-
-      // Hard-delete the Supabase Auth user so the email can be reused
-      await supabaseAdmin.auth.admin.deleteUser(muni.head_id);
+      const wards = await this.service.getWards(municipality_id);
+      res.status(200).json({ success: true, data: wards });
+    } catch (error: any) {
+      res.status(500).json({ success: false, error: error.message });
     }
+  };
 
-    res.status(200).json({ success: true, message: "Municipality and head user deleted successfully." });
-  });
+  changeUserRole = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const { targetUserId, newRole } = req.body;
+      if (!targetUserId || !newRole) {
+        res.status(400).json({
+          success: false,
+          error: "Target user ID and exact role target required.",
+        });
+        return;
+      }
 
-  /**
-   * PATCH /superadmin/municipalities/:id
-   * Update a municipality's details.
-   */
-  static update = asyncHandler(async (req, res) => {
-    const { id } = req.params;
-    const { name, region, email, is_active } = req.body;
-
-    // Check it exists first
-    const { data: existing } = await supabaseAdmin
-      .from("municipalities")
-      .select("m_uid")
-      .eq("m_uid", id)
-      .eq("is_deleted", false)
-      .maybeSingle();
-
-    if (!existing) {
-      throw new NotFoundError(`Municipality ${id} not found.`);
+      await this.service.adjustUserAuthorization(targetUserId, newRole);
+      res.status(200).json({
+        success: true,
+        message: `User role successfully targeted to ${newRole}.`,
+      });
+    } catch (error: any) {
+      res.status(400).json({ success: false, error: error.message });
     }
+  };
 
-    const patch: Record<string, unknown> = {};
-    if (name !== undefined)      patch.official_name = name;
-    if (region !== undefined)    patch.region_state  = region;
-    if (email !== undefined)     patch.login_email   = email;
-    if (is_active !== undefined) patch.is_active     = is_active;
+  restrictUserAccess = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const { targetUserId, status } = req.body;
+      if (!targetUserId || !status) {
+        res.status(400).json({
+          success: false,
+          error: "Target identifier and status setting required.",
+        });
+        return;
+      }
 
-    const { data, error } = await supabaseAdmin
-      .from("municipalities")
-      .update(patch)
-      .eq("m_uid", id)
-      .select()
-      .single();
+      const profile = await this.service.modifyUserAccess(targetUserId, status);
+      res.status(200).json({ success: true, data: profile });
+    } catch (error: any) {
+      res.status(400).json({ success: false, error: error.message });
+    }
+  };
 
-    if (error) throw new Error(error.message);
+  getSystemAudits = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const page = parseInt(req.query.page as string) || 1;
+      const limit = parseInt(req.query.limit as string) || 20;
 
-    const formattedData = {
-      id: data.m_uid,
-      name: data.official_name,
-      region: data.region_state || "N/A",
-      email: data.login_email || "N/A",
-      status: data.is_active && !data.is_deleted ? "Active" : "Inactive",
-    };
+      const logs = await this.service.fetchSystemAuditTrail(page, limit);
+      res.status(200).json({ success: true, data: logs });
+    } catch (error: any) {
+      res.status(500).json({ success: false, error: error.message });
+    }
+  };
 
-    res.status(200).json({
-      success: true,
-      message: "Municipality updated successfully.",
-      data: formattedData,
-    });
-  });
-}
+  createUser = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const { email, password, full_name, role, municipality_id, department_id, phone } = req.body;
 
-// ─── Admin Controller ─────────────────────────────────────────────────────────
+      if (!email || !password || !full_name || !role || !municipality_id) {
+        res.status(400).json({
+          success: false,
+          error: "Missing required fields: email, password, full_name, role, municipality_id.",
+        });
+        return;
+      }
 
-export class AdminController {
-  /**
-   * GET /superadmin/admins
-   * List all admin accounts.
-   */
-  static list = asyncHandler(async (req, res) => {
-    const admins = await AdminService.listAdmins();
-    res.json({ success: true, data: admins });
-  });
+      // Superadmin can only create municipality_head users via this endpoint
+      if (role !== "municipality_head") {
+        res.status(400).json({
+          success: false,
+          error: "Superadmin can only create municipality_head users via this endpoint.",
+        });
+        return;
+      }
 
-  /**
-   * POST /superadmin/admins
-   * Create a new admin account.
-   * Body: { name, email, password, role? }
-   */
-  static create = asyncHandler(async (req, res) => {
-    const { name, email, password, role } = req.body;
-    const admin = await AdminService.createAdmin({
-      name,
-      email,
-      password,
-      role,
-    });
-    res.status(201).json({
-      success: true,
-      message: "Admin account created successfully.",
-      data: admin,
-    });
-  });
-}
+      const profile = await createUserService({
+        email,
+        password,
+        full_name,
+        role,
+        municipality_id,
+        department_id,
+        phone,
+        created_by: (req as any).user.id,
+      });
 
-// ─── Stats Controller ─────────────────────────────────────────────────────────
+      res.status(201).json({ success: true, data: profile });
+    } catch (error: any) {
+      res.status(400).json({ success: false, error: error.message });
+    }
+  };
 
-export class StatsController {
-  /**
-   * GET /superadmin/stats
-   * Returns platform-wide dashboard statistics.
-   */
-  static overview = asyncHandler(async (req, res) => {
-    const stats = await StatsService.getDashboardStats();
-    res.json({ success: true, data: stats });
-  });
-}
+  getMunicipalities = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const municipalities = await this.service.getAllMunicipalities();
+      res.status(200).json({ success: true, data: municipalities });
+    } catch (error: any) {
+      res.status(500).json({ success: false, error: error.message });
+    }
+  };
 
-// ─── Audit Log Controller ─────────────────────────────────────────────────────
+  updateMunicipality = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const id = req.params.id as string;
+      if (!id) {
+        res.status(400).json({ success: false, error: "Municipality ID is required." });
+        return;
+      }
 
-export class AuditLogController {
-  /**
-   * GET /superadmin/audit-logs
-   * Returns a paginated list of all superadmin audit log entries.
-   */
-  static list = asyncHandler(async (req, res) => {
-    const result = await AuditLogService.listLogs(getPagination(req));
-    res.json({ success: true, data: result });
-  });
-}
+      const updated = await this.service.modifyMunicipality(id, req.body);
+      res.status(200).json({ success: true, data: updated });
+    } catch (error: any) {
+      res.status(400).json({ success: false, error: error.message });
+    }
+  };
 
-// ─── Feature Flag Controller ──────────────────────────────────────────────────
+  reviewMunicipalityKyc = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const id = req.params.id as string;
+      const { status, rejection_reason } = req.body;
+      const verifiedBy = (req as any).user.id;
 
-export class FeatureFlagController {
-  /**
-   * GET /superadmin/feature-flags
-   * Returns all feature flags.
-   */
-  static list = asyncHandler(async (req, res) => {
-    const flags = await FeatureFlagService.listFlags();
-    res.json({ success: true, data: flags });
-  });
+      if (!id) {
+        res.status(400).json({ success: false, error: "Municipality ID is required." });
+        return;
+      }
+      if (!status || !['verified', 'rejected'].includes(status)) {
+        res.status(400).json({ success: false, error: "Valid status ('verified' or 'rejected') is required." });
+        return;
+      }
+      if (status === 'rejected' && !rejection_reason) {
+        res.status(400).json({ success: false, error: "Rejection reason is required when rejecting KYC." });
+        return;
+      }
 
-  /**
-   * PATCH /superadmin/feature-flags/:id/toggle
-   * Enable or disable a feature flag.
-   * Body: { enabled: boolean }
-   */
-  static toggle = asyncHandler(async (req, res) => {
-    const { enabled } = req.body;
-    await FeatureFlagService.toggleFlag(String(req.params.id), enabled);
-    res.json({
-      success: true,
-      message: `Feature flag ${enabled ? "enabled" : "disabled"} (not in schema).`,
-    });
-  });
+      const updated = await this.service.reviewMunicipalityKyc(id, status, verifiedBy, rejection_reason);
+      res.status(200).json({ success: true, data: updated });
+    } catch (error: any) {
+      res.status(400).json({ success: false, error: error.message });
+    }
+  };
+
+  deleteMunicipality = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const id = req.params.id as string;
+      if (!id) {
+        res.status(400).json({ success: false, error: "Municipality ID is required." });
+        return;
+      }
+
+      const deletedBy = (req as any).user?.id;
+      const result = await this.service.removeMunicipality(id, deletedBy);
+
+      res.status(200).json({
+        success: true,
+        message: "Municipality, associated departments, and staff were successfully soft-deleted and archived. The municipality is reset and ready for re-provisioning.",
+        data: result,
+      });
+    } catch (error: any) {
+      console.error("deleteMunicipality error:", error);
+      res.status(500).json({ success: false, error: error.message });
+    }
+  };
 }

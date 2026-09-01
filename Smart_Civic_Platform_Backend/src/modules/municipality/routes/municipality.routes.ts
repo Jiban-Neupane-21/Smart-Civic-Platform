@@ -1,864 +1,374 @@
 import { Router } from "express";
-import {
-  authenticate,
-  isMunicipalityStaff,
-  isMunicipalityAdmin,
-  belongsToMunicipality,
-  belongsToDepartment,
-  auditLogger,
-  requestLogger,
-  municipalityRateLimiter,
-  publicRateLimiter,
-  validateBody,
-} from "../middleware";
-import {
-  MunicipalityController,
-  DepartmentController,
-  StaffController,
-  ComplaintController,
-  NoticeController,
-  AuditLogController,
-} from "../controller";
+import { MunicipalityController } from "../controller/municipality.controller";
+import { verifyMunicipalityHeadContext } from "../middleware/municipality.middleware";
+import { SupabaseClient } from "@supabase/supabase-js";
 
-const router = Router();
+const requireAuth =
+  (supabase: SupabaseClient) => async (req: any, res: any, next: any) => {
+    const authHeader = req.headers.authorization;
+    if (!authHeader) {
+      return res.status(401).json({ error: "Authorization header absent." });
+    }
 
-// ─── Global Middleware ────────────────────────────────────────────────────────
+    const token = authHeader.split(" ")[1];
+    const {
+      data: { user },
+      error,
+    } = await supabase.auth.getUser(token);
 
-router.use(requestLogger);
+    if (error || !user)
+      return res.status(401).json({ error: "Invalid active session token." });
+    req.user = user;
+    next();
+  };
 
-// ─── Municipality (superadmin-managed) ───────────────────────────────────────
+export function createMunicipalityRouter(
+  supabaseAdminClient: SupabaseClient,
+  controller: MunicipalityController,
+): Router {
+  const router = Router();
 
-/**
- * @swagger
- * /api/municipality:
- *   get:
- *     tags: [Municipality]
- *     summary: List all municipalities
- *     security:
- *       - BearerAuth: []
- *     responses:
- *       200:
- *         description: OK
- */
-router.get(
-  "/",
-  municipalityRateLimiter,
-  authenticate,
-  MunicipalityController.list,
-);
+  router.use(requireAuth(supabaseAdminClient));
 
-/**
- * @swagger
- * /api/municipality/{municipalityId}:
- *   get:
- *     tags: [Municipality]
- *     summary: Get municipality details
- *     security:
- *       - BearerAuth: []
- *     parameters:
- *       - in: path
- *         name: municipalityId
- *         required: true
- *         schema:
- *           type: string
- *           format: uuid
- *     responses:
- *       200:
- *         description: OK
- *   patch:
- *     tags: [Municipality]
- *     summary: Update municipality data
- *     security:
- *       - BearerAuth: []
- *     parameters:
- *       - in: path
- *         name: municipalityId
- *         required: true
- *         schema:
- *           type: string
- *           format: uuid
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *     responses:
- *       200:
- *         description: Updated
- */
-router.get(
-  "/:municipalityId",
-  municipalityRateLimiter,
-  authenticate,
-  isMunicipalityStaff,
-  belongsToMunicipality,
-  MunicipalityController.getById,
-);
+  /**
+   * @swagger
+   * /api/municipality/departments/categories:
+   *   get:
+   *     summary: List system department categories
+   *     tags: [Municipality API]
+   *     security: [{ BearerAuth: [] }]
+   *     responses:
+   *       200:
+   *         description: Department categories list.
+   */
+  router.get("/departments/categories", controller.getDepartmentCategories);
 
-router.patch(
-  "/:municipalityId",
-  municipalityRateLimiter,
-  authenticate,
-  isMunicipalityAdmin,
-  belongsToMunicipality,
-  auditLogger,
-  MunicipalityController.update,
-);
+  router.use(verifyMunicipalityHeadContext(supabaseAdminClient));
 
-/**
- * @swagger
- * /api/municipality/{municipalityId}/stats:
- *   get:
- *     tags: [Municipality]
- *     summary: Get municipality statistics
- *     security:
- *       - BearerAuth: []
- *     parameters:
- *       - in: path
- *         name: municipalityId
- *         required: true
- *         schema:
- *           type: string
- *           format: uuid
- *     responses:
- *       200:
- *         description: OK
- */
-router.get(
-  "/:municipalityId/stats",
-  municipalityRateLimiter,
-  authenticate,
-  isMunicipalityStaff,
-  belongsToMunicipality,
-  MunicipalityController.stats,
-);
+  /**
+   * @swagger
+   * /api/municipality/profile:
+   *   get:
+   *     summary: Get municipality's own full profile including KYC status
+   *     tags: [Municipality API]
+   *     security: [{ BearerAuth: [] }]
+   *     responses:
+   *       200:
+   *         description: Municipality profile data.
+   *   patch:
+   *     summary: Update municipality profile and submit KYC documents
+   *     tags: [Municipality API]
+   *     security: [{ BearerAuth: [] }]
+   *     responses:
+   *       200:
+   *         description: Profile updated.
+   */
+  router.get("/profile", controller.getMunicipalityProfile);
+  router.patch("/profile", controller.updateMunicipalityProfile);
 
-// ─── Departments ──────────────────────────────────────────────────────────────
+  const { forcePasswordReset } = require("../../../middleware/forcePasswordReset");
+  const { requireKyc } = require("../../../middleware/requireKyc");
+  router.use(forcePasswordReset);
+  router.use(requireKyc);
 
-/**
- * @swagger
- * /api/municipality/{municipalityId}/departments:
- *   get:
- *     tags: [Department]
- *     summary: List departments in a municipality
- *     security:
- *       - BearerAuth: []
- *     parameters:
- *       - in: path
- *         name: municipalityId
- *         required: true
- *         schema:
- *           type: string
- *           format: uuid
- *     responses:
- *       200:
- *         description: OK
- */
-router.get(
-  "/:municipalityId/departments",
-  municipalityRateLimiter,
-  authenticate,
-  isMunicipalityStaff,
-  belongsToMunicipality,
-  DepartmentController.list,
-);
+  /**
+   * @swagger
+   * /api/municipality/analytics:
+   *   get:
+   *     summary: Municipality operational analytics dashboard metrics
+   *     tags: [Municipality API]
+   *     security: [{ BearerAuth: [] }]
+   *     responses:
+   *       200:
+   *         description: Analytics summary loaded.
+   */
+  router.get("/analytics", controller.getAnalytics);
 
-/**
- * @swagger
- * /api/municipality/{municipalityId}/departments:
- *   post:
- *     tags: [Department]
- *     summary: Create a department in a municipality
- *     security:
- *       - BearerAuth: []
- *     parameters:
- *       - in: path
- *         name: municipalityId
- *         required: true
- *         schema:
- *           type: string
- *           format: uuid
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - name
- *               - code
- *     responses:
- *       201:
- *         description: Created
- */
-router.post(
-  "/:municipalityId/departments",
-  municipalityRateLimiter,
-  authenticate,
-  isMunicipalityAdmin,
-  belongsToMunicipality,
-  auditLogger,
-  validateBody(["name", "code"]),
-  DepartmentController.create,
-);
+  /**
+   * @swagger
+   * /api/municipality/logo:
+   *   put:
+   *     summary: Update municipality logo
+   *     tags: [Municipality API]
+   *     security: [{ BearerAuth: [] }]
+   *     responses:
+   *       200:
+   *         description: Logo updated successfully.
+   */
+  router.put("/logo", controller.updateLogo);
 
-/**
- * @swagger
- * /api/municipality/{municipalityId}/departments/{departmentId}:
- *   get:
- *     tags: [Department]
- *     summary: Get department details in a municipality
- *     security:
- *       - BearerAuth: []
- *     parameters:
- *       - in: path
- *         name: municipalityId
- *         required: true
- *         schema:
- *           type: string
- *           format: uuid
- *       - in: path
- *         name: departmentId
- *         required: true
- *         schema:
- *           type: string
- *           format: uuid
- *     responses:
- *       200:
- *         description: OK
- */
-router.get(
-  "/:municipalityId/departments/:departmentId",
-  municipalityRateLimiter,
-  authenticate,
-  isMunicipalityStaff,
-  belongsToMunicipality,
-  DepartmentController.getById,
-);
+  /**
+   * @swagger
+   * /api/municipality/departments:
+   *   get:
+   *     summary: List departments in municipality
+   *     tags: [Municipality API]
+   *     security: [{ BearerAuth: [] }]
+   *     responses:
+   *       200:
+   *         description: Departments list.
+   *   post:
+   *     summary: Provision a new department and generate department head invite
+   *     tags: [Municipality API]
+   *     security: [{ BearerAuth: [] }]
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             $ref: '#/components/schemas/ProvisionDepartmentRequest'
+   *     responses:
+   *       201:
+   *         description: Department provisioned and invite generated.
+   */
+  router.get("/departments", controller.getDepartments);
+  router.post("/departments", controller.provisionDepartment);
+  router.post("/departments/create", controller.provisionDepartment);
 
-/**
- * @swagger
- * /api/municipality/{municipalityId}/departments/{departmentId}:
- *   patch:
- *     tags: [Department]
- *     summary: Update department details in a municipality
- *     security:
- *       - BearerAuth: []
- *     parameters:
- *       - in: path
- *         name: municipalityId
- *         required: true
- *         schema:
- *           type: string
- *           format: uuid
- *       - in: path
- *         name: departmentId
- *         required: true
- *         schema:
- *           type: string
- *           format: uuid
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *     responses:
- *       200:
- *         description: Updated
- */
-router.patch(
-  "/:municipalityId/departments/:departmentId",
-  municipalityRateLimiter,
-  authenticate,
-  isMunicipalityAdmin,
-  belongsToMunicipality,
-  auditLogger,
-  DepartmentController.update,
-);
+  /**
+   * @swagger
+   * /api/municipality/departments/{id}:
+   *   get:
+   *     summary: Get department details
+   *     tags: [Municipality API]
+   *     security: [{ BearerAuth: [] }]
+   *     parameters:
+   *       - in: path
+   *         name: id
+   *         required: true
+   *         schema:
+   *           type: string
+   *           format: uuid
+   *     responses:
+   *       200:
+   *         description: Department details.
+   *   patch:
+   *     summary: Update department configuration
+   *     tags: [Municipality API]
+   *     security: [{ BearerAuth: [] }]
+   *     parameters:
+   *       - in: path
+   *         name: id
+   *         required: true
+   *         schema:
+   *           type: string
+   *           format: uuid
+   *     responses:
+   *       200:
+   *         description: Department updated.
+   *   delete:
+   *     summary: Delete department
+   *     tags: [Municipality API]
+   *     security: [{ BearerAuth: [] }]
+   *     parameters:
+   *       - in: path
+   *         name: id
+   *         required: true
+   *         schema:
+   *           type: string
+   *           format: uuid
+   *     responses:
+   *       200:
+   *         description: Department deleted.
+   */
+  router.get("/departments/:id", controller.getDepartmentDetail);
+  router.patch("/departments/:id", controller.updateDepartment);
+  router.delete("/departments/:id", controller.deleteDepartment);
+  router.post("/departments/:id/replace-head", controller.replaceDepartmentHead);
+  router.patch("/departments/:id/kyc", controller.reviewDepartmentKyc);
 
-/**
- * @swagger
- * /api/municipality/{municipalityId}/departments/{departmentId}:
- *   delete:
- *     tags: [Department]
- *     summary: Delete a department in a municipality
- *     security:
- *       - BearerAuth: []
- *     parameters:
- *       - in: path
- *         name: municipalityId
- *         required: true
- *         schema:
- *           type: string
- *           format: uuid
- *       - in: path
- *         name: departmentId
- *         required: true
- *         schema:
- *           type: string
- *           format: uuid
- *     responses:
- *       200:
- *         description: Deleted
- */
-router.delete(
-  "/:municipalityId/departments/:departmentId",
-  municipalityRateLimiter,
-  authenticate,
-  isMunicipalityAdmin,
-  belongsToMunicipality,
-  auditLogger,
-  DepartmentController.delete,
-);
+  router.get("/:municipalityId/departments", controller.getDepartments);
+  router.post("/:municipalityId/departments", controller.provisionDepartment);
+  router.get("/:municipalityId/departments/:id", controller.getDepartmentDetail);
+  router.patch("/:municipalityId/departments/:id", controller.updateDepartment);
+  router.delete("/:municipalityId/departments/:id", controller.deleteDepartment);
+  router.patch("/:municipalityId/departments/:id/kyc", controller.reviewDepartmentKyc);
 
-// ─── Staff ────────────────────────────────────────────────────────────────────
+  /**
+   * @swagger
+   * /api/municipality/staff:
+   *   get:
+   *     summary: List staff profiles in municipality
+   *     tags: [Municipality API]
+   *     security: [{ BearerAuth: [] }]
+   *     responses:
+   *       200:
+   *         description: Staff list.
+   *   post:
+   *     summary: Dispatch staff role invitation
+   *     tags: [Municipality API]
+   *     security: [{ BearerAuth: [] }]
+   *     responses:
+   *       201:
+   *         description: Invitation created.
+   */
+  router.get("/staff", controller.listStaff);
+  router.post("/staff", controller.createStaff);
+  router.post("/staff/onboard", controller.onboardStaffProfile);
+  router.patch("/staff/:staffId", controller.updateStaff);
+  router.delete("/staff/:staffId", controller.deleteStaff);
+  router.patch("/staff/:staffId/status", controller.updateStaffStatus);
+  router.patch("/staff/:id/kyc", controller.reviewStaffKyc);
+  router.post("/staff/:staffId/reset-password", controller.resetStaffPassword);
 
-/**
- * @swagger
- * /api/municipality/{municipalityId}/staff:
- *   get:
- *     tags: [Staff]
- *     summary: List staff in a municipality
- *     security:
- *       - BearerAuth: []
- *     parameters:
- *       - in: path
- *         name: municipalityId
- *         required: true
- *         schema:
- *           type: string
- *           format: uuid
- *     responses:
- *       200:
- *         description: OK
- */
-router.get(
-  "/:municipalityId/staff",
-  municipalityRateLimiter,
-  authenticate,
-  isMunicipalityAdmin,
-  belongsToMunicipality,
-  StaffController.list,
-);
+  router.get("/:municipalityId/staff", controller.listStaff);
+  router.post("/:municipalityId/staff", controller.createStaff);
+  router.patch("/:municipalityId/staff/:staffId", controller.updateStaff);
+  router.delete("/:municipalityId/staff/:staffId", controller.deleteStaff);
+  router.patch("/:municipalityId/staff/:staffId/status", controller.updateStaffStatus);
+  router.patch("/:municipalityId/staff/:id/kyc", controller.reviewStaffKyc);
+  router.post("/:municipalityId/staff/:staffId/reset-password", controller.resetStaffPassword);
 
-/**
- * @swagger
- * /api/municipality/{municipalityId}/staff:
- *   post:
- *     tags: [Staff]
- *     summary: Create a staff member in a municipality
- *     security:
- *       - BearerAuth: []
- *     parameters:
- *       - in: path
- *         name: municipalityId
- *         required: true
- *         schema:
- *           type: string
- *           format: uuid
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - name
- *               - email
- *               - password
- *               - role
- *               - departmentId
- *     responses:
- *       201:
- *         description: Created
- */
-router.post(
-  "/:municipalityId/staff",
-  municipalityRateLimiter,
-  authenticate,
-  isMunicipalityAdmin,
-  belongsToMunicipality,
-  auditLogger,
-  validateBody(["name", "email", "password", "role", "departmentId"]),
-  StaffController.create,
-);
+  /**
+   * @swagger
+   * /api/municipality/complaints:
+   *   get:
+   *     summary: List all complaints across municipality
+   *     tags: [Municipality API]
+   *     security: [{ BearerAuth: [] }]
+   *     responses:
+   *       200:
+   *         description: Complaints list.
+   */
+  router.get("/complaints", controller.getComplaints);
 
-/**
- * @swagger
- * /api/municipality/{municipalityId}/staff/{staffId}/status:
- *   patch:
- *     tags: [Staff]
- *     summary: Update staff status in a municipality
- *     security:
- *       - BearerAuth: []
- *     parameters:
- *       - in: path
- *         name: municipalityId
- *         required: true
- *         schema:
- *           type: string
- *           format: uuid
- *       - in: path
- *         name: staffId
- *         required: true
- *         schema:
- *           type: string
- *           format: uuid
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - status
- *     responses:
- *       200:
- *         description: Updated
- */
-router.patch(
-  "/:municipalityId/staff/:staffId/status",
-  municipalityRateLimiter,
-  authenticate,
-  isMunicipalityAdmin,
-  belongsToMunicipality,
-  auditLogger,
-  validateBody(["status"]),
-  StaffController.updateStatus,
-);
+  /**
+   * @swagger
+   * /api/municipality/kyc-pending:
+   *   get:
+   *     summary: List citizens awaiting identity verification (KYC review)
+   *     tags: [Municipality API]
+   *     security: [{ BearerAuth: [] }]
+   *     responses:
+   *       200:
+   *         description: Pending KYC list.
+   */
+  router.get("/kyc-pending", controller.getPendingKycList);
+  router.get("/kyc-pending/:citizenId", controller.getKycCitizenDetail);
 
-/**
- * @swagger
- * /api/municipality/{municipalityId}/staff/{staffId}:
- *   delete:
- *     tags: [Staff]
- *     summary: Delete a staff member in a municipality
- *     security:
- *       - BearerAuth: []
- *     parameters:
- *       - in: path
- *         name: municipalityId
- *         required: true
- *         schema:
- *           type: string
- *           format: uuid
- *       - in: path
- *         name: staffId
- *         required: true
- *         schema:
- *           type: string
- *           format: uuid
- *     responses:
- *       200:
- *         description: Deleted
- */
-router.delete(
-  "/:municipalityId/staff/:staffId",
-  municipalityRateLimiter,
-  authenticate,
-  isMunicipalityAdmin,
-  belongsToMunicipality,
-  auditLogger,
-  StaffController.delete,
-);
+  /**
+   * @swagger
+   * /api/municipality/kyc-pending/{citizenId}:
+   *   patch:
+   *     summary: Review citizen KYC application (verify or reject)
+   *     tags: [Municipality API]
+   *     security: [{ BearerAuth: [] }]
+   *     parameters:
+   *       - in: path
+   *         name: citizenId
+   *         required: true
+   *         schema:
+   *           type: string
+   *           format: uuid
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             $ref: '#/components/schemas/KycReviewRequest'
+   *     responses:
+   *       200:
+   *         description: KYC status updated.
+   */
+  router.patch("/kyc-pending/:citizenId", controller.reviewKyc);
 
-// ─── Complaints ───────────────────────────────────────────────────────────────
+  router.get("/:municipalityId/kyc-pending", controller.getPendingKycList);
+  router.get("/:municipalityId/kyc-pending/:citizenId", controller.getKycCitizenDetail);
+  router.patch("/:municipalityId/kyc-pending/:citizenId", controller.reviewKyc);
 
-/**
- * @swagger
- * /api/municipality/{municipalityId}/complaints:
- *   get:
- *     tags: [Municipality]
- *     summary: List complaints for a municipality
- *     security:
- *       - BearerAuth: []
- *     parameters:
- *       - in: path
- *         name: municipalityId
- *         required: true
- *         schema:
- *           type: string
- *           format: uuid
- *       - in: query
- *         name: status
- *         schema:
- *           type: string
- *       - in: query
- *         name: departmentId
- *         schema:
- *           type: string
- *           format: uuid
- *     responses:
- *       200:
- *         description: OK
- */
-router.get(
-  "/:municipalityId/complaints",
-  municipalityRateLimiter,
-  authenticate,
-  isMunicipalityStaff,
-  belongsToMunicipality,
-  ComplaintController.list,
-);
+  /**
+   * @swagger
+   * /api/municipality/teams:
+   *   get:
+   *     summary: List cross-department emergency task force teams
+   *     tags: [Municipality API]
+   *     security: [{ BearerAuth: [] }]
+   *     responses:
+   *       200:
+   *         description: Teams list.
+   *   post:
+   *     summary: Provision a cross-department emergency task force team
+   *     tags: [Municipality API]
+   *     security: [{ BearerAuth: [] }]
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             $ref: '#/components/schemas/CreateCrossDeptTeamRequest'
+   *     responses:
+   *       201:
+   *         description: Cross-dept team created.
+   */
+  router.get("/teams", controller.getCrossDeptTeams);
+  router.post("/teams", controller.createCrossDeptTeam);
+  router.delete("/teams/:teamId", controller.deactivateCrossDeptTeam);
+  router.post("/teams/:teamId/assign-complaint", controller.assignComplaintToTeam);
+  router.get("/teams/:teamId/complaints", controller.getTeamComplaints);
 
-/**
- * @swagger
- * /api/municipality/{municipalityId}/complaints:
- *   post:
- *     tags: [Municipality]
- *     summary: Submit a complaint for a municipality
- *     security:
- *       - BearerAuth: []
- *     parameters:
- *       - in: path
- *         name: municipalityId
- *         required: true
- *         schema:
- *           type: string
- *           format: uuid
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - citizenId
- *               - category
- *               - title
- *               - description
- *     responses:
- *       201:
- *         description: Created
- */
-router.post(
-  "/:municipalityId/complaints",
-  publicRateLimiter, // citizens submit complaints — lighter auth
-  authenticate,
-  validateBody(["citizenId", "category", "title", "description"]),
-  ComplaintController.create,
-);
+  router.get("/:municipalityId/teams", controller.getCrossDeptTeams);
+  router.post("/:municipalityId/teams", controller.createCrossDeptTeam);
+  router.delete("/:municipalityId/teams/:teamId", controller.deactivateCrossDeptTeam);
+  router.post("/:municipalityId/teams/:teamId/assign-complaint", controller.assignComplaintToTeam);
+  router.get("/:municipalityId/teams/:teamId/complaints", controller.getTeamComplaints);
 
-/**
- * @swagger
- * /api/municipality/{municipalityId}/complaints/{complaintId}:
- *   get:
- *     tags: [Municipality]
- *     summary: Get complaint details
- *     security:
- *       - BearerAuth: []
- *     parameters:
- *       - in: path
- *         name: municipalityId
- *         required: true
- *         schema:
- *           type: string
- *           format: uuid
- *       - in: path
- *         name: complaintId
- *         required: true
- *         schema:
- *           type: string
- *           format: uuid
- *     responses:
- *       200:
- *         description: OK
- */
-router.get(
-  "/:municipalityId/complaints/:complaintId",
-  municipalityRateLimiter,
-  authenticate,
-  isMunicipalityStaff,
-  belongsToMunicipality,
-  ComplaintController.getById,
-);
+  /**
+   * @swagger
+   * /api/municipality/complaints:
+   *   get:
+   *     summary: Get all complaints for the municipality
+   *     tags: [Municipality API]
+   *     security: [{ BearerAuth: [] }]
+   *     responses:
+   *       200:
+   *         description: Complaints list.
+   */
+  router.get("/complaints", controller.getComplaints);
 
-/**
- * @swagger
- * /api/municipality/{municipalityId}/complaints/{complaintId}:
- *   patch:
- *     tags: [Municipality]
- *     summary: Update a complaint
- *     security:
- *       - BearerAuth: []
- *     parameters:
- *       - in: path
- *         name: municipalityId
- *         required: true
- *         schema:
- *           type: string
- *           format: uuid
- *       - in: path
- *         name: complaintId
- *         required: true
- *         schema:
- *           type: string
- *           format: uuid
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *     responses:
- *       200:
- *         description: Updated
- */
-router.patch(
-  "/:municipalityId/complaints/:complaintId",
-  municipalityRateLimiter,
-  authenticate,
-  isMunicipalityStaff,
-  belongsToMunicipality,
-  auditLogger,
-  ComplaintController.update,
-);
+  /**
+   * @swagger
+   * /api/municipality/complaints/escalated:
+   *   get:
+   *     summary: Get SLA Level 2 escalated grievances feed
+   *     tags: [Municipality API]
+   *     security: [{ BearerAuth: [] }]
+   *     responses:
+   *       200:
+   *         description: Escalated complaints feed.
+   */
+  router.get("/complaints/escalated", controller.getEscalatedComplaints);
 
-// ─── Notices (announcements table) ────────────────────────────────────────────
+  /**
+   * @swagger
+   * /api/municipality/complaints/{id}/intervene:
+   *   post:
+   *     summary: Municipality Head administrative intervention on escalated complaint
+   *     tags: [Municipality API]
+   *     security: [{ BearerAuth: [] }]
+   *     parameters:
+   *       - in: path
+   *         name: id
+   *         required: true
+   *         schema:
+   *           type: string
+   *           format: uuid
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             $ref: '#/components/schemas/InterveneComplaintRequest'
+   *     responses:
+   *       200:
+   *         description: Intervention executed.
+   */
+  router.post("/complaints/:id/intervene", controller.interveneInComplaint);
 
-/**
- * @swagger
- * /api/municipality/{municipalityId}/notices:
- *   get:
- *     tags: [Municipality]
- *     summary: List notices for a municipality
- *     parameters:
- *       - in: path
- *         name: municipalityId
- *         required: true
- *         schema:
- *           type: string
- *           format: uuid
- *       - in: query
- *         name: category
- *         schema:
- *           type: string
- *     responses:
- *       200:
- *         description: OK
- */
-router.get(
-  "/:municipalityId/notices",
-  publicRateLimiter,
-  NoticeController.list, // public — citizens can read notices
-);
+  router.get("/:municipalityId/complaints", controller.getComplaints);
+  router.get("/:municipalityId/complaints/escalated", controller.getEscalatedComplaints);
+  router.post("/:municipalityId/complaints/:id/intervene", controller.interveneInComplaint);
 
-/**
- * @swagger
- * /api/municipality/{municipalityId}/notices/{noticeId}:
- *   get:
- *     tags: [Municipality]
- *     summary: Get a notice by ID
- *     parameters:
- *       - in: path
- *         name: municipalityId
- *         required: true
- *         schema:
- *           type: string
- *           format: uuid
- *       - in: path
- *         name: noticeId
- *         required: true
- *         schema:
- *           type: string
- *           format: uuid
- *     responses:
- *       200:
- *         description: OK
- */
-router.get(
-  "/:municipalityId/notices/:noticeId",
-  publicRateLimiter,
-  NoticeController.getById, // public
-);
+  router.post("/users/create", controller.createUser);
 
-/**
- * @swagger
- * /api/municipality/{municipalityId}/notices:
- *   post:
- *     tags: [Municipality]
- *     summary: Create a notice in a municipality
- *     security:
- *       - BearerAuth: []
- *     parameters:
- *       - in: path
- *         name: municipalityId
- *         required: true
- *         schema:
- *           type: string
- *           format: uuid
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - title
- *               - body
- *               - category
- *     responses:
- *       201:
- *         description: Created
- */
-router.post(
-  "/:municipalityId/notices",
-  municipalityRateLimiter,
-  authenticate,
-  isMunicipalityStaff,
-  belongsToMunicipality,
-  auditLogger,
-  validateBody(["title", "body", "category"]),
-  NoticeController.create,
-);
-
-/**
- * @swagger
- * /api/municipality/{municipalityId}/notices/{noticeId}:
- *   patch:
- *     tags: [Municipality]
- *     summary: Update a municipality notice
- *     security:
- *       - BearerAuth: []
- *     parameters:
- *       - in: path
- *         name: municipalityId
- *         required: true
- *         schema:
- *           type: string
- *           format: uuid
- *       - in: path
- *         name: noticeId
- *         required: true
- *         schema:
- *           type: string
- *           format: uuid
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *     responses:
- *       200:
- *         description: Updated
- */
-router.patch(
-  "/:municipalityId/notices/:noticeId",
-  municipalityRateLimiter,
-  authenticate,
-  isMunicipalityStaff,
-  belongsToMunicipality,
-  auditLogger,
-  NoticeController.update,
-);
-
-/**
- * @swagger
- * /api/municipality/{municipalityId}/notices/{noticeId}:
- *   delete:
- *     tags: [Municipality]
- *     summary: Delete a municipality notice
- *     security:
- *       - BearerAuth: []
- *     parameters:
- *       - in: path
- *         name: municipalityId
- *         required: true
- *         schema:
- *           type: string
- *           format: uuid
- *       - in: path
- *         name: noticeId
- *         required: true
- *         schema:
- *           type: string
- *           format: uuid
- *     responses:
- *       200:
- *         description: Deleted
- */
-router.delete(
-  "/:municipalityId/notices/:noticeId",
-  municipalityRateLimiter,
-  authenticate,
-  isMunicipalityAdmin,
-  belongsToMunicipality,
-  auditLogger,
-  NoticeController.delete,
-);
-
-// ─── Audit Logs ───────────────────────────────────────────────────────────────
-
-/**
- * @swagger
- * /api/municipality/{municipalityId}/audit-logs:
- *   get:
- *     tags: [Municipality]
- *     summary: Get audit logs for a municipality
- *     security:
- *       - BearerAuth: []
- *     parameters:
- *       - in: path
- *         name: municipalityId
- *         required: true
- *         schema:
- *           type: string
- *           format: uuid
- *     responses:
- *       200:
- *         description: OK
- */
-router.get(
-  "/:municipalityId/audit-logs",
-  municipalityRateLimiter,
-  authenticate,
-  isMunicipalityAdmin,
-  belongsToMunicipality,
-  AuditLogController.list,
-);
-
-export default router;
-
-// ─── Route Summary ────────────────────────────────────────────────────────────
-//
-//  🔓 Public (no auth):
-//  GET  /municipalities/:id/services
-//  GET  /municipalities/:id/services/:serviceId
-//  GET  /municipalities/:id/notices
-//  GET  /municipalities/:id/notices/:noticeId
-//
-//  🔐 Authenticated (Any role):
-//  GET  /municipalities
-//
-//  🔐 Municipality Staff (auth + role + belongsToMunicipality):
-//  GET    /municipalities/:id
-//  GET    /municipalities/:id/stats
-//  GET    /municipalities/:id/departments
-//  GET    /municipalities/:id/departments/:deptId
-//  GET    /municipalities/:id/complaints
-//  GET    /municipalities/:id/complaints/:complaintId
-//  PATCH  /municipalities/:id/complaints/:complaintId   [audited]
-//  POST   /municipalities/:id/notices                   [audited]
-//  PATCH  /municipalities/:id/notices/:noticeId         [audited]
-//
-//  🔐 Municipality Admin (auth + admin role + belongsToMunicipality):
-//  PATCH  /municipalities/:id                           [audited]
-//  POST   /municipalities/:id/departments               [audited]
-//  PATCH  /municipalities/:id/departments/:deptId       [audited]
-//  DELETE /municipalities/:id/departments/:deptId       [audited]
-//  GET    /municipalities/:id/staff
-//  POST   /municipalities/:id/staff                     [audited]
-//  PATCH  /municipalities/:id/staff/:staffId/status     [audited]
-//  DELETE /municipalities/:id/staff/:staffId            [audited]
-//  POST   /municipalities/:id/services                  [audited]
-//  PATCH  /municipalities/:id/services/:serviceId       [audited]
-//  DELETE /municipalities/:id/services/:serviceId       [audited]
-//  DELETE /municipalities/:id/notices/:noticeId         [audited]
-//  GET    /municipalities/:id/audit-logs
-//
-//  🔐 Superadmin only:
-//  POST   /municipalities                               [audited]
-//  DELETE /municipalities/:id                           [audited]
+  return router;
+}

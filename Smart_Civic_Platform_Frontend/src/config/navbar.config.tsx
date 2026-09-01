@@ -17,8 +17,9 @@ import {
   FiClock,
   FiLogOut,
   FiMenu,
+  FiVolume2,
 } from "react-icons/fi";
-import { MdOutlinePeople } from "react-icons/md";
+import { MdOutlinePeople, MdGroups2 } from "react-icons/md";
 
 // Slugify label to href
 const toHref = (label: string): string =>
@@ -49,21 +50,26 @@ const manageMunicipalityItem = createNavItem(
   "Manage Municipality",
   <FiBriefcase />,
 );
+const userManagementItem = createNavItem("User Management", <FiUsers />);
 const auditLogItem = createNavItem("Audit Log", <FiList />);
 const systemSettingItem = createNavItem("System Setting", <FiSettings />);
 const manageDepartmentStaffItem = createNavItem(
   "Manage Department Staff",
   <FiGitBranch />,
 );
+const manageStaffItem = createNavItem("Manage Staff", <FiUsers />);
 const complaintDetailItem = createNavItem("Complaint Detail", <FiFileText />);
+const complaintQueueItem = createNavItem("Complaint Queue", <FiFileText />);
 const reportAnalyticsItem = createNavItem(
   "Report & Analytics",
   <FiBarChart2 />,
 );
+const adminNoticesItem = createNavItem("Notices", <FiVolume2 />);
 const notificationItem = createNavItem("Notification", <FiBell />);
 const profileItem = createNavItem("Profile", <FiUser />);
 const staffItem = createNavItem("Staff", <FiUsers />);
 const teamItem = createNavItem("Team", <MdOutlinePeople />);
+const crossDeptTeamItem = createNavItem("Cross-Dept Teams", <MdGroups2 />);
 const complaintItem = createNavItem("Complaint", <FiAlertTriangle />);
 const submitComplaintItem = createNavItem(
   "Submit Complaint",
@@ -77,6 +83,7 @@ export const NavbarItems: NavbarConfig = {
     desktop: [
       dashboardItem.desktop,
       manageMunicipalityItem.desktop,
+      userManagementItem.desktop,
       auditLogItem.desktop,
       systemSettingItem.desktop,
       logoutItem.desktop,
@@ -84,7 +91,8 @@ export const NavbarItems: NavbarConfig = {
     mobile: {
       primary: [
         dashboardItem.mobile,
-        manageMunicipalityItem.mobile, // Important admin task
+        manageMunicipalityItem.mobile,
+        userManagementItem.mobile,
         auditLogItem.mobile,
       ],
       secondary: [systemSettingItem.mobile, logoutItem.mobile],
@@ -95,8 +103,11 @@ export const NavbarItems: NavbarConfig = {
     desktop: [
       dashboardItem.desktop,
       manageDepartmentStaffItem.desktop,
+      manageStaffItem.desktop,
+      crossDeptTeamItem.desktop,
       complaintDetailItem.desktop,
       reportAnalyticsItem.desktop,
+      adminNoticesItem.desktop,
       notificationItem.desktop,
       profileItem.desktop,
       logoutItem.desktop,
@@ -105,11 +116,14 @@ export const NavbarItems: NavbarConfig = {
       primary: [
         dashboardItem.mobile,
         manageDepartmentStaffItem.mobile,
-        reportAnalyticsItem.mobile, // Heavy tables/graphs usually viewed on desktop
-        notificationItem.mobile, // Alerts for new issues
+        manageStaffItem.mobile,
+        crossDeptTeamItem.mobile,
+        reportAnalyticsItem.mobile,
       ],
       secondary: [
-        complaintDetailItem.mobile, // Crucial for quick resolution checks
+        adminNoticesItem.mobile,
+        notificationItem.mobile,
+        complaintQueueItem.mobile,
         profileItem.mobile,
         logoutItem.mobile,
       ],
@@ -121,7 +135,7 @@ export const NavbarItems: NavbarConfig = {
       dashboardItem.desktop,
       staffItem.desktop,
       teamItem.desktop,
-      complaintDetailItem.desktop,
+      complaintQueueItem.desktop,
       reportAnalyticsItem.desktop,
       notificationItem.desktop,
       profileItem.desktop,
@@ -130,7 +144,7 @@ export const NavbarItems: NavbarConfig = {
     mobile: {
       primary: [
         dashboardItem.mobile,
-        complaintDetailItem.mobile,
+        complaintQueueItem.mobile,
         reportAnalyticsItem.mobile,
         notificationItem.mobile,
       ],
@@ -148,8 +162,8 @@ export const NavbarItems: NavbarConfig = {
       dashboardItem.desktop,
       complaintItem.desktop,
       profileItem.desktop,
-      logoutItem.desktop,
       notificationItem.desktop,
+      logoutItem.desktop,
     ],
     mobile: {
       primary: [

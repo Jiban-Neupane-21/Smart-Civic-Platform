@@ -4,33 +4,69 @@ import { authenticate } from "../../../middleware/authenticate";
 import { authorize } from "../../../middleware/authorize";
 import { validateBody } from "../../../middleware/validateBody";
 import {
-  submitComplaintSchema,
   submitFeedbackSchema,
+  updateProfileSchema,
+  addressSchema,
+  identityUploadSchema,
 } from "../../../validation/citizen.validation";
+import { reopenComplaintSchema, complaintNoteSchema } from "../../../validation/complaint.validation";
 
 const router = Router();
 
 /**
  * @swagger
- * /api/citizen/municipalities:
+ * /api/citizen/provinces:
  *   get:
- *     tags: [Citizen]
- *     summary: List active municipalities (complaint form dropdown)
+ *     summary: Public province reference list
+ *     tags: [Citizen API]
  *     responses:
  *       200:
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/SuccessResponse'
+ *         description: Province list retrieved.
+ */
+router.get("/provinces", C.getProvinces);
+
+/**
+ * @swagger
+ * /api/citizen/districts:
+ *   get:
+ *     summary: Public district reference list
+ *     tags: [Citizen API]
+ *     responses:
+ *       200:
+ *         description: District list retrieved.
+ */
+router.get("/districts", C.getDistricts);
+
+/**
+ * @swagger
+ * /api/citizen/municipalities:
+ *   get:
+ *     summary: Public municipality reference list
+ *     tags: [Citizen API]
+ *     responses:
+ *       200:
+ *         description: Municipality list retrieved.
  */
 router.get("/municipalities", C.getMunicipalities);
 
 /**
  * @swagger
+ * /api/citizen/wards:
+ *   get:
+ *     summary: Public ward reference list
+ *     tags: [Citizen API]
+ *     responses:
+ *       200:
+ *         description: Ward list retrieved.
+ */
+router.get("/wards", C.getWards);
+
+/**
+ * @swagger
  * /api/citizen/municipalities/{municipalityId}/categories:
  *   get:
- *     tags: [Citizen]
- *     summary: List complaint categories for a municipality
+ *     summary: Get complaint categories available in municipality
+ *     tags: [Citizen API]
  *     parameters:
  *       - in: path
  *         name: municipalityId
@@ -40,21 +76,33 @@ router.get("/municipalities", C.getMunicipalities);
  *           format: uuid
  *     responses:
  *       200:
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/SuccessResponse'
+ *         description: Complaint categories list.
  */
 router.get("/municipalities/:municipalityId/categories", C.getCategories);
 
-router.use(authenticate, authorize("citizen"));
+// Authenticated citizen routes
+import { forcePasswordReset } from "../../../middleware/forcePasswordReset";
+router.use(authenticate, authorize("citizen"), forcePasswordReset);
+
+/**
+ * @swagger
+ * /api/citizen/dashboard:
+ *   get:
+ *     summary: Get citizen dashboard statistics and recent complaints
+ *     tags: [Citizen API]
+ *     security: [{ BearerAuth: [] }]
+ *     responses:
+ *       200:
+ *         description: Dashboard payload loaded.
+ */
+router.get("/dashboard", C.getDashboard);
 
 /**
  * @swagger
  * /api/citizen/complaints:
  *   post:
- *     tags: [Citizen]
- *     summary: Submit a new complaint
+ *     summary: Submit a new grievance ticket with 4-step structured address and auto-routing
+ *     tags: [Citizen API]
  *     security: [{ BearerAuth: [] }]
  *     requestBody:
  *       required: true
@@ -64,53 +112,24 @@ router.use(authenticate, authorize("citizen"));
  *             $ref: '#/components/schemas/SubmitComplaintRequest'
  *     responses:
  *       201:
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/SuccessResponse'
- *       400:
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/ErrorResponse'
- *       401:
- *         $ref: '#/components/responses/Unauthorized'
- */
-router.post(
-  "/complaints",
-  validateBody(submitComplaintSchema),
-  C.submitComplaint,
-);
-
-/**
- * @swagger
- * /api/citizen/complaints:
+ *         description: Complaint created cleanly. Standardized tracking ID assigned.
  *   get:
- *     tags: [Citizen]
- *     summary: List my complaints
+ *     summary: List my submitted grievances
+ *     tags: [Citizen API]
  *     security: [{ BearerAuth: [] }]
- *     parameters:
- *       - in: query
- *         name: status
- *         schema:
- *           type: string
  *     responses:
  *       200:
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/SuccessResponse'
- *       401:
- *         $ref: '#/components/responses/Unauthorized'
+ *         description: My complaints list retrieved.
  */
+router.post("/complaints", C.submitComplaint);
 router.get("/complaints", C.getMyComplaints);
 
 /**
  * @swagger
  * /api/citizen/complaints/{id}:
  *   get:
- *     tags: [Citizen]
- *     summary: Get complaint detail
+ *     summary: Get complaint detail by UUID
+ *     tags: [Citizen API]
  *     security: [{ BearerAuth: [] }]
  *     parameters:
  *       - in: path
@@ -121,15 +140,7 @@ router.get("/complaints", C.getMyComplaints);
  *           format: uuid
  *     responses:
  *       200:
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/SuccessResponse'
- *       404:
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/ErrorResponse'
+ *         description: Complaint detail loaded.
  */
 router.get("/complaints/:id", C.getComplaintDetail);
 
@@ -137,8 +148,8 @@ router.get("/complaints/:id", C.getComplaintDetail);
  * @swagger
  * /api/citizen/complaints/{id}/history:
  *   get:
- *     tags: [Citizen]
- *     summary: Get complaint status history
+ *     summary: Get complaint timeline history with citizen-friendly messages
+ *     tags: [Citizen API]
  *     security: [{ BearerAuth: [] }]
  *     parameters:
  *       - in: path
@@ -149,24 +160,99 @@ router.get("/complaints/:id", C.getComplaintDetail);
  *           format: uuid
  *     responses:
  *       200:
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/SuccessResponse'
- *       404:
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/ErrorResponse'
+ *         description: Timeline history retrieved.
  */
 router.get("/complaints/:id/history", C.getComplaintHistory);
 
 /**
  * @swagger
+ * /api/citizen/complaints/{id}/reopen:
+ *   post:
+ *     summary: Reopen a resolved complaint within 7 days (max 2 reopens allowed)
+ *     tags: [Citizen API]
+ *     security: [{ BearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       200:
+ *         description: Complaint status changed to reopened.
+ */
+router.post(
+  "/complaints/:id/reopen",
+  validateBody(reopenComplaintSchema),
+  C.reopenComplaint,
+);
+
+/**
+ * @swagger
+ * /api/citizen/complaints/{id}/updates:
+ *   post:
+ *     summary: Add public note / comment to complaint
+ *     tags: [Citizen API]
+ *     security: [{ BearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       201:
+ *         description: Note appended.
+ *   get:
+ *     summary: List public notes for complaint
+ *     tags: [Citizen API]
+ *     security: [{ BearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       200:
+ *         description: Notes list.
+ */
+router.post(
+  "/complaints/:id/updates",
+  validateBody(complaintNoteSchema),
+  C.addComplaintNote,
+);
+router.get("/complaints/:id/updates", C.getComplaintUpdates);
+
+/**
+ * @swagger
+ * /api/citizen/complaints/{id}/media:
+ *   post:
+ *     summary: Upload media evidence (photos/videos) to complaint
+ *     tags: [Citizen API]
+ *     security: [{ BearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       201:
+ *         description: Media attached.
+ */
+router.post("/complaints/:id/media", C.uploadComplaintMedia);
+
+/**
+ * @swagger
  * /api/citizen/complaints/{id}/feedback:
  *   post:
- *     tags: [Citizen]
- *     summary: Submit feedback for a resolved complaint
+ *     summary: Submit resolution satisfaction rating and feedback
+ *     tags: [Citizen API]
  *     security: [{ BearerAuth: [] }]
  *     parameters:
  *       - in: path
@@ -183,20 +269,63 @@ router.get("/complaints/:id/history", C.getComplaintHistory);
  *             $ref: '#/components/schemas/SubmitFeedbackRequest'
  *     responses:
  *       201:
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/SuccessResponse'
- *       400:
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/ErrorResponse'
+ *         description: Feedback recorded.
  */
 router.post(
   "/complaints/:id/feedback",
   validateBody(submitFeedbackSchema),
   C.submitFeedback,
+);
+
+/**
+ * @swagger
+ * /api/citizen/address:
+ *   post:
+ *     summary: Update structured permanent & current address
+ *     tags: [Citizen API]
+ *     security: [{ BearerAuth: [] }]
+ *     responses:
+ *       200:
+ *         description: Address updated.
+ */
+router.post(
+  "/address",
+  validateBody(addressSchema),
+  C.updateAddress,
+);
+
+/**
+ * @swagger
+ * /api/citizen/identity:
+ *   post:
+ *     summary: Upload identity verification (KYC) document images
+ *     tags: [Citizen API]
+ *     security: [{ BearerAuth: [] }]
+ *     responses:
+ *       200:
+ *         description: Identity documents submitted for review.
+ */
+router.post(
+  "/identity",
+  validateBody(identityUploadSchema),
+  C.uploadIdentity,
+);
+
+/**
+ * @swagger
+ * /api/citizen/profile:
+ *   put:
+ *     summary: Update citizen profile details
+ *     tags: [Citizen API]
+ *     security: [{ BearerAuth: [] }]
+ *     responses:
+ *       200:
+ *         description: Profile updated.
+ */
+router.put(
+  "/profile",
+  validateBody(updateProfileSchema),
+  C.updateProfile,
 );
 
 export default router;

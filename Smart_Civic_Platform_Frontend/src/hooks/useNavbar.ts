@@ -34,6 +34,23 @@ export function useNavbar(role: Role): UseNavbarReturn {
   const items = NavbarItems as Record<string, RoleNavConfig>;
   const config = items[mappedRole] ?? items[role as string];
 
+  const routePrefix = `/${role.toLowerCase()}`;
+
+  const mapHref = (item: any) => {
+    if (item.href === "/logout") return item;
+    return { ...item, href: `${routePrefix}${item.href}` };
+  };
+
+  const dynamicConfig = config
+    ? {
+        desktop: config.desktop.map(mapHref),
+        mobile: {
+          primary: config.mobile.primary.map(mapHref),
+          secondary: config.mobile.secondary.map(mapHref),
+        },
+      }
+    : undefined;
+
   const activePath = location.pathname;
 
   const handleNavigate = useCallback(
@@ -64,7 +81,7 @@ export function useNavbar(role: Role): UseNavbarReturn {
   );
 
   return {
-    config,
+    config: dynamicConfig,
     activePath,
     navigate: handleNavigate,
   };

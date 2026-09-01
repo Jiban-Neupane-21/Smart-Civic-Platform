@@ -6,12 +6,25 @@ export interface UserProfile {
   email: string;
   role: UserRole;
   full_name: string;
+  municipality_id?: string;
+  municipalityId?: string;
+  departmentId?: string;
+  force_password_reset?: boolean;
+  account_status?: string;
+  identity_type?: string;
+  identity_number?: string;
+  identity_document_url?: string;
+  identity_verified_at?: string;
+  citizen_details?: {
+    kyc_status?: string;
+  };
 }
 
 interface AuthContextType {
   user: UserProfile | null;
   isAuthenticated: boolean;
-  login: (token: string, profile: UserProfile) => void;
+  kycCompleted: boolean;
+  login: (token: string, profile: UserProfile, refreshToken?: string) => void;
   logout: () => Promise<void>;
 }
 
