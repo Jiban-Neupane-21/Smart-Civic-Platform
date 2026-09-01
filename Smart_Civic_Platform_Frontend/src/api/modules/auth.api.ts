@@ -10,6 +10,7 @@ import type {
   MobileLoginRequest,
   ForgotPasswordRequest,
   ChangePasswordRequest,
+  ChangePasswordResponse,
 } from '../types';
 
 export const authApi = {
@@ -30,7 +31,7 @@ export const authApi = {
   },
 
   /**
-   * Dispatch SMS OTP code
+   * Send OTP to phone
    */
   sendOtp: async (data: SendOtpRequest): Promise<ApiResponse<{ message: string }>> => {
     const response = await apiClient.post<ApiResponse<{ message: string }>>('/auth/send-otp', data);
@@ -38,7 +39,7 @@ export const authApi = {
   },
 
   /**
-   * Verify SMS OTP code
+   * Verify OTP
    */
   verifyOtp: async (data: VerifyOtpRequest): Promise<ApiResponse<{ verified: boolean }>> => {
     const response = await apiClient.post<ApiResponse<{ verified: boolean }>>('/auth/verify-otp', data);
@@ -46,9 +47,9 @@ export const authApi = {
   },
 
   /**
-   * Passwordless login via mobile OTP
+   * Citizen login via OTP
    */
-  loginMobile: async (data: MobileLoginRequest): Promise<ApiResponse<AuthResponseData>> => {
+  loginWithMobile: async (data: MobileLoginRequest): Promise<ApiResponse<AuthResponseData>> => {
     const response = await apiClient.post<ApiResponse<AuthResponseData>>('/auth/login-mobile', data);
     return response.data;
   },
@@ -73,15 +74,15 @@ export const authApi = {
    * Logout user and invalidate refresh token
    */
   logout: async (refreshToken: string): Promise<ApiResponse<void>> => {
-    const response = await apiClient.post<ApiResponse<void>>('/auth/logout', { refreshToken });
+    const response = await apiClient.post<ApiResponse<void>>('/auth/logout', { refresh_token: refreshToken });
     return response.data;
   },
 
   /**
    * Change user password
    */
-  changePassword: async (data: ChangePasswordRequest): Promise<ApiResponse<void>> => {
-    const response = await apiClient.patch<ApiResponse<void>>('/auth/change-password', data);
+  changePassword: async (data: ChangePasswordRequest): Promise<ApiResponse<ChangePasswordResponse>> => {
+    const response = await apiClient.patch<ApiResponse<ChangePasswordResponse>>('/auth/change-password', data);
     return response.data;
   },
 

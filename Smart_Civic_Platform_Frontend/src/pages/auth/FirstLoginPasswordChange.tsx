@@ -44,42 +44,58 @@ function FirstLoginPasswordChange() {
     validationSchema: changePasswordSchema,
     onSubmit: async (values, { setSubmitting }) => {
       try {
-        setSubmitError(null);
-        await authApi.changePassword({
+        const response = await authApi.changePassword({
           current_password: values.current_password,
           new_password: values.new_password,
         });
-        
+
+        const data = response.data;
+        const newAccessToken = data?.access_token || localStorage.getItem("access_token") || "";
+        const newRefreshToken = data?.refresh_token;
+        if (newRefreshToken) {
+          localStorage.setItem("refresh_token", newRefreshToken);
+        }
+
         if (user) {
-          // Update local storage context with new force_password_reset flag if they were forced
-          if (user.force_password_reset) {
-            const updatedProfile = { ...user, force_password_reset: false };
-            const token = localStorage.getItem("access_token") || "";
-            login(token, updatedProfile);
-            
-            let dashboardRoute = "/";
-            switch (user.role) {
-              case "superadmin":
-                dashboardRoute = "/superadmin/dashboard";
-                break;
-              case "municipality_head":
-                dashboardRoute = "/municipality_head/dashboard";
-                break;
-              case "department_head":
-                dashboardRoute = "/department_head/dashboard";
-                break;
-              case "staff":
-                dashboardRoute = "/staff/dashboard";
-                break;
-              case "citizen":
-                dashboardRoute = "/citizen/dashboard";
-                break;
-            }
-            navigate(dashboardRoute);
-          } else {
-            // Voluntary change: just show success or navigate back
-            navigate(-1);
+          const updatedProfile = {
+            ...user,
+            ...(data?.profile || {}),
+            force_password_reset: false,
+          };
+          login(newAccessToken, updatedProfile);
+
+          // If KYC is not completed for municipality/dept/staff, route to /kyc
+          const kycCompleted = updatedProfile.role === "citizen"
+            ? updatedProfile.citizen_details?.kyc_status === "verified"
+            : Boolean(
+                updatedProfile.identity_document_url ||
+                (updatedProfile.identity_type && updatedProfile.identity_number)
+              );
+
+          if (["municipality_head", "department_head", "staff"].includes(updatedProfile.role) && !kycCompleted) {
+            navigate("/kyc", { replace: true });
+            return;
           }
+
+          let dashboardRoute = "/";
+          switch (updatedProfile.role) {
+            case "superadmin":
+              dashboardRoute = "/superadmin/dashboard";
+              break;
+            case "municipality_head":
+              dashboardRoute = "/municipality_head/dashboard";
+              break;
+            case "department_head":
+              dashboardRoute = "/department_head/dashboard";
+              break;
+            case "staff":
+              dashboardRoute = "/staff/dashboard";
+              break;
+            case "citizen":
+              dashboardRoute = "/citizen/dashboard";
+              break;
+          }
+          navigate(dashboardRoute, { replace: true });
         }
       } catch (err: any) {
         // Axios errors wrap the real message in err.response.data.message

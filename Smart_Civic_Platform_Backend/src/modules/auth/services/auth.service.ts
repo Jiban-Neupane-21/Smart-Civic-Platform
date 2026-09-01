@@ -351,7 +351,7 @@ export const changePasswordService = async (
 
   const { data: profile } = await supabaseAdmin
     .from("profiles")
-    .select("email")
+    .select("id, full_name, email, phone, role, municipality_id, department_id, account_status, force_password_reset, identity_type, identity_number, identity_document_url, identity_verified_at")
     .eq("id", userId)
     .single();
 
@@ -376,12 +376,55 @@ export const changePasswordService = async (
   );
   if (updateErr) throw new Error(updateErr.message);
 
-  await supabaseAdmin
+  const { data: updatedProfile, error: profileUpdateErr } = await supabaseAdmin
     .from("profiles")
     .update({ force_password_reset: false, password_updated_at: new Date().toISOString() })
-    .eq("id", userId);
+    .eq("id", userId)
+    .select("id, full_name, email, phone, role, municipality_id, department_id, account_status, force_password_reset, identity_type, identity_number, identity_document_url, identity_verified_at")
+    .single();
 
-  return { message: "Password changed successfully" };
+  if (profileUpdateErr) {
+    console.error("[changePasswordService] profile update error:", profileUpdateErr);
+  }
+
+  // Establish a new session with the new password
+  const { data: sessionData, error: newSessionErr } = await authClient.auth.signInWithPassword({
+    email: profile.email,
+    password: body.new_password,
+  });
+
+  if (newSessionErr || !sessionData.session) {
+    console.warn("[changePasswordService] New session generation warning:", newSessionErr?.message);
+    return {
+      message: "Password changed successfully",
+      profile: updatedProfile || profile,
+    };
+  }
+
+  // Revoke all existing refresh tokens for this user
+  await supabaseAdmin
+    .from("refresh_tokens")
+    .update({ is_revoked: true, revoked_at: new Date().toISOString() })
+    .eq("profile_id", userId);
+
+  // Store new refresh token hash
+  const tokenHash = crypto
+    .createHash("sha256")
+    .update(sessionData.session.refresh_token)
+    .digest("hex");
+  await supabaseAdmin.from("refresh_tokens").insert({
+    profile_id: userId,
+    token_hash: tokenHash,
+    expires_at: new Date(Date.now() + REFRESH_TOKEN_TTL_MS).toISOString(),
+  });
+
+  return {
+    access_token: sessionData.session.access_token,
+    refresh_token: sessionData.session.refresh_token,
+    expires_in: sessionData.session.expires_in,
+    profile: updatedProfile || profile,
+    message: "Password changed successfully",
+  };
 };
 
 export const loginWithMobileService = async (phone: string, otpCode: string) => {

@@ -83,11 +83,19 @@ apiClient.interceptors.response.use(
 
       try {
         const { data } = await axios.post(`${API_BASE_URL}/auth/refresh`, {
-          refreshToken,
+          refresh_token: refreshToken,
         });
 
-        const newAccessToken = data.data?.accessToken || data.accessToken;
-        const newRefreshToken = data.data?.refreshToken || data.refreshToken;
+        const newAccessToken =
+          data.data?.access_token ||
+          data.data?.accessToken ||
+          data.access_token ||
+          data.accessToken;
+        const newRefreshToken =
+          data.data?.refresh_token ||
+          data.data?.refreshToken ||
+          data.refresh_token ||
+          data.refreshToken;
 
         if (newAccessToken) {
           localStorage.setItem('access_token', newAccessToken);

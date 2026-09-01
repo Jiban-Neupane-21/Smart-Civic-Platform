@@ -91,3 +91,12 @@ export interface ChangePasswordRequest {
   current_password: string;
   new_password: string;
 }
+
+export interface ChangePasswordResponse {
+  access_token?: string;
+  refresh_token?: string;
+  expires_in?: number;
+  profile?: any;
+  message?: string;
+}
+

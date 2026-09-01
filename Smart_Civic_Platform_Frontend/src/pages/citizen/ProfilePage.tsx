@@ -295,6 +295,12 @@ export const Profile: React.FC = () => {
       });
       const result = await res.json();
       if (!res.ok) throw new Error(result.message || "Failed to change password");
+      if (result.data?.access_token) {
+        localStorage.setItem("access_token", result.data.access_token);
+      }
+      if (result.data?.refresh_token) {
+        localStorage.setItem("refresh_token", result.data.refresh_token);
+      }
       setPasswordForm({ current_password: "", new_password: "", confirm_password: "" });
       Swal.fire({ icon: "success", title: "Password Changed", timer: 1500, showConfirmButton: false });
     } catch (err: unknown) {
