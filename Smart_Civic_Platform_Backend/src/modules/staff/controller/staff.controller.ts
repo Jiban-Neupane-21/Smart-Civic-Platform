@@ -26,6 +26,15 @@ export class StaffController {
     }
   };
 
+  getMyComplaints = async (req: any, res: Response): Promise<void> => {
+    try {
+      const complaints = await this.service.fetchMyAssignedComplaints(req.user.id);
+      res.status(200).json({ success: true, data: complaints });
+    } catch (error: any) {
+      res.status(500).json({ success: false, error: error.message });
+    }
+  };
+
   getMyProfile = async (req: any, res: Response): Promise<void> => {
     try {
       const profile = await this.service.fetchMyProfile(req.user.id);
@@ -101,7 +110,8 @@ export class StaffController {
   completeAssignment = async (req: any, res: Response): Promise<void> => {
     try {
       const { assignmentId } = req.params;
-      const result = await this.service.completeAssignment(req.staffId, assignmentId);
+      const { note, resolution_note } = req.body || {};
+      const result = await this.service.completeAssignment(req.staffId, assignmentId, note || resolution_note);
       res.status(200).json({ success: true, message: "Assignment completed & resolved.", data: result });
     } catch (error: any) {
       res.status(400).json({ success: false, error: error.message });
@@ -176,6 +186,28 @@ export class StaffController {
       });
     } catch (error: any) {
       res.status(400).json({ success: false, error: error.message });
+    }
+  };
+
+  // ===== COMPLAINT RETRIEVAL HANDLERS FOR STAFF =====
+
+  getComplaintDetail = async (req: any, res: Response): Promise<void> => {
+    try {
+      const { id } = req.params;
+      const data = await this.service.fetchComplaintDetail(id);
+      res.status(200).json({ success: true, data });
+    } catch (error: any) {
+      res.status(404).json({ success: false, error: error.message });
+    }
+  };
+
+  getComplaintUpdates = async (req: any, res: Response): Promise<void> => {
+    try {
+      const { id } = req.params;
+      const data = await this.service.fetchComplaintTimeline(id);
+      res.status(200).json({ success: true, data });
+    } catch (error: any) {
+      res.status(500).json({ success: false, error: error.message });
     }
   };
 }

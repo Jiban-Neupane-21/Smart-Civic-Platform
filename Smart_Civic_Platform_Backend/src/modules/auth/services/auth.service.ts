@@ -393,7 +393,26 @@ export const changePasswordService = async (
     password: body.new_password,
   });
 
-  if (newSessionErr || !sessionData.session) {
+  let session = sessionData?.session;
+  if (!session) {
+    try {
+      const { data: linkData } = await supabaseAdmin.auth.admin.generateLink({
+        type: "magiclink",
+        email: profile.email,
+      });
+      if (linkData?.properties?.hashed_token) {
+        const { data: otpSession } = await authClient.auth.verifyOtp({
+          token_hash: linkData.properties.hashed_token,
+          type: "magiclink",
+        });
+        session = otpSession?.session;
+      }
+    } catch (e: any) {
+      console.warn("[changePasswordService] Fallback session generation failed:", e.message);
+    }
+  }
+
+  if (!session) {
     console.warn("[changePasswordService] New session generation warning:", newSessionErr?.message);
     return {
       message: "Password changed successfully",
@@ -410,7 +429,7 @@ export const changePasswordService = async (
   // Store new refresh token hash
   const tokenHash = crypto
     .createHash("sha256")
-    .update(sessionData.session.refresh_token)
+    .update(session.refresh_token)
     .digest("hex");
   await supabaseAdmin.from("refresh_tokens").insert({
     profile_id: userId,
@@ -419,9 +438,9 @@ export const changePasswordService = async (
   });
 
   return {
-    access_token: sessionData.session.access_token,
-    refresh_token: sessionData.session.refresh_token,
-    expires_in: sessionData.session.expires_in,
+    access_token: session.access_token,
+    refresh_token: session.refresh_token,
+    expires_in: session.expires_in,
     profile: updatedProfile || profile,
     message: "Password changed successfully",
   };

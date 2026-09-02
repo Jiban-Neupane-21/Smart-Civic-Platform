@@ -173,4 +173,49 @@ export class NotificationService {
 
     return notification;
   }
+
+  /**
+   * Send notification to all staff members of an operational team
+   */
+  async notifyTeam(
+    teamId: string,
+    title: string,
+    body: string,
+    senderId = "system",
+    type = "team_assignment"
+  ) {
+    const { data: notification, error } = await this.supabaseAdmin
+      .from("notifications")
+      .insert({
+        sender_id: senderId,
+        type: type as any,
+        audience: "team",
+        target_team_id: teamId,
+        title,
+        body,
+        channels: ["in_app"],
+        sent_at: new Date().toISOString(),
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error("[NOTIFICATION-TEAM-ERROR]", error.message);
+      return null;
+    }
+
+    const recipientIds = await this.resolveRecipients("team", { team_id: teamId });
+    if (recipientIds.length > 0) {
+      const readRows = recipientIds.map((pid) => ({
+        notification_id: notification.id,
+        profile_id: pid,
+        is_seen: false,
+        is_clicked: false,
+      }));
+      await this.supabaseAdmin.from("notification_reads").upsert(readRows);
+    }
+
+    return notification;
+  }
 }
+

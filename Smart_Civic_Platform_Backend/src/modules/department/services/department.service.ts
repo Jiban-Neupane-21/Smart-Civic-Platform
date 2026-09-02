@@ -184,6 +184,21 @@ export class DepartmentService {
           override_reason: overrideReason || null,
         });
       }
+
+      // Notify team members of new team formation
+      try {
+        const { NotificationService } = require("../../../service/notification.service");
+        const notifService = new NotificationService((this.repo as any).supabaseAdmin);
+        await notifService.notifyTeam(
+          teamPk,
+          `Team Deployment — ${teamName}`,
+          `You have been assigned to operational team '${teamName}' from ${startDate} to ${endDate}.`,
+          createdBy || "system",
+          "team_assignment"
+        );
+      } catch (notifErr: any) {
+        console.warn("[BUILD-TEAM-NOTIF-WARN]", notifErr.message);
+      }
     }
 
     return team;
@@ -436,7 +451,37 @@ export class DepartmentService {
   ) {
     const team = await this.repo.getTeamByName(teamName, departmentId);
     if (!team) throw new Error("Team not found in department.");
-    return await this.repo.assignComplaintToTeam(complaintId, team.id, assignedBy, notes);
+    const assignment = await this.repo.assignComplaintToTeam(complaintId, team.id, assignedBy, notes);
+
+    // Notify assigned team and citizen
+    try {
+      const { NotificationService } = require("../../../service/notification.service");
+      const { LifecycleService } = require("../../../service/lifecycle.service");
+      const notifService = new NotificationService((this.repo as any).supabaseAdmin);
+      const lifecycle = new LifecycleService((this.repo as any).supabaseAdmin);
+
+      // Audit transition and notify citizen
+      await lifecycle.transition(
+        complaintId,
+        "assigned",
+        assignedBy,
+        "department_head",
+        notes || `Assigned to team ${teamName}.`
+      );
+
+      // Notify team members
+      await notifService.notifyTeam(
+        team.id,
+        `New Field Assignment — Team ${teamName}`,
+        `Complaint #${complaintId.slice(0, 8)} has been assigned to your team. ${notes ? `Notes: ${notes}` : ""}`,
+        assignedBy,
+        "complaint_assignment"
+      );
+    } catch (notifErr: any) {
+      console.warn("[ASSIGN-COMPLAINT-NOTIF-WARN]", notifErr.message);
+    }
+
+    return assignment;
   }
 
   async getTeamComplaints(departmentId: string, teamName: string) {

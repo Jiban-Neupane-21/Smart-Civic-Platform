@@ -1,0 +1,3 @@
+First i am planning to Department create team and assign task to the team and the team member must have notify to the staff and the staff member must update the status of the task and the staff member must notify to the citizen and the citizen must update the status of the task and then forward to the higher authority and then the higher authority must update the status of the task and then forward to the citizen 
+
+THe assign complain to the staff member .. if the staff is the team leader he can Update the status of the task and nofity to the department . after resolve the issue and if any issue to solve that issue than the complain raise citixen also have notify the complain status 

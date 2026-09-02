@@ -13,6 +13,9 @@ export class LifecycleService {
     targetStatus: ComplaintStatus,
     actorRole: string
   ): boolean {
+    // Self-transitions (confirmations, acknowledgments, acceptance within same state) are always valid
+    if (currentStatus === targetStatus) return true;
+
     const validTransitions: Record<ComplaintStatus, ComplaintStatus[]> = {
       pending: ["assigned", "rejected", "under_review", "cross_dept_pending"],
       assigned: ["in_progress", "rejected", "under_review", "escalated", "cross_dept_pending"],
@@ -63,7 +66,7 @@ export class LifecycleService {
     // 1. Fetch current complaint status
     const { data: complaint, error: fetchErr } = await this.supabaseAdmin
       .from("complaints")
-      .select("co_uid, tracking_id, status, citizen_id, primary_department_id, municipality_id, title")
+      .select("co_uid, tracking_id, status, citizen_id, assigned_department_id, municipality_id, title")
       .eq("co_uid", complaintId)
       .single();
 
@@ -114,22 +117,78 @@ export class LifecycleService {
     // 5. Trigger notifications based on transition
     const notifService = new NotificationService(this.supabaseAdmin);
 
-    if (targetStatus === "resolved" && complaint.citizen_id) {
-      await notifService.notifyProfile(
-        complaint.citizen_id,
-        `Grievance Resolved — ${complaint.tracking_id}`,
-        `Your complaint '${complaint.title}' has been marked resolved. Please confirm resolution.`,
-        actorId,
-        "complaint_update"
-      );
-    } else if (targetStatus === "escalated" && complaint.municipality_id) {
-      await notifService.notifyDepartment(
-        complaint.primary_department_id,
-        `SLA ESCALATION — ${complaint.tracking_id}`,
-        `Complaint '${complaint.title}' has breached SLA and been escalated to Municipality Head.`,
-        actorId,
-        "sla_escalation"
-      );
+    // Notify Citizen on key status changes
+    if (complaint.citizen_id) {
+      if (targetStatus === "resolved") {
+        await notifService.notifyProfile(
+          complaint.citizen_id,
+          `Grievance Resolved — ${complaint.tracking_id}`,
+          `Your complaint '${complaint.title}' has been marked resolved. ${note ? `Note: ${note}` : "Please review and confirm resolution."}`,
+          actorId,
+          "complaint_update"
+        );
+      } else if (targetStatus === "in_progress") {
+        await notifService.notifyProfile(
+          complaint.citizen_id,
+          `Work In Progress — ${complaint.tracking_id}`,
+          `Field work has started on your complaint '${complaint.title}'.`,
+          actorId,
+          "complaint_update"
+        );
+      } else if (targetStatus === "assigned") {
+        await notifService.notifyProfile(
+          complaint.citizen_id,
+          `Grievance Assigned — ${complaint.tracking_id}`,
+          `Your complaint '${complaint.title}' has been assigned to an operational team.`,
+          actorId,
+          "complaint_update"
+        );
+      } else if (targetStatus === "closed") {
+        await notifService.notifyProfile(
+          complaint.citizen_id,
+          `Grievance Closed — ${complaint.tracking_id}`,
+          `Your complaint '${complaint.title}' has been verified and closed. Thank you for your feedback.`,
+          actorId,
+          "complaint_update"
+        );
+      } else if (targetStatus === "rejected") {
+        await notifService.notifyProfile(
+          complaint.citizen_id,
+          `Grievance Update — ${complaint.tracking_id}`,
+          `Your complaint '${complaint.title}' was reviewed. Reason: ${note || "Does not meet resolution criteria."}`,
+          actorId,
+          "complaint_update"
+        );
+      }
+    }
+
+    // Notify Department Head when staff transitions complaint or citizen reopens
+    if (complaint.assigned_department_id) {
+      if (targetStatus === "reopened") {
+        await notifService.notifyDepartment(
+          complaint.assigned_department_id,
+          `Citizen Reopened Grievance — ${complaint.tracking_id}`,
+          `Citizen reopened complaint '${complaint.title}'. Feedback: ${note || "Needs further resolution."}`,
+          actorId,
+          "complaint_update"
+        );
+      } else if (targetStatus === "escalated") {
+        await notifService.notifyDepartment(
+          complaint.assigned_department_id,
+          `SLA ESCALATION — ${complaint.tracking_id}`,
+          `Complaint '${complaint.title}' has been escalated to Municipality Head for review.`,
+          actorId,
+          "sla_escalation"
+        );
+      } else if (actorRole === "staff") {
+        await notifService.notifyDepartment(
+          complaint.assigned_department_id,
+          `Staff Status Update — ${complaint.tracking_id}`,
+          `Field team updated '${complaint.title}' to '${targetStatus}'. ${note ? `Note: ${note}` : ""}`,
+          actorId,
+          "complaint_update"
+        );
+      }
     }
 
     return updatedComplaint;

@@ -35,7 +35,7 @@ export class SlaMonitorService {
     // 1. Level 1 Warnings: Assigned complaints where sla_level = 0 and past due date warning threshold
     const { data: level1Complaints } = await this.supabaseAdmin
       .from("complaints")
-      .select("co_uid, tracking_id, title, primary_department_id, current_staff_id, sla_level")
+      .select("co_uid, tracking_id, title, assigned_department_id, current_staff_id, sla_level")
       .eq("status", "assigned")
       .eq("sla_level", 0)
       .lt("sla_due_at", nowIso);
@@ -57,9 +57,9 @@ export class SlaMonitorService {
           notified_munic_head: false,
         });
 
-        if (c.primary_department_id) {
+        if (c.assigned_department_id) {
           await notifService.notifyDepartment(
-            c.primary_department_id,
+            c.assigned_department_id,
             `SLA Level 1 Warning — ${c.tracking_id}`,
             `Complaint '${c.title}' has crossed the initial SLA threshold without progress.`,
             "system",
@@ -74,7 +74,7 @@ export class SlaMonitorService {
     // 2. Level 2 Escalations: Overdue complaints where sla_level < 2 and status not in resolved/closed/rejected
     const { data: level2Complaints } = await this.supabaseAdmin
       .from("complaints")
-      .select("co_uid, tracking_id, title, municipality_id, primary_department_id, sla_level, status")
+      .select("co_uid, tracking_id, title, municipality_id, assigned_department_id, sla_level, status")
       .not("status", "in", "('resolved','closed','rejected','escalated')")
       .lt("sla_due_at", nowIso);
 

@@ -14,6 +14,7 @@ import { Profile } from "../pages/citizen/ProfilePage";
 import { Notifications } from "../pages/citizen/Notification";
 import { ComplaintReport } from "../pages/citizen/ComplainHistory";
 import { SubmitComplaint } from "../pages/citizen/SubmitComplain";
+import { CitizenComplaintDetailPage } from "../pages/citizen/ComplaintDetail";
 
 import NotFoundPage from "../pages/common/NotFoundPage";
 import SuperadminDashboard from "../pages/Superadmin/Dashboard";
@@ -29,6 +30,12 @@ import DeptComplainDetails from "../pages/dept_head/ComplainDetails";
 import DeptNotification from "../pages/dept_head/Notification";
 import DeptProfilePage from "../pages/dept_head/DeptProfilePage";
 
+// Staff Pages
+import StaffDashboard from "../pages/staff/Homepage";
+import StaffTeamPage from "../pages/staff/Team";
+import StaffComplaintPage from "../pages/staff/Complaint";
+import StaffComplaintDetailPage from "../pages/staff/ComplaintDetail";
+import StaffProfilePage from "../pages/staff/ProfilePage";
 import StaffNotification from "../pages/staff/Notification";
 
 // Municipality Head Pages
@@ -65,6 +72,7 @@ function AppRoute() {
             <Route path="/citizen/submit-complaint" element={<SubmitComplaint />} />
             <Route path="/citizen/complaint-history" element={<ComplaintReport />} />
             <Route path="/citizen/complaints" element={<ComplaintReport />} />
+            <Route path="/citizen/complaints/:id" element={<CitizenComplaintDetailPage />} />
             <Route path="/citizen/notification" element={<Notifications />} />
             <Route path="/citizen/profile" element={<Profile />} />
           </Route>
@@ -134,7 +142,23 @@ function AppRoute() {
           <Route element={<MainLayout />}>
             <Route
               path="/staff/dashboard"
-              element={<div>Staff Dashboard Placeholder</div>}
+              element={<StaffDashboard />}
+            />
+            <Route
+              path="/staff/team"
+              element={<StaffTeamPage />}
+            />
+            <Route
+              path="/staff/complaint"
+              element={<StaffComplaintPage />}
+            />
+            <Route
+              path="/staff/complaint/:id"
+              element={<StaffComplaintDetailPage />}
+            />
+            <Route
+              path="/staff/profile"
+              element={<StaffProfilePage />}
             />
             <Route
               path="/staff/notification"

@@ -959,24 +959,24 @@ export default function ManageStaff() {
                 <Typography variant="subtitle2" fontWeight="bold" color="primary" gutterBottom>
                   Identity & Verification Documents
                 </Typography>
-                <Grid container spacing={2} sx={{ mb: 2 }}>
-                  <Grid item xs={12} sm={6}>
+                <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" }, gap: 2, mb: 2 }}>
+                  <Box>
                     <Typography variant="caption" color="text.secondary">Identity Document Type</Typography>
                     <Typography variant="body2" fontWeight={600} sx={{ textTransform: "capitalize" }}>
                       {reviewTarget.identity_type ? reviewTarget.identity_type.replace(/_/g, " ") : "Not Specified"}
                     </Typography>
-                  </Grid>
-                  <Grid item xs={12} sm={6}>
+                  </Box>
+                  <Box>
                     <Typography variant="caption" color="text.secondary">Identity Document Number</Typography>
                     <Typography variant="body2" fontWeight={600}>
                       {reviewTarget.identity_number || "Not Provided"}
                     </Typography>
-                  </Grid>
-                </Grid>
+                  </Box>
+                </Box>
 
                 {/* Document Previews */}
-                <Grid container spacing={2}>
-                  <Grid item xs={12} sm={4}>
+                <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr 1fr" }, gap: 2 }}>
+                  <Box>
                     <Typography variant="caption" fontWeight="bold" display="block" mb={0.5}>
                       Document Front
                     </Typography>
@@ -1004,9 +1004,9 @@ export default function ManageStaff() {
                     ) : (
                       <Alert severity="warning" sx={{ py: 0.5 }}>Not Uploaded</Alert>
                     )}
-                  </Grid>
+                  </Box>
 
-                  <Grid item xs={12} sm={4}>
+                  <Box>
                     <Typography variant="caption" fontWeight="bold" display="block" mb={0.5}>
                       Document Back
                     </Typography>
@@ -1034,9 +1034,9 @@ export default function ManageStaff() {
                     ) : (
                       <Alert severity="info" sx={{ py: 0.5 }}>Not Provided</Alert>
                     )}
-                  </Grid>
+                  </Box>
 
-                  <Grid item xs={12} sm={4}>
+                  <Box>
                     <Typography variant="caption" fontWeight="bold" display="block" mb={0.5}>
                       Appointment / ID Badge
                     </Typography>
@@ -1064,8 +1064,8 @@ export default function ManageStaff() {
                     ) : (
                       <Alert severity="info" sx={{ py: 0.5 }}>Not Provided</Alert>
                     )}
-                  </Grid>
-                </Grid>
+                  </Box>
+                </Box>
               </Box>
 
               {reviewTarget.kyc_rejection_reason && (

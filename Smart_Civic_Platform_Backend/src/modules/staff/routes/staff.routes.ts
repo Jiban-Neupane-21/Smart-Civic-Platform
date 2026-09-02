@@ -101,6 +101,7 @@ export function createStaffRouter(
    *       200:
    *         description: Assignments list.
    */
+  router.get("/my-complaints", controller.getMyComplaints);
   router.get("/my-assignments", controller.getMyTeams);
 
   /**
@@ -128,6 +129,8 @@ export function createStaffRouter(
    *         description: Department queue.
    */
   router.get("/department-queue", controller.getDepartmentQueue);
+  router.get("/complaints/:id", controller.getComplaintDetail);
+  router.get("/complaints/:id/updates", controller.getComplaintUpdates);
 
   /**
    * @swagger

@@ -25,6 +25,15 @@ export class StaffService {
     }
   }
 
+  async fetchMyAssignedComplaints(userId: string) {
+    try {
+      const staff = await this.repo.resolveStaffProfile(userId);
+      return await this.repo.getMyAssignedComplaints(staff.id);
+    } catch (error: any) {
+      throw new Error(`Failed to retrieve assigned complaints: ${error.message}`);
+    }
+  }
+
   async fetchMyProfile(userId: string) {
     try {
       return await this.repo.getStaffProfile(userId);
@@ -85,11 +94,11 @@ export class StaffService {
     return updated;
   }
 
-  async completeAssignment(staffId: string, assignmentId: string) {
+  async completeAssignment(staffId: string, assignmentId: string, resolutionNote?: string) {
     const updated = await this.repo.updateComplaintAssignmentStatus(assignmentId, "completed");
     if (updated?.complaint_id) {
       const lifecycle = new LifecycleService((this.repo as any).supabaseAdmin);
-      await lifecycle.transition(updated.complaint_id, "resolved", staffId, "staff", "Field work completed by staff.");
+      await lifecycle.transition(updated.complaint_id, "resolved", staffId, "staff", resolutionNote || "Field work completed by staff.");
     }
     return updated;
   }
@@ -130,6 +139,24 @@ export class StaffService {
       return await this.repo.submitStaffKyc(userId, payload);
     } catch (error: any) {
       throw new Error(`Failed to submit staff KYC onboarding: ${error.message}`);
+    }
+  }
+
+  async fetchComplaintDetail(complaintId: string) {
+    try {
+      const data = await this.repo.getComplaintDetail(complaintId);
+      if (!data) throw new Error("Grievance ticket not found.");
+      return data;
+    } catch (error: any) {
+      throw new Error(`Failed to retrieve complaint detail: ${error.message}`);
+    }
+  }
+
+  async fetchComplaintTimeline(complaintId: string) {
+    try {
+      return await this.repo.getComplaintTimeline(complaintId);
+    } catch (error: any) {
+      throw new Error(`Failed to retrieve complaint timeline: ${error.message}`);
     }
   }
 }

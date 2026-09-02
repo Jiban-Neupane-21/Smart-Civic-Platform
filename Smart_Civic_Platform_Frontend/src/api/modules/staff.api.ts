@@ -74,6 +74,110 @@ export const staffApi = {
     const response = await apiClient.put<ApiResponse<any>>('/staff/kyc', data);
     return response.data;
   },
+
+  /**
+   * Get logged-in staff profile
+   */
+  getMyProfile: async (): Promise<ApiResponse<any>> => {
+    const response = await apiClient.get<ApiResponse<any>>('/staff/profile');
+    return response.data;
+  },
+
+  /**
+   * Update logged-in staff contact / address
+   */
+  updateMyProfile: async (data: { phone?: string; contact_number?: string; personal_address?: string }): Promise<ApiResponse<any>> => {
+    const response = await apiClient.patch<ApiResponse<any>>('/staff/profile', data);
+    return response.data;
+  },
+
+  /**
+   * Get logged-in staff department details
+   */
+  getMyDepartment: async (): Promise<ApiResponse<any>> => {
+    const response = await apiClient.get<ApiResponse<any>>('/staff/my-department');
+    return response.data;
+  },
+
+  /**
+   * Get logged-in staff assigned complaints across all squads
+   */
+  getMyComplaints: async (): Promise<ApiResponse<any[]>> => {
+    const response = await apiClient.get<ApiResponse<any[]>>('/staff/my-complaints');
+    return response.data;
+  },
+
+  /**
+   * Get logged-in staff assigned teams / memberships
+   */
+  getMyTeams: async (): Promise<ApiResponse<any[]>> => {
+    const response = await apiClient.get<ApiResponse<any[]>>('/staff/my-assignments');
+    return response.data;
+  },
+
+  /**
+   * Get logged-in staff field work schedule and task timeline
+   */
+  getMySchedule: async (): Promise<ApiResponse<any[]>> => {
+    const response = await apiClient.get<ApiResponse<any[]>>('/staff/schedule');
+    return response.data;
+  },
+
+  /**
+   * Accept ticket assignment
+   */
+  acceptAssignment: async (assignmentId: string): Promise<ApiResponse<any>> => {
+    const response = await apiClient.post<ApiResponse<any>>(`/staff/assignments/${assignmentId}/accept`);
+    return response.data;
+  },
+
+  /**
+   * Start field work on assignment
+   */
+  startAssignment: async (assignmentId: string): Promise<ApiResponse<any>> => {
+    const response = await apiClient.post<ApiResponse<any>>(`/staff/assignments/${assignmentId}/start`);
+    return response.data;
+  },
+
+  /**
+   * Complete field work assignment
+   */
+  completeAssignment: async (assignmentId: string): Promise<ApiResponse<any>> => {
+    const response = await apiClient.post<ApiResponse<any>>(`/staff/assignments/${assignmentId}/complete`);
+    return response.data;
+  },
+
+  /**
+   * Transfer assignment to peer
+   */
+  transferAssignment: async (id: string, data: { to_staff_id: string; reason: string; note?: string }): Promise<ApiResponse<any>> => {
+    const response = await apiClient.post<ApiResponse<any>>(`/staff/assignments/${id}/transfer`, data);
+    return response.data;
+  },
+
+  /**
+   * Return assignment to department head
+   */
+  returnAssignmentToDeptHead: async (id: string, data: { reason: string; note?: string }): Promise<ApiResponse<any>> => {
+    const response = await apiClient.post<ApiResponse<any>>(`/staff/assignments/${id}/return-to-dept`, data);
+    return response.data;
+  },
+
+  /**
+   * Get complaint detail for staff
+   */
+  getComplaintDetail: async (id: string): Promise<ApiResponse<any>> => {
+    const response = await apiClient.get<ApiResponse<any>>(`/staff/complaints/${id}`);
+    return response.data;
+  },
+
+  /**
+   * Get complaint status timeline updates for staff
+   */
+  getComplaintUpdates: async (id: string): Promise<ApiResponse<any[]>> => {
+    const response = await apiClient.get<ApiResponse<any[]>>(`/staff/complaints/${id}/updates`);
+    return response.data;
+  },
 };
 
 export default staffApi;

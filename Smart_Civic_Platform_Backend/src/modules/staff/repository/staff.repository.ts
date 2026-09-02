@@ -1,4 +1,5 @@
 import { SupabaseClient } from '@supabase/supabase-js';
+import { LifecycleService } from '../../../service/lifecycle.service';
 
 export class StaffRepository {
   constructor(private supabaseAdmin: SupabaseClient) {}
@@ -129,7 +130,7 @@ export class StaffRepository {
   }
 
   async updateComplaintAssignmentStatus(
-    assignmentId: string,
+    identifier: string,
     status: "accepted" | "in_progress" | "completed"
   ) {
     const nowIso = new Date().toISOString();
@@ -146,15 +147,27 @@ export class StaffRepository {
       updates.completed_at = nowIso;
     }
 
-    const { data, error } = await this.supabaseAdmin
+    // 1. Try updating by assignment primary key (id)
+    const { data: byIdData } = await this.supabaseAdmin
       .from("complaint_assignments")
       .update(updates)
-      .eq("id", assignmentId)
+      .eq("id", identifier)
+      .select("*, complaint:complaints!complaint_id(co_uid, status)")
+      .maybeSingle();
+
+    if (byIdData) return byIdData;
+
+    // 2. Fallback: try updating by complaint_id (co_uid) where is_current = true
+    const { data: byComplaintData, error: compErr } = await this.supabaseAdmin
+      .from("complaint_assignments")
+      .update(updates)
+      .eq("complaint_id", identifier)
+      .eq("is_current", true)
       .select("*, complaint:complaints!complaint_id(co_uid, status)")
       .single();
 
-    if (error) throw error;
-    return data;
+    if (compErr) throw compErr;
+    return byComplaintData;
   }
 
   // ===== KYC METHODS =====
@@ -224,5 +237,216 @@ export class StaffRepository {
       .eq('id', userId);
 
     return await this.getStaffKyc(userId);
+  }
+
+  // Get all active complaints assigned to the staff member's teams or directly to staff
+  async getMyAssignedComplaints(staffId: string): Promise<any[]> {
+    // 1. Find all teams this staff is a member of
+    const { data: memberRows, error: memberErr } = await this.supabaseAdmin
+      .from('team_members')
+      .select('team_id, is_leader, teams!team_id ( id, team_name, team_type, is_active )')
+      .eq('staff_id', staffId);
+
+    if (memberErr) throw memberErr;
+
+    const teamIds = (memberRows || []).map((m: any) => m.team_id);
+    const leaderMap = new Map<string, boolean>();
+    (memberRows || []).forEach((m: any) => leaderMap.set(m.team_id, !!m.is_leader));
+
+    // 2. Fetch complaint assignments for these teams OR directly assigned to this staff
+    let query = this.supabaseAdmin
+      .from('complaint_assignments')
+      .select(`
+        id,
+        complaint_id,
+        team_id,
+        staff_id,
+        status,
+        notes,
+        assigned_at,
+        accepted_at,
+        started_at,
+        completed_at,
+        is_current,
+        team:teams!team_id ( id, team_name, team_type ),
+        complaint:complaints!complaint_id (
+          co_uid,
+          tracking_id,
+          title,
+          description,
+          status,
+          priority,
+          severity_level,
+          ward_number,
+          location_source,
+          latitude,
+          longitude,
+          submitted_date,
+          resolution_note,
+          category:complaint_categories!category_id ( id, category_name ),
+          department:departments!assigned_department_id ( id, department_name )
+        )
+      `)
+      .eq('is_current', true);
+
+    if (teamIds.length > 0) {
+      query = query.or(`team_id.in.(${teamIds.join(',')}),staff_id.eq.${staffId}`);
+    } else {
+      query = query.eq('staff_id', staffId);
+    }
+
+    const { data: assignments, error: assignErr } = await query.order('assigned_at', { ascending: false });
+
+    if (assignErr) throw assignErr;
+    if (!assignments) return [];
+
+    return assignments.map((item: any) => {
+      const comp = item.complaint || {};
+      const fallbackAddress = comp.ward_number
+        ? `Ward ${comp.ward_number}`
+        : comp.location_source === "registered_address"
+        ? "Citizen Registered Address"
+        : comp.location_source || "Field Location";
+
+      return {
+        assignment_id: item.id,
+        complaint_id: comp.co_uid || item.complaint_id,
+        tracking_id: comp.tracking_id || (comp.co_uid ? comp.co_uid.slice(0, 8) : item.id.slice(0, 8)),
+        title: comp.title || "Field Grievance Task",
+        description: comp.description || "",
+        status: comp.status || item.status || "assigned",
+        assignment_status: item.status,
+        priority: comp.priority || comp.severity_level || "medium",
+        severity_level: comp.severity_level || "medium",
+        ward_number: comp.ward_number,
+        location_source: comp.location_source,
+        latitude: comp.latitude,
+        longitude: comp.longitude,
+        address: fallbackAddress,
+        submitted_date: comp.submitted_date || item.assigned_at,
+        resolution_note: comp.resolution_note || null,
+        category_name: comp.category?.category_name || "General",
+        department_name: comp.department?.department_name || "Assigned Department",
+        team_name: item.team?.team_name || "Assigned Team",
+        team_id: item.team_id,
+        is_leader: leaderMap.get(item.team_id) || false,
+        assigned_at: item.assigned_at,
+        accepted_at: item.accepted_at,
+        started_at: item.started_at,
+        completed_at: item.completed_at,
+      };
+    });
+  }
+
+  // Get full complaint details for field staff
+  async getComplaintDetail(identifier: string): Promise<any> {
+    const complaintSelect = `
+      co_uid, tracking_id, title, description, status, priority, severity_level,
+      ticket_type, ward_number, location_source, latitude, longitude, submitted_date, resolution_date, resolution_note,
+      citizen:citizens!citizen_id(
+        id, first_name, last_name, contact_number,
+        profile:profiles!citizens_id_fkey(id, full_name, email, phone)
+      ),
+      category:complaint_categories!category_id(id, category_name),
+      department:departments!assigned_department_id(id, department_name),
+      current_team:teams!current_team_id(id, team_name, is_active)
+    `;
+
+    // 1. Direct query by complaint co_uid or tracking_id
+    const { data: comp } = await this.supabaseAdmin
+      .from('complaints')
+      .select(complaintSelect)
+      .or(`co_uid.eq.${identifier},tracking_id.eq.${identifier}`)
+      .maybeSingle();
+
+    let resolvedComplaint: any = comp;
+    let assignmentId: string | null = null;
+    let teamId: string | null = null;
+
+    // 2. If not found, check if identifier is a complaint_assignment id
+    if (!resolvedComplaint) {
+      const { data: assignData } = await this.supabaseAdmin
+        .from('complaint_assignments')
+        .select(`
+          id, team_id, complaint_id,
+          complaint:complaints!complaint_id (
+            ${complaintSelect}
+          )
+        `)
+        .eq('id', identifier)
+        .maybeSingle();
+
+      if (assignData?.complaint) {
+        resolvedComplaint = assignData.complaint;
+        assignmentId = assignData.id;
+        teamId = assignData.team_id;
+      }
+    }
+
+    // 3. If still not found, check if identifier is a staff_assignment shift id
+    if (!resolvedComplaint) {
+      const { data: shiftData } = await this.supabaseAdmin
+        .from('staff_assignments')
+        .select('team_id')
+        .eq('id', identifier)
+        .maybeSingle();
+
+      if (shiftData?.team_id) {
+        const { data: activeAssign } = await this.supabaseAdmin
+          .from('complaint_assignments')
+          .select('id, complaint_id')
+          .eq('team_id', shiftData.team_id)
+          .eq('is_current', true)
+          .maybeSingle();
+
+        if (activeAssign?.complaint_id) {
+          return await this.getComplaintDetail(activeAssign.complaint_id);
+        }
+      }
+    }
+
+    if (!resolvedComplaint) return null;
+
+    // If assignmentId not resolved yet, fetch current complaint_assignment for this ticket
+    if (!assignmentId) {
+      const { data: activeAssign } = await this.supabaseAdmin
+        .from('complaint_assignments')
+        .select('id, team_id')
+        .eq('complaint_id', resolvedComplaint.co_uid)
+        .eq('is_current', true)
+        .maybeSingle();
+
+      if (activeAssign) {
+        assignmentId = activeAssign.id;
+        teamId = activeAssign.team_id;
+      }
+    }
+
+    const citizenInfo = resolvedComplaint.citizen?.profile || {};
+    const citizenName = citizenInfo.full_name || [resolvedComplaint.citizen?.first_name, resolvedComplaint.citizen?.last_name].filter(Boolean).join(" ") || "Citizen";
+    const citizenPhone = citizenInfo.phone || resolvedComplaint.citizen?.contact_number || "";
+
+    const fallbackAddress = resolvedComplaint.ward_number
+      ? `Ward ${resolvedComplaint.ward_number}`
+      : resolvedComplaint.location_source === "registered_address"
+      ? "Citizen Registered Address"
+      : resolvedComplaint.location_source || "Field Location";
+
+    return {
+      ...resolvedComplaint,
+      address: fallbackAddress,
+      citizen_name: citizenName,
+      citizen_phone: citizenPhone,
+      assignment_id: assignmentId,
+      team_id: teamId,
+    };
+  }
+
+  async getComplaintTimeline(identifier: string): Promise<any[]> {
+    // Resolve co_uid if an assignment ID was passed
+    const comp = await this.getComplaintDetail(identifier);
+    const targetId = comp?.co_uid || identifier;
+    const lifecycle = new LifecycleService(this.supabaseAdmin);
+    return await lifecycle.getTimeline(targetId);
   }
 }

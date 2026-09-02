@@ -584,6 +584,8 @@ export class DepartmentRepository {
       .select(`
         co_uid, tracking_id, title, description, status, priority, severity_level,
         cross_dept_status, location_source, ward_number, submitted_date, sla_due_at, sla_breached,
+        current_team_id,
+        current_team:teams!current_team_id ( id, team_name ),
         complaint_categories!complaints_category_id_fkey ( category_name ),
         citizens ( first_name, last_name, contact_number )
       `)
@@ -609,6 +611,8 @@ export class DepartmentRepository {
         .select(`
           co_uid, tracking_id, title, description, status, priority, severity_level,
           cross_dept_status, location_source, ward_number, submitted_date, sla_due_at, sla_breached,
+          current_team_id,
+          current_team:teams!current_team_id ( id, team_name ),
           complaint_categories!complaints_category_id_fkey ( category_name ),
           citizens ( first_name, last_name, contact_number )
         `)
@@ -652,16 +656,37 @@ export class DepartmentRepository {
     assignedBy: string,
     notes?: string
   ) {
+    const nowIso = new Date().toISOString();
+
     // Check if there is an existing active assignment for this complaint
     const { data: existingAssignment } = await this.supabaseAdmin
       .from("complaint_assignments")
-      .select("id")
+      .select("id, team_id, status")
       .eq("complaint_id", complaintId)
       .eq("is_current", true)
-      .single();
+      .maybeSingle();
 
     if (existingAssignment) {
-      throw new Error("This complaint is already assigned to a team and cannot be reassigned.");
+      // If already assigned to this exact team, update notes if provided and return existing
+      if (existingAssignment.team_id === teamId) {
+        if (notes) {
+          await this.supabaseAdmin
+            .from("complaint_assignments")
+            .update({ notes, updated_at: nowIso })
+            .eq("id", existingAssignment.id);
+        }
+        return existingAssignment;
+      }
+
+      // If assigned to a different team, archive the old assignment
+      await this.supabaseAdmin
+        .from("complaint_assignments")
+        .update({
+          is_current: false,
+          status: "reassigned",
+          updated_at: nowIso,
+        })
+        .eq("id", existingAssignment.id);
     }
 
     const { data, error } = await this.supabaseAdmin
@@ -673,7 +698,7 @@ export class DepartmentRepository {
         status: "pending",
         is_current: true,
         notes: notes || null,
-        assigned_at: new Date().toISOString(),
+        assigned_at: nowIso,
       })
       .select()
       .single();
@@ -685,7 +710,7 @@ export class DepartmentRepository {
       .update({
         status: "assigned",
         current_team_id: teamId,
-        updated_at: new Date().toISOString(),
+        updated_at: nowIso,
       })
       .eq("co_uid", complaintId);
 

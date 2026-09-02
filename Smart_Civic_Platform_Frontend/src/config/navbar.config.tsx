@@ -160,6 +160,7 @@ export const NavbarItems: NavbarConfig = {
   Staff: {
     desktop: [
       dashboardItem.desktop,
+      teamItem.desktop,
       complaintItem.desktop,
       profileItem.desktop,
       notificationItem.desktop,
@@ -168,6 +169,7 @@ export const NavbarItems: NavbarConfig = {
     mobile: {
       primary: [
         dashboardItem.mobile,
+        teamItem.mobile,
         complaintItem.mobile, 
         notificationItem.mobile,
       ],

@@ -62,7 +62,7 @@ function FirstLoginPasswordChange() {
             ...(data?.profile || {}),
             force_password_reset: false,
           };
-          login(newAccessToken, updatedProfile);
+          login(newAccessToken, updatedProfile, newRefreshToken);
 
           // If KYC is not completed for municipality/dept/staff, route to /kyc
           const kycCompleted = updatedProfile.role === "citizen"

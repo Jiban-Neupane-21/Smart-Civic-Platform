@@ -98,8 +98,10 @@ export const ComplaintSelector: React.FC<ComplaintSelectorProps> = ({ open, onCl
           </Typography>
         ) : (
           <List sx={{ width: "100%", bgcolor: "background.paper" }}>
-            {filtered.map((c) => {
-              const isAssigned = c.status === "assigned" || (c as any).current_team_id;
+            {filtered.map((c: any) => {
+              const assignedTeamName = c.current_team?.team_name;
+              const isAssigned = c.status === "assigned" || c.current_team_id;
+
               return (
                 <ListItem
                   key={c.co_uid}
@@ -108,36 +110,46 @@ export const ComplaintSelector: React.FC<ComplaintSelectorProps> = ({ open, onCl
                     border: "1px solid #e0e0e0",
                     borderRadius: 1,
                     mb: 1,
-                    opacity: isAssigned ? 0.6 : 1,
-                    "&:hover": { bgcolor: isAssigned ? "transparent" : "action.hover", cursor: isAssigned ? "not-allowed" : "pointer" },
+                    "&:hover": { bgcolor: "action.hover", cursor: "pointer" },
                   }}
-                  onClick={() => !isAssigned && onSelect(c)}
+                  onClick={() => onSelect(c)}
                 >
                   <ListItemText
                     primary={
-                      <Box display="flex" justifyContent="space-between" alignItems="center">
+                      <Box display="flex" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={1}>
                         <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
-                          {c.tracking_id} - {c.title}
-                          {isAssigned && (
-                            <Typography component="span" color="error" variant="caption" sx={{ ml: 1, fontWeight: 'bold' }}>
-                              (Already Assigned)
-                            </Typography>
-                          )}
+                          #{c.tracking_id} - {c.title}
                         </Typography>
-                        <Chip
-                          label={c.severity_level}
-                          size="small"
-                          color={SeverityColors[c.severity_level] || "default"}
-                        />
+                        <Box display="flex" alignItems="center" gap={0.5}>
+                          {isAssigned && (
+                            <Chip
+                              size="small"
+                              label={assignedTeamName ? `Team: ${assignedTeamName}` : "Assigned"}
+                              color="info"
+                              variant="outlined"
+                              sx={{ fontSize: "0.75rem" }}
+                            />
+                          )}
+                          <Chip
+                            label={c.severity_level?.toUpperCase() || "MEDIUM"}
+                            size="small"
+                            color={SeverityColors[c.severity_level] || "default"}
+                          />
+                        </Box>
                       </Box>
                     }
                     secondary={
-                      <React.Fragment>
+                      <Box sx={{ mt: 0.5 }}>
                         <Typography component="span" variant="body2" color="text.primary">
                           Status: {c.status}
                         </Typography>
-                        {" — "}{c.complaint_categories?.category_name || "Uncategorized"}
-                      </React.Fragment>
+                        {" — "}{c.complaint_categories?.category_name || "General"}
+                        {isAssigned && (
+                          <Typography variant="caption" color="text.secondary" display="block">
+                            Click to reassign to selected squad
+                          </Typography>
+                        )}
+                      </Box>
                     }
                   />
                 </ListItem>

@@ -34,10 +34,10 @@ export const complaintsApi = {
   },
 
   /**
-   * Get complaint by ID
+   * Get complaint by ID (citizen)
    */
   getComplaintById: async (id: string): Promise<ApiResponse<Complaint>> => {
-    const response = await apiClient.get<ApiResponse<Complaint>>(`/complaints/${id}`);
+    const response = await apiClient.get<ApiResponse<Complaint>>(`/citizen/complaints/${id}`);
     return response.data;
   },
 
