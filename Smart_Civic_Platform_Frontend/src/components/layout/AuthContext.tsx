@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { ReactNode } from "react";
 import { AuthContext, type UserProfile } from "../../hooks/useAuth";
+import { authApi } from "../../api/modules/auth.api";
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<UserProfile | null>(() => {
@@ -18,20 +19,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setUser(profile);
   };
 
-  const logout = async () => {
+  const logout = async (options?: { skipServer?: boolean }) => {
     try {
-      const token = localStorage.getItem("access_token");
-      if (token) {
-        await fetch("http://localhost:3000/api/auth/logout", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-        });
+      if (!options?.skipServer) {
+        const refreshToken = localStorage.getItem("refresh_token") || undefined;
+        await authApi.logout(refreshToken);
       }
-    } catch (error) {
-      console.error("Failed to invalidate session on the server:", error);
+    } catch {
+      // Gracefully ignore server errors during logout so local session cleanup always completes
     } finally {
       // Always clean up local state regardless of server response
       localStorage.removeItem("access_token");

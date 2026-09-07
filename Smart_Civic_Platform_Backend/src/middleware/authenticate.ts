@@ -81,3 +81,50 @@ export const authenticate = async (
     return sendError(res, "Authentication failed", 401);
   }
 };
+
+export const optionalAuthenticate = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader?.startsWith("Bearer ")) {
+    return next();
+  }
+
+  const token = authHeader.split(" ")[1];
+
+  try {
+    const client = createUserClient(token);
+    const {
+      data: { user },
+      error,
+    } = await client.auth.getUser();
+
+    if (!error && user) {
+      const { data: profile } = await supabaseAdmin
+        .from("profiles")
+        .select(
+          "id, email, phone, role, municipality_id, department_id, full_name, account_status, force_password_reset, created_at, identity_type, identity_number, identity_document_url, identity_verified_at, profile_picture",
+        )
+        .eq("id", user.id)
+        .maybeSingle();
+
+      if (profile) {
+        req.user = {
+          ...profile,
+          userId: profile.id,
+          municipalityId: profile.municipality_id,
+          departmentId: profile.department_id,
+        } as AuthUser;
+      }
+      req.accessToken = token;
+      req.userClient = client;
+    }
+  } catch {
+    // Non-blocking for optional authentication
+  }
+
+  next();
+};
+

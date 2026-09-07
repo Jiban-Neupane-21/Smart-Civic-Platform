@@ -8,6 +8,7 @@ import {
   updateProfileSchema,
   addressSchema,
   identityUploadSchema,
+  deleteAccountSchema,
 } from "../../../validation/citizen.validation";
 import { reopenComplaintSchema, complaintNoteSchema } from "../../../validation/complaint.validation";
 
@@ -329,6 +330,41 @@ router.put(
   "/profile",
   validateBody(updateProfileSchema),
   C.updateProfile,
+);
+
+/**
+ * @swagger
+ * /api/citizen/account:
+ *   delete:
+ *     summary: Permanently delete citizen account and all associated data
+ *     tags: [Citizen API]
+ *     security: [{ BearerAuth: [] }]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [password]
+ *             properties:
+ *               password:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Citizen account deleted cleanly.
+ *       401:
+ *         description: Invalid password.
+ */
+router.delete(
+  "/account",
+  validateBody(deleteAccountSchema),
+  C.deleteAccount,
+);
+
+router.delete(
+  "/profile",
+  validateBody(deleteAccountSchema),
+  C.deleteAccount,
 );
 
 export default router;

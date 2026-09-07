@@ -70,10 +70,12 @@ export const refresh = async (req: Request, res: Response) => {
 
 export const logout = async (req: Request, res: Response) => {
   try {
-    await AuthService.logoutService(req.body.refresh_token, req.user!.id);
+    const refreshToken = req.body?.refresh_token;
+    const userId = req.user?.id;
+    await AuthService.logoutService(refreshToken, userId);
     return sendSuccess(res, null, "Logged out successfully");
   } catch (e: any) {
-    return sendError(res, e.message, 400);
+    return sendSuccess(res, null, "Logged out successfully");
   }
 };
 

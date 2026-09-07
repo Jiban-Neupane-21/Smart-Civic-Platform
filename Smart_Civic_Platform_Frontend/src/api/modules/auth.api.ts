@@ -73,8 +73,10 @@ export const authApi = {
   /**
    * Logout user and invalidate refresh token
    */
-  logout: async (refreshToken: string): Promise<ApiResponse<void>> => {
-    const response = await apiClient.post<ApiResponse<void>>('/auth/logout', { refresh_token: refreshToken });
+  logout: async (refreshToken?: string): Promise<ApiResponse<void>> => {
+    const response = await apiClient.post<ApiResponse<void>>('/auth/logout', {
+      refresh_token: refreshToken || undefined,
+    });
     return response.data;
   },
 

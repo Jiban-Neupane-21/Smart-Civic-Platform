@@ -81,6 +81,10 @@ export const refreshTokenSchema = z.object({
   refresh_token: z.string().min(1),
 });
 
+export const logoutSchema = z.object({
+  refresh_token: z.string().optional(),
+});
+
 export const sendOtpSchema = z.object({
   phone: z.string().min(10, "Phone number must be at least 10 digits"),
   purpose: z.enum(["registration", "login", "reset_password"]).optional(),

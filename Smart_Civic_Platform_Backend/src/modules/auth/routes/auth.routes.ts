@@ -1,6 +1,7 @@
 import { Router } from "express";
 import * as AuthController from "../controller/auth.controller";
-import { authenticate } from "../../../middleware/authenticate";
+import { authenticate, optionalAuthenticate } from "../../../middleware/authenticate";
+import { forcePasswordReset } from "../../../middleware/forcePasswordReset";
 import { authorize } from "../../../middleware/authorize";
 import { validateBody } from "../../../middleware/validateBody";
 import {
@@ -8,6 +9,7 @@ import {
   loginSchema,
   forgotPasswordSchema,
   refreshTokenSchema,
+  logoutSchema,
   changePasswordSchema,
   sendOtpSchema,
   verifyOtpSchema,
@@ -164,8 +166,6 @@ router.post(
   AuthController.refresh,
 );
 
-import { forcePasswordReset } from "../../../middleware/forcePasswordReset";
-
 /**
  * @swagger
  * /api/auth/logout:
@@ -174,7 +174,7 @@ import { forcePasswordReset } from "../../../middleware/forcePasswordReset";
  *     summary: Logout — revokes refresh token
  *     security: [{ BearerAuth: [] }]
  *     requestBody:
- *       required: true
+ *       required: false
  *       content:
  *         application/json:
  *           schema:
@@ -186,14 +186,11 @@ import { forcePasswordReset } from "../../../middleware/forcePasswordReset";
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/SuccessResponse'
- *       401:
- *         $ref: '#/components/responses/Unauthorized'
  */
 router.post(
   "/logout",
-  authenticate,
-  forcePasswordReset,
-  validateBody(refreshTokenSchema),
+  optionalAuthenticate,
+  validateBody(logoutSchema),
   AuthController.logout,
 );
 

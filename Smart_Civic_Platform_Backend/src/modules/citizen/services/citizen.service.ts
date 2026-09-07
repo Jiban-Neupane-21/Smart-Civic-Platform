@@ -1,4 +1,4 @@
-import { supabaseAdmin } from "../../../config/supabase";
+import { supabaseAdmin, createAuthClient } from "../../../config/supabase";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { ComplaintStatus, Database } from "../../../types/database.type";
 import { StorageService } from "../../../service/storage.service";
@@ -1058,6 +1058,119 @@ export const deleteComplaint = async (
     message: `Complaint #${complaint.tracking_id} and all associated media files were removed cleanly.`,
     complaint_id: complaintId,
     tracking_id: complaint.tracking_id,
+  };
+};
+
+/**
+ * Permanently deletes a citizen's account, storage files, complaints, feedback,
+ * upvotes, notifications, profiles, and Supabase Auth credentials.
+ */
+export const deleteCitizenAccount = async (
+  citizenId: string,
+  email: string,
+  password: string,
+) => {
+  // 1. Password verification for authentication security
+  const authClient = createAuthClient();
+  const { error: authVerifyErr } = await authClient.auth.signInWithPassword({
+    email,
+    password,
+  });
+
+  if (authVerifyErr) {
+    const error = new Error("Invalid password. Account deletion unauthorized.");
+    (error as any).statusCode = 401;
+    throw error;
+  }
+
+  const storageService = new StorageService(supabaseAdmin);
+
+  // 2. Fetch all complaints by this citizen to clean up media
+  const { data: complaints } = await supabaseAdmin
+    .from("complaints")
+    .select("co_uid")
+    .eq("citizen_id", citizenId);
+
+  const complaintIds: string[] = (complaints || []).map((c: any) => c.co_uid);
+
+  // 3. Storage cleanup
+  try {
+    // Delete KYC identity documents folder
+    await storageService.deleteFolder("identity-documents", citizenId);
+    // Delete citizen complaint media folder
+    await storageService.deleteFolder("complaint-media", citizenId);
+    // Delete avatars folder if any
+    await storageService.deleteFolder("avatars", citizenId);
+  } catch (storageErr: any) {
+    console.warn(`[deleteCitizenAccount] Storage cleanup warning:`, storageErr.message);
+  }
+
+  // 4. Clean up child records referencing complaints or citizen
+  try {
+    // Media table rows for citizen complaints or uploaded by citizen
+    if (complaintIds.length > 0) {
+      await supabaseAdmin.from("media").delete().eq("context", "complaint").in("context_id", complaintIds);
+      await supabaseAdmin.from("complaint_collaborations").delete().in("complaint_id", complaintIds);
+      await supabaseAdmin.from("complaint_sign_offs").delete().in("complaint_id", complaintIds);
+      await supabaseAdmin.from("complaint_assignments").delete().in("complaint_id", complaintIds);
+    }
+    await supabaseAdmin.from("media").delete().eq("uploaded_by", citizenId);
+
+    // Complaint updates / notes authored by this citizen
+    await supabaseAdmin.from("complaint_updates").delete().eq("author_id", citizenId);
+
+    // Upvotes by this citizen
+    await supabaseAdmin.from("complaint_upvotes").delete().eq("citizen_id", citizenId);
+
+    // Feedback given by this citizen
+    await supabaseAdmin.from("feedback").delete().eq("citizen_id", citizenId);
+
+    // Notifications directed to this citizen or sent by citizen
+    await supabaseAdmin.from("notifications").delete().eq("target_profile_id", citizenId);
+    await supabaseAdmin.from("notifications").delete().eq("sender_id", citizenId);
+
+    // Complaints submitted by this citizen
+    if (complaintIds.length > 0) {
+      await supabaseAdmin.from("complaints").delete().eq("citizen_id", citizenId);
+    }
+
+    // Citizens record
+    await supabaseAdmin.from("citizens").delete().eq("id", citizenId);
+
+    // Profiles record
+    await supabaseAdmin.from("profiles").delete().eq("id", citizenId);
+  } catch (dbErr: any) {
+    console.error("[deleteCitizenAccount] DB cleanup error:", dbErr.message);
+    throw new Error(`Database cleanup failed: ${dbErr.message}`);
+  }
+
+  // 5. Delete Supabase Auth user (hard delete to free email and phone)
+  const { error: authDeleteErr } = await supabaseAdmin.auth.admin.deleteUser(citizenId);
+  if (authDeleteErr) {
+    console.error("[deleteCitizenAccount] Auth deleteUser error:", authDeleteErr.message);
+    throw new Error(`Failed to delete authentication credentials: ${authDeleteErr.message}`);
+  }
+
+  // 6. Audit log entry
+  try {
+    await supabaseAdmin.from("audit_logs").insert({
+      actor_id: null,
+      action: "ACCOUNT_DELETED",
+      resource_type: "citizen",
+      resource_id: citizenId,
+      metadata: {
+        email,
+        reason: "Citizen self-requested permanent account deletion",
+        deleted_at: new Date().toISOString(),
+      },
+    });
+  } catch (auditErr: any) {
+    console.warn("[deleteCitizenAccount] Audit log warning:", auditErr.message);
+  }
+
+  return {
+    success: true,
+    message: "Your citizen account and all associated data have been permanently deleted.",
   };
 };
 

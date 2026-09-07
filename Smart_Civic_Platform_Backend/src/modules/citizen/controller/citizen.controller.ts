@@ -254,3 +254,17 @@ export const upvoteComplaint = async (req: Request, res: Response) => {
   }
 };
 
+export const deleteAccount = async (req: Request, res: Response) => {
+  try {
+    const data = await CitizenService.deleteCitizenAccount(
+      req.user!.id,
+      req.user!.email!,
+      req.body.password,
+    );
+    return sendSuccess(res, data, data.message);
+  } catch (e: any) {
+    const status = e.statusCode || 400;
+    return sendError(res, e.message, status);
+  }
+};
+

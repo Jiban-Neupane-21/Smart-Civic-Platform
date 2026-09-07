@@ -228,16 +228,32 @@ export const refreshTokenService = async (refreshToken: string) => {
   };
 };
 
-export const logoutService = async (refreshToken: string, userId: string) => {
-  const tokenHash = crypto
-    .createHash("sha256")
-    .update(refreshToken)
-    .digest("hex");
-  await supabaseAdmin
-    .from("refresh_tokens")
-    .update({ is_revoked: true, revoked_at: new Date().toISOString() })
-    .eq("token_hash", tokenHash)
-    .eq("profile_id", userId);
+export const logoutService = async (refreshToken?: string, userId?: string) => {
+  try {
+    if (refreshToken) {
+      const tokenHash = crypto
+        .createHash("sha256")
+        .update(refreshToken)
+        .digest("hex");
+      const query = supabaseAdmin
+        .from("refresh_tokens")
+        .update({ is_revoked: true, revoked_at: new Date().toISOString() })
+        .eq("token_hash", tokenHash);
+      if (userId) {
+        query.eq("profile_id", userId);
+      }
+      await query;
+    } else if (userId) {
+      // Revoke all active refresh tokens for this user
+      await supabaseAdmin
+        .from("refresh_tokens")
+        .update({ is_revoked: true, revoked_at: new Date().toISOString() })
+        .eq("profile_id", userId)
+        .eq("is_revoked", false);
+    }
+  } catch (err: any) {
+    console.warn("[logoutService] Token revocation warning:", err?.message);
+  }
 };
 
 // ──────────────────────────────────────────────────────────────────────────────

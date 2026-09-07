@@ -25,7 +25,7 @@ interface AuthContextType {
   isAuthenticated: boolean;
   kycCompleted: boolean;
   login: (token: string, profile: UserProfile, refreshToken?: string) => void;
-  logout: () => Promise<void>;
+  logout: (options?: { skipServer?: boolean }) => Promise<void>;
 }
 
 export const AuthContext = createContext<AuthContextType | undefined>(

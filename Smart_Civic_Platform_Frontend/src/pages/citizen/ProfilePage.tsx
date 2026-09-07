@@ -44,6 +44,8 @@ import {
   ErrorOutlined,
   Close as CloseIcon,
   ZoomIn,
+  DeleteForever,
+  WarningAmberOutlined,
 } from "@mui/icons-material";
 import { fetchWithAuth, BASE_URL, citizenApi } from "../../api";
 import { useAuth } from "../../hooks/useAuth";
@@ -158,7 +160,7 @@ const STATUS_COLORS: Record<string, "warning" | "info" | "success" | "error" | "
 
 export const Profile: React.FC = () => {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
 
   const [profile, setProfile] = useState<ProfileData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -349,6 +351,78 @@ export const Profile: React.FC = () => {
       Swal.fire({ icon: "error", title: "Error", text: msg });
     } finally {
       setChangingPassword(false);
+    }
+  };
+
+  const [deletingAccount, setDeletingAccount] = useState(false);
+
+  const handleDeleteAccount = async () => {
+    const { value: formValues } = await Swal.fire({
+      title: "Delete Your Account?",
+      html: `
+        <div style="text-align: left; font-size: 0.95rem; color: #475569;">
+          <p style="margin-bottom: 12px; color: #dc2626; font-weight: 600;">
+            ⚠️ This action is permanent and cannot be undone.
+          </p>
+          <p style="margin-bottom: 16px; font-size: 0.875rem;">
+            All your submitted grievances, personal profile records, and uploaded KYC verification documents will be completely erased.
+          </p>
+          <label style="display: block; margin-bottom: 6px; font-weight: 500; font-size: 0.875rem; color: #1e293b;">
+            Enter your current password to confirm:
+          </label>
+          <input id="swal-input-password" type="password" class="swal2-input" placeholder="Current Password" style="margin: 0 0 16px 0; width: 100%; box-sizing: border-box;" />
+          <label style="display: block; margin-bottom: 6px; font-weight: 500; font-size: 0.875rem; color: #1e293b;">
+            Type <strong>DELETE</strong> in capital letters:
+          </label>
+          <input id="swal-input-confirm" type="text" class="swal2-input" placeholder="DELETE" style="margin: 0; width: 100%; box-sizing: border-box;" />
+        </div>
+      `,
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonColor: "#dc2626",
+      cancelButtonColor: "#64748b",
+      confirmButtonText: "Permanently Delete Account",
+      cancelButtonText: "Cancel",
+      focusCancel: true,
+      preConfirm: () => {
+        const password = (document.getElementById("swal-input-password") as HTMLInputElement)?.value;
+        const confirmText = (document.getElementById("swal-input-confirm") as HTMLInputElement)?.value;
+        if (!password) {
+          Swal.showValidationMessage("Please enter your current password.");
+          return false;
+        }
+        if (confirmText !== "DELETE") {
+          Swal.showValidationMessage("Please type DELETE in capital letters to confirm.");
+          return false;
+        }
+        return { password };
+      },
+    });
+
+    if (!formValues?.password) return;
+
+    setDeletingAccount(true);
+    try {
+      await citizenApi.deleteAccount(formValues.password);
+      await Swal.fire({
+        icon: "success",
+        title: "Account Deleted",
+        text: "Your account has been deleted successfully. You will now be redirected to the login page.",
+        confirmButtonColor: "#3b82f6",
+        timer: 3000,
+      });
+      await logout({ skipServer: true });
+      navigate("/login");
+    } catch (err: any) {
+      const errMsg = err?.response?.data?.message || err?.message || "Failed to delete account. Please check your password.";
+      Swal.fire({
+        icon: "error",
+        title: "Deletion Failed",
+        text: errMsg,
+        confirmButtonColor: "#dc2626",
+      });
+    } finally {
+      setDeletingAccount(false);
     }
   };
 
@@ -1155,6 +1229,50 @@ export const Profile: React.FC = () => {
             </Button>
           </Grid>
         </Grid>
+      </Card>
+
+      {/* ─── Danger Zone: Delete Account ─── */}
+      <Card
+        sx={{
+          borderRadius: 2,
+          p: 3,
+          mt: 3,
+          border: "1px solid #fee2e2",
+          bgcolor: "#fff5f5",
+          boxShadow: "0 1px 3px rgba(239, 68, 68, 0.05)",
+        }}
+      >
+        <Box display="flex" alignItems="center" justifyContent="space-between" flexWrap="wrap" gap={2}>
+          <Box display="flex" alignItems="flex-start" gap={1.5} maxWidth="700px">
+            <WarningAmberOutlined sx={{ color: "#dc2626", mt: 0.3 }} />
+            <Box>
+              <Typography variant="h6" fontWeight="bold" sx={{ color: "#991b1b" }}>
+                Danger Zone: Delete Account
+              </Typography>
+              <Typography variant="body2" sx={{ color: "#7f1d1d", mt: 0.5 }}>
+                Permanently remove your citizen account, submitted complaints, identity documents, and profile data. Once deleted, this account cannot be recovered.
+              </Typography>
+            </Box>
+          </Box>
+          <Button
+            variant="contained"
+            color="error"
+            startIcon={deletingAccount ? <CircularProgress size={18} color="inherit" /> : <DeleteForever />}
+            onClick={handleDeleteAccount}
+            disabled={deletingAccount}
+            sx={{
+              bgcolor: "#dc2626",
+              "&:hover": { bgcolor: "#b91c1c" },
+              fontWeight: 600,
+              textTransform: "none",
+              px: 3,
+              py: 1,
+              borderRadius: 2,
+            }}
+          >
+            {deletingAccount ? "Deleting Account..." : "Delete Account"}
+          </Button>
+        </Box>
       </Card>
 
       {/* ─── Document Preview Dialog ─── */}

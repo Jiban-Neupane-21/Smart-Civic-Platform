@@ -68,3 +68,7 @@ export const identityUploadSchema = z
       });
     }
   });
+
+export const deleteAccountSchema = z.object({
+  password: z.string().min(1, "Password is required to confirm account deletion"),
+});

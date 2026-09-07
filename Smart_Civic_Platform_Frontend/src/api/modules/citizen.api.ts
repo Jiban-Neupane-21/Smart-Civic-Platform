@@ -97,6 +97,29 @@ export const citizenApi = {
     const response = await apiClient.post<ApiResponse<UpvoteResponse>>(`/citizen/complaints/${complaintId}/upvote`);
     return response.data;
   },
+
+  /**
+   * Permanently delete citizen account and all associated data
+   */
+  deleteAccount: async (password: string): Promise<ApiResponse<{ success: boolean; message: string }>> => {
+    try {
+      const response = await apiClient.delete<ApiResponse<{ success: boolean; message: string }>>('/citizen/account', {
+        headers: { 'Content-Type': 'application/json' },
+        data: { password },
+      });
+      return response.data;
+    } catch (err: any) {
+      // Fallback alias to /citizen/profile in case of route caching
+      if (err?.response?.status === 404) {
+        const fallbackRes = await apiClient.delete<ApiResponse<{ success: boolean; message: string }>>('/citizen/profile', {
+          headers: { 'Content-Type': 'application/json' },
+          data: { password },
+        });
+        return fallbackRes.data;
+      }
+      throw err;
+    }
+  },
 };
 
 export interface DuplicateCheckPayload {
