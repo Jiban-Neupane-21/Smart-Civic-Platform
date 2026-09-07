@@ -1,4 +1,4 @@
-import "./config/env";
+import { env } from "./config/env";
 import express, { Request, Response, NextFunction } from "express";
 import cors from "cors";
 import helmet from "helmet";
@@ -112,6 +112,7 @@ app.use(
       "http://localhost:3000",
       "http://localhost:5173",
       "http://localhost:8080",
+      ...(env.CLIENT_URL ? [env.CLIENT_URL] : []),
     ],
     credentials: true,
   }),
