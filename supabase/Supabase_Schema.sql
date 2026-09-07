@@ -236,7 +236,7 @@ CREATE TABLE deleted_staff (
     employee_status TEXT,
     primary_department_id UUID,
     municipality_id UUID,
-    deleted_by UUID REFERENCES auth.users(id),
+    deleted_by UUID REFERENCES auth.users(id) ON DELETE SET NULL,
     deleted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

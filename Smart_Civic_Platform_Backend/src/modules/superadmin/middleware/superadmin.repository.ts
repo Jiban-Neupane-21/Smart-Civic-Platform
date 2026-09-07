@@ -185,6 +185,61 @@ export class SuperadminRepository {
     if (error) throw error;
   }
 
+  // Clear any foreign key references pointing to user IDs that would block deleting their auth account
+  async cleanForeignKeysForUsers(userIds: string[]) {
+    if (!userIds || userIds.length === 0) return;
+
+    try {
+      // 1. deleted_staff.deleted_by references auth.users(id)
+      await this.supabaseAdmin
+        .from("deleted_staff")
+        .update({ deleted_by: null })
+        .in("deleted_by", userIds);
+    } catch (e: any) {
+      console.warn("cleanForeignKeysForUsers deleted_staff warning:", e.message);
+    }
+
+    try {
+      // 2. departments.kyc_verified_by references profiles(id)
+      await this.supabaseAdmin
+        .from("departments")
+        .update({ kyc_verified_by: null })
+        .in("kyc_verified_by", userIds);
+    } catch (e: any) {
+      console.warn("cleanForeignKeysForUsers departments.kyc_verified_by warning:", e.message);
+    }
+
+    try {
+      // 3. Any head_profile_id references in departments
+      await this.supabaseAdmin
+        .from("departments")
+        .update({ head_profile_id: null })
+        .in("head_profile_id", userIds);
+    } catch (e: any) {
+      console.warn("cleanForeignKeysForUsers departments.head_profile_id warning:", e.message);
+    }
+
+    try {
+      // 4. Any head_profile_id references in municipalities
+      await this.supabaseAdmin
+        .from("municipalities")
+        .update({ head_profile_id: null })
+        .in("head_profile_id", userIds);
+    } catch (e: any) {
+      console.warn("cleanForeignKeysForUsers municipalities.head_profile_id warning:", e.message);
+    }
+  }
+
+  // Find auth users whose user_metadata.municipality_id matches the municipality
+  async getAuthUsersByMunicipality(municipalityId: string) {
+    const { data, error } = await this.supabaseAdmin.auth.admin.listUsers();
+    if (error) throw error;
+    const matched = (data?.users || []).filter(
+      (u) => u.user_metadata?.municipality_id === municipalityId
+    );
+    return { data: matched };
+  }
+
   // Update a municipality
   async updateMunicipality(id: string, data: Record<string, any>) {
     const { data: result, error } = await this.supabaseAdmin
@@ -364,18 +419,32 @@ export class SuperadminRepository {
       }
     }
 
-    // 4. Fetch any additional profiles directly belonging to this municipality
+    // 3b. Also gather any soft-deleted staff profiles
+    const { data: allStaff, error: allStaffErr } = await this.supabaseAdmin
+      .from("staff")
+      .select("profile_id")
+      .eq("municipality_id", municipalityId);
+
+    if (!allStaffErr && allStaff) {
+      allStaff.forEach((s: any) => {
+        if (s.profile_id) affectedProfileIds.push(s.profile_id);
+      });
+    }
+
+    // 4. Fetch all profiles directly belonging to this municipality (both active and soft-deleted)
     const { data: tenantProfiles, error: tenantProfilesErr } = await this.supabaseAdmin
       .from("profiles")
       .select("id")
-      .eq("municipality_id", municipalityId)
-      .eq("is_deleted", false);
+      .eq("municipality_id", municipalityId);
 
     if (!tenantProfilesErr && tenantProfiles) {
       tenantProfiles.forEach((p: any) => affectedProfileIds.push(p.id));
     }
 
     const uniqueProfileIds = Array.from(new Set(affectedProfileIds)).filter(Boolean);
+
+    // Proactively clear foreign keys pointing to these profiles/users before deleting them
+    await this.cleanForeignKeysForUsers(uniqueProfileIds);
 
     // 5. Soft-delete and suspend all collected profiles
     if (uniqueProfileIds.length > 0) {

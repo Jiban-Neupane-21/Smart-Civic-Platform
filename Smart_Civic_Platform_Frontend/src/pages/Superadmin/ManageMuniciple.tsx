@@ -655,7 +655,7 @@ export default function ManageMuniciple() {
               <Divider sx={{ my: 2 }} />
 
               {/* Municipality Head */}
-              <Typography variant="subtitle2" color="primary" fontWeight={700} sx={{ mb: 1 }}>
+              <Typography variant="subtitle2" color="primary" sx={{ fontWeight: 700, mb: 1 }}>
                 Municipality Head
               </Typography>
               <Grid container spacing={2} sx={{ mb: 2 }}>
@@ -677,7 +677,7 @@ export default function ManageMuniciple() {
               {viewMunicipality.about_description && (
                 <>
                   <Divider sx={{ my: 2 }} />
-                  <Typography variant="subtitle2" color="primary" fontWeight={700} sx={{ mb: 1 }}>
+                  <Typography variant="subtitle2" color="primary" sx={{ fontWeight: 700, mb: 1 }}>
                     About
                   </Typography>
                   <Typography variant="body2" sx={{ whiteSpace: "pre-wrap" }}>
@@ -688,12 +688,12 @@ export default function ManageMuniciple() {
 
               {/* KYC Documents */}
               <Divider sx={{ my: 2 }} />
-              <Typography variant="h6" color="primary" fontWeight={700} sx={{ mb: 2 }}>
+              <Typography variant="h6" color="primary" sx={{ fontWeight: 700, mb: 2 }}>
                 KYC Verification Documents
               </Typography>
               <Grid container spacing={3}>
                 <Grid size={{ xs: 12, md: 6 }}>
-                  <Typography variant="subtitle2" color="primary" fontWeight={700} sx={{ mb: 1 }}>
+                  <Typography variant="subtitle2" color="primary" sx={{ fontWeight: 700, mb: 1 }}>
                     Head Identity Document
                   </Typography>
                   <Typography variant="body2" sx={{ mb: 0.5 }}><strong>Type:</strong> {viewMunicipality.head_identity_type?.replace(/_/g, " ").toUpperCase() || "N/A"}</Typography>
@@ -701,19 +701,19 @@ export default function ManageMuniciple() {
                   
                   {viewMunicipality.head_identity_front_url && (
                     <Box sx={{ mb: 2 }}>
-                      <Typography variant="caption" color="text.secondary" display="block">Front Side</Typography>
+                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>Front Side</Typography>
                       <img src={viewMunicipality.head_identity_front_url} alt="Identity Front" style={{ maxWidth: '100%', maxHeight: '200px', borderRadius: '8px', border: '1px solid #e0e0e0' }} />
                     </Box>
                   )}
                   {viewMunicipality.head_identity_back_url && (
                     <Box sx={{ mb: 2 }}>
-                      <Typography variant="caption" color="text.secondary" display="block">Back Side</Typography>
+                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>Back Side</Typography>
                       <img src={viewMunicipality.head_identity_back_url} alt="Identity Back" style={{ maxWidth: '100%', maxHeight: '200px', borderRadius: '8px', border: '1px solid #e0e0e0' }} />
                     </Box>
                   )}
                 </Grid>
                 <Grid size={{ xs: 12, md: 6 }}>
-                  <Typography variant="subtitle2" color="primary" fontWeight={700} sx={{ mb: 1 }}>
+                  <Typography variant="subtitle2" color="primary" sx={{ fontWeight: 700, mb: 1 }}>
                     Registration Document
                   </Typography>
                   {viewMunicipality.registration_document_url ? (
@@ -746,11 +746,11 @@ export default function ManageMuniciple() {
           )}
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2, justifyContent: 'space-between' }}>
-          <Box display="flex" gap={2}>
+          <Box sx={{ display: 'flex', gap: 2 }}>
             <Button onClick={() => { setViewMunicipality(null); openEditModal(viewMunicipality!); }} variant="outlined" startIcon={<EditIcon />}>Edit Profile</Button>
             <Button onClick={() => setViewMunicipality(null)} color="inherit" disabled={isSubmittingKyc}>Close</Button>
           </Box>
-          <Box display="flex" gap={2}>
+          <Box sx={{ display: 'flex', gap: 2 }}>
             <Button
               onClick={() => handleKycSubmit('rejected')}
               variant="outlined"

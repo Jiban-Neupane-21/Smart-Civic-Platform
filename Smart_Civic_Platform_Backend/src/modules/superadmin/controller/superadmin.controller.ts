@@ -349,7 +349,7 @@ export class SuperadminController {
 
       res.status(200).json({
         success: true,
-        message: "Municipality, associated departments, and staff were successfully soft-deleted and archived. The municipality is reset and ready for re-provisioning.",
+        message: "Municipality, associated departments, staff, and auth users were successfully processed. The municipality is reset and ready for re-provisioning.",
         data: result,
       });
     } catch (error: any) {

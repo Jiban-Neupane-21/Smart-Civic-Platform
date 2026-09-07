@@ -127,18 +127,42 @@ export class SuperadminService {
     try {
       const result = await this.repo.cascadeSoftDeleteMunicipality(id, deletedBy);
 
-      // Cleanly delete auth users for all affected profiles so they cannot log in
-      if (result.affectedProfileIds && result.affectedProfileIds.length > 0) {
-        for (const profileId of result.affectedProfileIds) {
-          try {
-            await this.repo.deleteAuthUser(profileId);
-          } catch (authErr: any) {
-            console.warn(`Could not remove auth user for profile ${profileId}:`, authErr.message);
-          }
+      // Collect all affected user/profile IDs to delete from auth.users
+      const idsToDelete = new Set<string>(result.affectedProfileIds || []);
+
+      // Also scan Supabase Auth users directly for any matching municipality metadata (catches orphaned auth users)
+      try {
+        const { data: authUsersData } = await this.repo.getAuthUsersByMunicipality(id);
+        if (authUsersData && authUsersData.length > 0) {
+          authUsersData.forEach((u: any) => idsToDelete.add(u.id));
+        }
+      } catch (scanErr: any) {
+        console.warn("Could not scan auth users by municipality metadata:", scanErr.message);
+      }
+
+      const targetIds = Array.from(idsToDelete).filter(Boolean);
+
+      // Proactively clear foreign keys for all collected IDs before deletion
+      await this.repo.cleanForeignKeysForUsers(targetIds);
+
+      const deletedAuthUserIds: string[] = [];
+      const failedAuthUserDeletions: { id: string; error: string }[] = [];
+
+      for (const uid of targetIds) {
+        try {
+          await this.repo.deleteAuthUser(uid);
+          deletedAuthUserIds.push(uid);
+        } catch (authErr: any) {
+          console.error(`Failed to remove auth user ${uid}:`, authErr.message);
+          failedAuthUserDeletions.push({ id: uid, error: authErr.message });
         }
       }
 
-      return result;
+      return {
+        ...result,
+        deletedAuthUserIds,
+        failedAuthUserDeletions,
+      };
     } catch (error: any) {
       throw new Error(`Failed to delete municipality: ${error.message}`);
     }

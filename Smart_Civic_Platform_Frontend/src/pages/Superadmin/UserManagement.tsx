@@ -170,7 +170,7 @@ export default function UserManagement() {
           value={search}
           onChange={(e) => { setSearch(e.target.value); setPage(0); }}
           sx={{ minWidth: 260 }}
-          InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon /></InputAdornment> }}
+          slotProps={{ input: { startAdornment: <InputAdornment position="start"><SearchIcon /></InputAdornment> } }}
         />
         <FormControl size="small" sx={{ minWidth: 140 }}>
           <InputLabel>Role</InputLabel>
@@ -208,7 +208,7 @@ export default function UserManagement() {
               ) : (
                 paginatedUsers.map((user) => (
                   <TableRow key={user.id} sx={{ "&:hover": { bgcolor: "action.hover" } }}>
-                    <TableCell><Typography variant="body2" fontWeight={600}>{user.full_name}</Typography></TableCell>
+                    <TableCell><Typography variant="body2" sx={{ fontWeight: 600 }}>{user.full_name}</Typography></TableCell>
                     <TableCell>{user.email}</TableCell>
                     <TableCell>
                       <FormControl size="small" sx={{ minWidth: 130 }}>

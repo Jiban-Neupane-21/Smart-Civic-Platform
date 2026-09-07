@@ -56,6 +56,7 @@ import { departmentApi } from "../../api/modules/department.api";
 import { BASE_URL, fetchWithAuth } from "../../api";
 import type { Team, CreateTeamDto, TeamComplaintAssignment, DeptQueueComplaint } from "../../api/types";
 import { ComplaintSelector } from "../../components/ComplaintSelector";
+import { QuickCreateTeamDialog } from "../../components/QuickCreateTeamDialog";
 
 interface StaffRosterItem {
   s_uid: string;
@@ -149,6 +150,8 @@ export default function ManageTeam() {
   const [teamComplaints, setTeamComplaints] = useState<TeamComplaintAssignment[]>([]);
   const [complaintsLoading, setComplaintsLoading] = useState(false);
   const [complaintSelectorOpen, setComplaintSelectorOpen] = useState(false);
+  const [assignTargetTeam, setAssignTargetTeam] = useState<Team | null>(null);
+  const [quickCreateOpen, setQuickCreateOpen] = useState(false);
 
   // Delete/Deactivate Dialog
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -217,10 +220,7 @@ export default function ManageTeam() {
   // ─── Team Dialog Actions ────────────────────────────────────────────────────
 
   const openCreate = () => {
-    setEditTeam(null);
-    setTeamForm({ team_name: "", description: "", start_date: "", end_date: "", selectedStaffIds: [], leaderStaffId: "" });
-    setTeamFormError(null);
-    setTeamModalOpen(true);
+    setQuickCreateOpen(true);
   };
 
   const openEdit = (team: Team) => {
@@ -384,17 +384,40 @@ export default function ManageTeam() {
   // ─── Complaints Actions ─────────────────────────────────────────────────────
 
   const handleAssignComplaint = async (complaint: DeptQueueComplaint) => {
-    if (!selectedTeam) return;
+    const target = assignTargetTeam || selectedTeam;
+    if (!target) return;
     try {
-      const res = await departmentApi.assignComplaintToTeam(selectedTeam.team_name, complaint.co_uid);
+      const res = await departmentApi.assignComplaintToTeam(target.team_name, complaint.co_uid);
       if (res.success) {
         setComplaintSelectorOpen(false);
-        fetchTeamComplaints(selectedTeam.team_name);
+        setAssignTargetTeam(null);
+        if (selectedTeam && selectedTeam.team_name === target.team_name) {
+          fetchTeamComplaints(target.team_name);
+        }
+        await fetchTeams();
       } else {
         alert(res.error?.message || "Failed to assign complaint");
       }
     } catch (err: any) {
       alert(err.message || "Error assigning complaint");
+    }
+  };
+
+  const handleBatchAssignComplaints = async (complaints: DeptQueueComplaint[]) => {
+    const target = assignTargetTeam || selectedTeam;
+    if (!target) return;
+    try {
+      for (const c of complaints) {
+        await departmentApi.assignComplaintToTeam(target.team_name, c.co_uid);
+      }
+      setComplaintSelectorOpen(false);
+      setAssignTargetTeam(null);
+      if (selectedTeam && selectedTeam.team_name === target.team_name) {
+        fetchTeamComplaints(target.team_name);
+      }
+      await fetchTeams();
+    } catch (err: any) {
+      alert(err.message || "Failed to assign complaints");
     }
   };
 
@@ -534,6 +557,20 @@ export default function ManageTeam() {
                         <Tooltip title="Edit Team">
                           <IconButton size="small" color="primary" onClick={() => openEdit(team)}><EditIcon fontSize="small" /></IconButton>
                         </Tooltip>
+                        {team.is_active && (
+                          <Tooltip title="Assign Complaints to this Squad">
+                            <IconButton
+                              size="small"
+                              color="secondary"
+                              onClick={() => {
+                                setAssignTargetTeam(team);
+                                setComplaintSelectorOpen(true);
+                              }}
+                            >
+                              <AssignmentIcon fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
+                        )}
                         {team.is_active && (
                           <Tooltip title="Deactivate Team">
                             <IconButton size="small" color="error" onClick={() => { setDeleteTarget(team); setDeleteDialogOpen(true); }}><DeleteIcon fontSize="small" /></IconButton>
@@ -813,7 +850,22 @@ export default function ManageTeam() {
         </DialogActions>
       </Dialog>
 
-      <ComplaintSelector open={complaintSelectorOpen} onClose={() => setComplaintSelectorOpen(false)} onSelect={handleAssignComplaint} />
+      <ComplaintSelector
+        open={complaintSelectorOpen}
+        teamName={assignTargetTeam?.team_name || selectedTeam?.team_name}
+        onClose={() => {
+          setComplaintSelectorOpen(false);
+          setAssignTargetTeam(null);
+        }}
+        onSelect={handleAssignComplaint}
+        onSelectMultiple={handleBatchAssignComplaints}
+      />
+
+      <QuickCreateTeamDialog
+        open={quickCreateOpen}
+        onClose={() => setQuickCreateOpen(false)}
+        onSuccess={() => fetchTeams()}
+      />
     </Box>
   );
 }

@@ -24,12 +24,17 @@ import {
   Phone,
   Email,
   Person,
-  Close as CloseIcon
+  Close as CloseIcon,
+  Add as AddIcon,
+  AssignmentTurnedIn,
+  GroupAdd,
 } from "@mui/icons-material";
 import { useAuth } from "../../hooks/useAuth";
 import { departmentApi } from "../../api/modules/department.api";
 import { municipalityApi } from "../../api/modules/municipality.api";
 import type { DeptQueueComplaint, DeptComplaintDetail } from "../../api/types/department.types";
+import { QuickAssignSquadDialog } from "../../components/QuickAssignSquadDialog";
+import { QuickCreateTeamDialog } from "../../components/QuickCreateTeamDialog";
 import { formatDistanceToNow, isPast } from "date-fns";
 
 const STATUS_COLOR: Record<string, "default" | "primary" | "warning" | "info" | "success" | "error" | "secondary"> = {
@@ -65,7 +70,12 @@ export default function DeptComplainDetails() {
   // Filter and Tab state
   const [activeTab, setActiveTab] = useState<DeptTabValue>("all");
   const [priorityFilter, setPriorityFilter] = useState<string>("all");
+  const [squadFilter, setSquadFilter] = useState<"all" | "unassigned" | "assigned">("all");
   const [searchQuery, setSearchQuery] = useState<string>("");
+
+  // Quick Squad Dispatch & Team Creation states
+  const [quickAssignComplaint, setQuickAssignComplaint] = useState<DeptQueueComplaint | DeptComplaintDetail | null>(null);
+  const [createTeamOpen, setCreateTeamOpen] = useState<boolean>(false);
 
   // Dialog & Detailed complaint state
   const [selected, setSelected] = useState<DeptQueueComplaint | null>(null);
@@ -149,7 +159,7 @@ export default function DeptComplainDetails() {
     return counts;
   }, [complaints]);
 
-  // Filter complaints based on active Action Tab, Priority, and Search Query
+  // Filter complaints based on active Action Tab, Priority, Squad, and Search Query
   const filteredComplaints = useMemo(() => {
     return complaints.filter((c) => {
       const s = (c.status || "").toLowerCase();
@@ -167,7 +177,16 @@ export default function DeptComplainDetails() {
         if (itemSev !== priorityFilter.toLowerCase()) return false;
       }
 
-      // 3. Search query filter
+      // 3. Squad deployment filter
+      if (squadFilter === "unassigned") {
+        const hasTeam = Boolean(c.current_team_id || c.current_team?.team_name);
+        if (hasTeam) return false;
+      } else if (squadFilter === "assigned") {
+        const hasTeam = Boolean(c.current_team_id || c.current_team?.team_name);
+        if (!hasTeam) return false;
+      }
+
+      // 4. Search query filter
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase().trim();
         const tracking = (c.tracking_id || "").toLowerCase();
@@ -181,7 +200,7 @@ export default function DeptComplainDetails() {
 
       return true;
     });
-  }, [complaints, activeTab, priorityFilter, searchQuery]);
+  }, [complaints, activeTab, priorityFilter, squadFilter, searchQuery]);
 
   // Compute exact grievance civic location raised by citizen (e.g. "Kathmandu Ward 1", "Paiyun Ward 1")
   const { locationHeading, locationSubAddress, resolvedWard, resolvedMuni } = useMemo(() => {
@@ -237,10 +256,11 @@ export default function DeptComplainDetails() {
   const handleResetFilters = () => {
     setActiveTab("all");
     setPriorityFilter("all");
+    setSquadFilter("all");
     setSearchQuery("");
   };
 
-  const isFiltered = activeTab !== "all" || priorityFilter !== "all" || searchQuery.trim().length > 0;
+  const isFiltered = activeTab !== "all" || priorityFilter !== "all" || squadFilter !== "all" || searchQuery.trim().length > 0;
 
   const handleUpdateState = async () => {
     if (!selected) return;
@@ -439,7 +459,7 @@ export default function DeptComplainDetails() {
         <Box sx={{ p: 2, bgcolor: "grey.50" }}>
           <Grid container spacing={2} alignItems="center">
             {/* Search Input */}
-            <Grid size={{ xs: 12, md: 5 }}>
+            <Grid size={{ xs: 12, md: 4 }}>
               <TextField
                 fullWidth
                 size="small"
@@ -464,7 +484,7 @@ export default function DeptComplainDetails() {
             </Grid>
 
             {/* Priority (Low, Medium, High, Urgent) Filter */}
-            <Grid size={{ xs: 12, sm: 6, md: 3.5 }}>
+            <Grid size={{ xs: 6, md: 2.5 }}>
               <FormControl fullWidth size="small">
                 <InputLabel id="priority-filter-select-label">Priority</InputLabel>
                 <Select
@@ -507,8 +527,44 @@ export default function DeptComplainDetails() {
               </FormControl>
             </Grid>
 
-            {/* Status counts & Reset button */}
-            <Grid size={{ xs: 12, sm: 6, md: 3.5 }}>
+            {/* Squad Deployment Filter */}
+            <Grid size={{ xs: 6, md: 2.5 }}>
+              <FormControl fullWidth size="small">
+                <InputLabel id="squad-filter-select-label">Squad Deployment</InputLabel>
+                <Select
+                  labelId="squad-filter-select-label"
+                  label="Squad Deployment"
+                  value={squadFilter}
+                  onChange={(e) => setSquadFilter(e.target.value as any)}
+                  startAdornment={
+                    <InputAdornment position="start">
+                      <Group fontSize="small" sx={{ color: "text.secondary" }} />
+                    </InputAdornment>
+                  }
+                >
+                  <MenuItem value="all">All Deployment States</MenuItem>
+                  <MenuItem value="unassigned">
+                    <Stack direction="row" spacing={1} alignItems="center">
+                      <Box sx={{ width: 8, height: 8, borderRadius: "50%", bgcolor: "warning.main" }} />
+                      <Typography variant="body2" fontWeight={600} color="warning.dark">
+                        Needs Squad (Unassigned)
+                      </Typography>
+                    </Stack>
+                  </MenuItem>
+                  <MenuItem value="assigned">
+                    <Stack direction="row" spacing={1} alignItems="center">
+                      <Box sx={{ width: 8, height: 8, borderRadius: "50%", bgcolor: "success.main" }} />
+                      <Typography variant="body2" color="success.main">
+                        Squad Assigned
+                      </Typography>
+                    </Stack>
+                  </MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+
+            {/* Status counts & Actions */}
+            <Grid size={{ xs: 12, md: 3 }}>
               <Stack direction="row" spacing={1.5} alignItems="center" justifyContent={{ xs: "flex-start", md: "flex-end" }}>
                 {isFiltered && (
                   <Button
@@ -519,12 +575,22 @@ export default function DeptComplainDetails() {
                     onClick={handleResetFilters}
                     sx={{ textTransform: "none", color: "text.secondary" }}
                   >
-                    Reset Filters
+                    Reset
                   </Button>
                 )}
 
+                <Button
+                  size="small"
+                  variant="outlined"
+                  startIcon={<AddIcon fontSize="small" />}
+                  onClick={() => setCreateTeamOpen(true)}
+                  sx={{ textTransform: "none", fontWeight: 600 }}
+                >
+                  New Squad
+                </Button>
+
                 <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>
-                  Showing {filteredComplaints.length} of {complaints.length} complaints
+                  {filteredComplaints.length} / {complaints.length}
                 </Typography>
               </Stack>
             </Grid>
@@ -542,6 +608,7 @@ export default function DeptComplainDetails() {
               <TableCell>Category</TableCell>
               <TableCell>Severity</TableCell>
               <TableCell>Status</TableCell>
+              <TableCell>Assigned Squad</TableCell>
               <TableCell>SLA Due</TableCell>
               <TableCell>Collab</TableCell>
               <TableCell align="center">Actions</TableCell>
@@ -550,7 +617,7 @@ export default function DeptComplainDetails() {
           <TableBody>
             {filteredComplaints.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={8} align="center" sx={{ py: 6 }}>
+                <TableCell colSpan={9} align="center" sx={{ py: 6 }}>
                   <Typography variant="subtitle1" fontWeight={600} color="text.secondary" gutterBottom>
                     No complaints found
                   </Typography>
@@ -603,6 +670,32 @@ export default function DeptComplainDetails() {
                     size="small"
                     color={STATUS_COLOR[c.status] || "default"}
                   />
+                </TableCell>
+                <TableCell onClick={(e) => e.stopPropagation()}>
+                  {c.current_team?.team_name ? (
+                    <Tooltip title="Click to reassign squad">
+                      <Chip
+                        icon={<Group fontSize="small" />}
+                        label={c.current_team.team_name}
+                        size="small"
+                        color="primary"
+                        variant="outlined"
+                        onClick={() => setQuickAssignComplaint(c)}
+                        sx={{ fontWeight: 600, cursor: "pointer", "&:hover": { bgcolor: "primary.50" } }}
+                      />
+                    </Tooltip>
+                  ) : (
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      color="warning"
+                      startIcon={<GroupAdd fontSize="small" />}
+                      onClick={() => setQuickAssignComplaint(c)}
+                      sx={{ textTransform: "none", fontSize: "0.75rem", py: 0.25, px: 1, borderRadius: 1.5, fontWeight: 600 }}
+                    >
+                      Deploy Squad
+                    </Button>
+                  )}
                 </TableCell>
                 <TableCell>
                   {c.sla_due_at ? (
@@ -978,11 +1071,36 @@ export default function DeptComplainDetails() {
               {/* Section 4: Assigned Operational Team & Field Staff Roster */}
               <Card variant="outlined" sx={{ borderRadius: 2 }}>
                 <CardContent sx={{ p: 2.5 }}>
-                  <Stack direction="row" spacing={1} alignItems="center" mb={2}>
-                    <Group color="primary" />
-                    <Typography variant="subtitle1" fontWeight={700}>
-                      Assigned Field Team & Staff Roster
-                    </Typography>
+                  <Stack direction="row" justifyContent="space-between" alignItems="center" mb={2} flexWrap="wrap" gap={1}>
+                    <Stack direction="row" spacing={1} alignItems="center">
+                      <Group color="primary" />
+                      <Typography variant="subtitle1" fontWeight={700}>
+                        Assigned Field Team & Staff Roster
+                      </Typography>
+                    </Stack>
+
+                    {detailData?.current_team ? (
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        startIcon={<AssignmentTurnedIn fontSize="small" />}
+                        onClick={() => setQuickAssignComplaint(detailData || selected)}
+                        sx={{ textTransform: "none", fontWeight: 600 }}
+                      >
+                        Reassign Squad
+                      </Button>
+                    ) : (
+                      <Button
+                        size="small"
+                        variant="contained"
+                        color="primary"
+                        startIcon={<GroupAdd fontSize="small" />}
+                        onClick={() => setQuickAssignComplaint(detailData || selected)}
+                        sx={{ textTransform: "none", fontWeight: 600 }}
+                      >
+                        Deploy Squad Now
+                      </Button>
+                    )}
                   </Stack>
 
                   {detailData?.current_team ? (
@@ -1065,9 +1183,43 @@ export default function DeptComplainDetails() {
                       )}
                     </Box>
                   ) : (
-                    <Alert severity="info" sx={{ borderRadius: 2 }}>
-                      No operational team has been assigned to this complaint yet. You can assign an active squad from the Team Management page.
-                    </Alert>
+                    <Paper
+                      variant="outlined"
+                      sx={{
+                        p: 3,
+                        borderRadius: 2,
+                        textAlign: "center",
+                        bgcolor: "grey.50",
+                        borderStyle: "dashed",
+                      }}
+                    >
+                      <Group sx={{ fontSize: 44, color: "warning.main", mb: 1 }} />
+                      <Typography variant="subtitle2" fontWeight={700} gutterBottom>
+                        No Squad Currently Assigned
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 460, mx: "auto", mb: 2 }}>
+                        This grievance is waiting for an operational team dispatch. Assign an existing active team or spin up a new specialized squad in one click.
+                      </Typography>
+                      <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5} justifyContent="center">
+                        <Button
+                          variant="contained"
+                          color="primary"
+                          startIcon={<AssignmentTurnedIn />}
+                          onClick={() => setQuickAssignComplaint(detailData || selected)}
+                          sx={{ textTransform: "none", fontWeight: 600 }}
+                        >
+                          Select Existing Squad
+                        </Button>
+                        <Button
+                          variant="outlined"
+                          startIcon={<AddIcon />}
+                          onClick={() => setCreateTeamOpen(true)}
+                          sx={{ textTransform: "none", fontWeight: 600 }}
+                        >
+                          + Create New Squad
+                        </Button>
+                      </Stack>
+                    </Paper>
                   )}
                 </CardContent>
               </Card>
@@ -1186,6 +1338,43 @@ export default function DeptComplainDetails() {
           </DialogContent>
         </Dialog>
       )}
+
+      {/* Quick Squad Dispatch Modal */}
+      {quickAssignComplaint && (
+        <QuickAssignSquadDialog
+          open={Boolean(quickAssignComplaint)}
+          onClose={() => setQuickAssignComplaint(null)}
+          complaint={quickAssignComplaint}
+          onAssigned={(assignedTeamName) => {
+            setComplaints((prev) =>
+              prev.map((item) =>
+                item.co_uid === quickAssignComplaint.co_uid
+                  ? {
+                      ...item,
+                      status: "assigned",
+                      current_team: { id: "", team_name: assignedTeamName },
+                    }
+                  : item
+              )
+            );
+            if (selected && selected.co_uid === quickAssignComplaint.co_uid) {
+              handleOpenDetail(selected);
+            }
+          }}
+          onCreateSquadClick={() => {
+            setCreateTeamOpen(true);
+          }}
+        />
+      )}
+
+      {/* Quick Create Squad Modal */}
+      <QuickCreateTeamDialog
+        open={createTeamOpen}
+        onClose={() => setCreateTeamOpen(false)}
+        onCreated={() => {
+          fetchData();
+        }}
+      />
     </Box>
   );
 }

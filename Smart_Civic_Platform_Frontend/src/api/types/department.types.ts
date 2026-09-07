@@ -50,6 +50,8 @@ export interface DeptQueueComplaint {
   citizen?: { first_name: string; last_name: string; contact_number: string; current_address?: string; permanent_address?: string } | null;
   municipalities?: { id: string; official_name: string } | null;
   municipality?: { id: string; official_name: string } | null;
+  current_team_id?: string | null;
+  current_team?: { id: string; team_name: string } | null;
 }
 
 // Status update payload
