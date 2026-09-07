@@ -31,17 +31,8 @@ export const notificationsApi = {
    * Mark all notifications as read
    */
   markAllAsRead: async (): Promise<ApiResponse<void>> => {
-    try {
-      const response = await notificationsApi.getNotifications({ is_read: false });
-      const notifications = response.data;
-      if (notifications && Array.isArray(notifications)) {
-        await Promise.all(notifications.map(n => notificationsApi.markAsRead(n.id)));
-      }
-      return { success: true, message: 'All marked as read', data: undefined };
-    } catch (error) {
-      console.error('Failed to mark all as read:', error);
-      throw error;
-    }
+    const response = await apiClient.patch<ApiResponse<void>>('/notifications/read-all');
+    return response.data;
   },
 };
 

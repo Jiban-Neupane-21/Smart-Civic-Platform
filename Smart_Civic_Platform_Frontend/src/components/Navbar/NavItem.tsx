@@ -1,181 +1,165 @@
-import type { DesktopNavItem, MobileNavItem } from "../../types/navbar.types";
-import { Button, alpha, useTheme, Box, Typography } from "@mui/material";
+import React from "react";
+import {
+  ListItem,
+  ListItemButton,
+  ListItemIcon,
+  ListItemText,
+  Typography,
+  Tooltip,
+  useTheme,
+  alpha,
+  Box,
+} from "@mui/material";
+import type { DesktopNavItem } from "../../types/navbar.types";
 
-// ── Desktop nav item ──────────────────────────────────────────────
-interface DesktopNavItemProps {
+interface ExpandedNavItemProps {
   item: DesktopNavItem;
   isActive: boolean;
   onClick: (href: string) => void;
 }
 
-export function DesktopNavItemComponent({
+export function ExpandedNavItem({
   item,
   isActive,
   onClick,
-}: DesktopNavItemProps) {
+}: ExpandedNavItemProps) {
   const theme = useTheme();
 
   return (
-    <Button
-      onClick={() => onClick(item.href)}
-      aria-current={isActive ? "page" : undefined}
-      startIcon={item.icon}
-      disableRipple={false}
-      sx={{
-        display: "flex",
-        alignItems: "center",
-        gap: 1.5,
-        px: 2.5,
-        py: 1,
-        borderRadius: "40px",
-        fontSize: "1rem",
-        fontWeight: isActive ? 600 : 500,
-        textTransform: "none",
-        whiteSpace: "nowrap",
-        minWidth: "unset",
-        position: "relative",
-        color: isActive ? "text.primary" : "text.secondary",
-        bgcolor: isActive
-          ? alpha(theme.palette.primary.main, 0.1)
-          : "transparent",
-        transition: "all 0.2s ease-in-out",
-
-        // Icon styling
-        "& .MuiButton-startIcon": {
-          margin: 0,
-          color: "inherit",
-          "& svg": {
-            fontSize: "1.1rem",
-          },
-        },
-
-        // Hover effects
-        "&:hover": {
-          bgcolor: isActive ? "#bcc0c4" : "#f5f5f5",
-
+    <ListItem disablePadding sx={{ px: 1.5, mb: 0.3 }}>
+      <ListItemButton
+        onClick={() => onClick(item.href)}
+        aria-current={isActive ? "page" : undefined}
+        sx={{
+          minHeight: 42,
+          borderRadius: "10px",
+          px: 1.5,
+          py: 0.8,
+          bgcolor: isActive
+            ? alpha(theme.palette.primary.main, 0.12)
+            : "transparent",
           color: isActive ? "primary.main" : "text.primary",
-          transform: "translateY(-1px)",
-        },
-
-        // Active indicator
-        "&::after": isActive
-          ? {
-              content: '""',
-              position: "absolute",
-              bottom: -2,
-              left: "50%",
-              transform: "translateX(-50%)",
-              width: "30%",
-              height: 3,
-              borderRadius: "4px",
+          "&:hover": {
+            bgcolor: isActive
+              ? alpha(theme.palette.primary.main, 0.18)
+              : alpha(theme.palette.action.hover, 0.08),
+          },
+          transition: "background-color 0.15s ease",
+        }}
+      >
+        <ListItemIcon
+          sx={{
+            minWidth: 40,
+            color: isActive ? "primary.main" : "text.secondary",
+            "& svg": {
+              fontSize: "1.25rem",
+              transition: "transform 0.15s ease",
+            },
+          }}
+        >
+          {item.icon}
+        </ListItemIcon>
+        <ListItemText
+          primary={item.label}
+          slotProps={{
+            primary: {
+              fontSize: "0.89rem",
+              fontWeight: isActive ? 600 : 450,
+              color: isActive ? "primary.main" : "text.primary",
+              noWrap: true,
+            },
+          }}
+        />
+        {isActive && (
+          <Box
+            sx={{
+              width: 4,
+              height: 18,
+              borderRadius: "2px",
               bgcolor: "primary.main",
-              transition: "width 0.2s ease",
-            }
-          : {},
-
-        "&:hover::after": {
-          width: "40%",
-        },
-      }}
-    >
-      {item.label}
-    </Button>
+            }}
+          />
+        )}
+      </ListItemButton>
+    </ListItem>
   );
 }
 
-// ── Mobile nav item ───────────────────────────────────────────────
-interface MobileNavItemProps {
-  item: MobileNavItem;
+interface MiniRailNavItemProps {
+  item: DesktopNavItem;
   isActive: boolean;
   onClick: (href: string) => void;
 }
 
-export function MobileNavItemComponent({
+export function MiniRailNavItem({
   item,
   isActive,
   onClick,
-}: MobileNavItemProps) {
+}: MiniRailNavItemProps) {
   const theme = useTheme();
-  return (
-    <Button
-      onClick={() => onClick(item.href)}
-      aria-label={item.label}
-      aria-current={isActive ? "page" : undefined}
-      fullWidth
-      sx={{
-        fontSize: "1.5rem",
-        position: "relative",
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        justifyContent: "center",
-        py: 1.5,
-        px: 1,
-        borderRadius: 2,
-        textTransform: "none",
-        color: isActive ? "text.primary" : "text.secondary",
-        bgcolor: isActive
-          ? alpha(theme.palette.primary.main, 0.1)
-          : "transparent",
-        transition: "all 0.2s",
-        "&:hover": {
-          bgcolor: alpha(theme.palette.primary.main, 0.15),
-          color: "primary.main",
-        },
-        // Hide label by default
-        "& .label-text": {
-          opacity: 0,
-          visibility: "hidden",
-          bottom: -24,
-        },
-        // Show label on hover
-        "&:hover .label-text": {
-          opacity: 1,
-          visibility: "visible",
-          bottom: -32,
-        },
-      }}
-    >
-      <Box
-        sx={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          transition: "transform 0.3s ease",
-          transform: isActive ? "scale(1.1)" : "scale(1)",
-        }}
-      >
-        {item.icon}
-      </Box>
 
-      <Typography
-        className="label-text"
-        variant="caption"
-        sx={{
-          position: "absolute",
-          left: "50%",
-          transform: "translateX(-50%)",
-          fontSize: "10px",
-          fontWeight: 600,
-          lineHeight: 1,
-          whiteSpace: "nowrap",
-          transition: "all 0.2s ease",
-          bgcolor: alpha(theme.palette.common.black, 0.85),
-          color: "white",
-          px: 1,
-          py: 0.5,
-          borderRadius: "12px",
-          pointerEvents: "none",
-          zIndex: 1,
-          ...(isActive && {
-            opacity: 1,
-            visibility: "visible",
-            bottom: -32,
-          }),
-        }}
-      >
-        {item.label}
-      </Typography>
-    </Button>
+  return (
+    <Tooltip title={item.label} placement="right" arrow>
+      <ListItem disablePadding sx={{ px: 0.8, mb: 0.5 }}>
+        <ListItemButton
+          onClick={() => onClick(item.href)}
+          aria-current={isActive ? "page" : undefined}
+          sx={{
+            minHeight: 66,
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            borderRadius: "10px",
+            px: 0.5,
+            py: 1,
+            bgcolor: isActive
+              ? alpha(theme.palette.primary.main, 0.12)
+              : "transparent",
+            color: isActive ? "primary.main" : "text.secondary",
+            "&:hover": {
+              bgcolor: isActive
+                ? alpha(theme.palette.primary.main, 0.18)
+                : alpha(theme.palette.action.hover, 0.08),
+              color: "text.primary",
+            },
+            transition: "all 0.15s ease",
+          }}
+        >
+          <Box
+            sx={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              mb: 0.6,
+              color: isActive ? "primary.main" : "inherit",
+              "& svg": {
+                fontSize: "1.35rem",
+              },
+            }}
+          >
+            {item.icon}
+          </Box>
+          <Typography
+            variant="caption"
+            sx={{
+              fontSize: "10px",
+              fontWeight: isActive ? 600 : 450,
+              lineHeight: 1.1,
+              textAlign: "center",
+              display: "-webkit-box",
+              WebkitLineClamp: 2,
+              WebkitBoxOrient: "vertical",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              color: isActive ? "primary.main" : "inherit",
+              maxWidth: "100%",
+            }}
+          >
+            {item.label}
+          </Typography>
+        </ListItemButton>
+      </ListItem>
+    </Tooltip>
   );
 }

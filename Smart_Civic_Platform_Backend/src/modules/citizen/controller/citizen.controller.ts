@@ -45,6 +45,21 @@ export const getComplaintDetail = async (req: Request, res: Response) => {
   }
 };
 
+export const deleteComplaint = async (req: Request, res: Response) => {
+  try {
+    const complaintId = req.params.id as string;
+    const data = await CitizenService.deleteComplaint(
+      req.user!.id,
+      complaintId,
+      req.userClient!,
+    );
+    return sendSuccess(res, data, "Complaint removed successfully.");
+  } catch (e: any) {
+    const statusCode = e.message.includes("Unauthorized") ? 403 : e.message.includes("not found") ? 404 : 400;
+    return sendError(res, e.message, statusCode);
+  }
+};
+
 export const getComplaintHistory = async (req: Request, res: Response) => {
   try {
     const complaintId = req.params.id as string;
@@ -219,3 +234,23 @@ export const getDashboard = async (req: Request, res: Response) => {
     return sendError(res, e.message, 500);
   }
 };
+
+export const checkDuplicates = async (req: Request, res: Response) => {
+  try {
+    const data = await CitizenService.checkComplaintDuplicates(req.user!.id, req.body);
+    return sendSuccess(res, data, "Duplicate check completed.");
+  } catch (e: any) {
+    return sendError(res, e.message, 400);
+  }
+};
+
+export const upvoteComplaint = async (req: Request, res: Response) => {
+  try {
+    const complaintId = req.params.id as string;
+    const data = await CitizenService.upvoteComplaint(req.user!.id, complaintId);
+    return sendSuccess(res, data, data.message);
+  } catch (e: any) {
+    return sendError(res, e.message, 400);
+  }
+};
+

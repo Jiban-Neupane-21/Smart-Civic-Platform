@@ -285,3 +285,33 @@ export interface MunicipComplaint {
     permanent_municipality_id?: string;
   } | null;
 }
+
+export interface CitizenKycItem {
+  id: string;
+  first_name: string;
+  middle_name?: string | null;
+  last_name: string;
+  gender?: string | null;
+  date_of_birth?: string | null;
+  contact_number?: string | null;
+  current_address?: string | null;
+  permanent_address?: string | null;
+  current_ward_id?: string | null;
+  permanent_ward_id?: string | null;
+  identity_type: string;
+  identity_number: string;
+  identity_front_image_url: string;
+  identity_back_image_url: string;
+  kyc_status: "pending" | "verified" | "rejected" | "unverified";
+  kyc_submitted_at?: string | null;
+  kyc_verified_at?: string | null;
+  kyc_rejection_reason?: string | null;
+  registered_at?: string;
+  updated_at?: string;
+  profile?: {
+    id: string;
+    full_name?: string;
+    email?: string;
+    phone?: string;
+  } | null;
+}

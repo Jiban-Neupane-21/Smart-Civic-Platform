@@ -6,4 +6,11 @@ export const profileApi = {
     const response = await apiClient.put("/profile/identity", payload);
     return response.data;
   },
+  updateProfilePicture: async (profilePictureBase64: string) => {
+    const response = await apiClient.put("/profile/picture", {
+      profile_picture: profilePictureBase64,
+    });
+    return response.data;
+  },
 };
+

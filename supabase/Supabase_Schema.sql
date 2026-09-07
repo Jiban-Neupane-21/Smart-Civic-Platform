@@ -534,6 +534,9 @@ CREATE TABLE media (
     context media_context NOT NULL,
     context_id UUID NOT NULL,
     file_url TEXT NOT NULL,
+    media_type TEXT,
+    file_name TEXT,
+    file_size_bytes BIGINT,
     uploaded_by UUID REFERENCES profiles(id) ON DELETE SET NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -1777,8 +1780,8 @@ insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_typ
 values
   ('identity-documents', 'identity-documents', true, 5242880,
     array['image/png','image/jpeg','image/jpg','application/pdf']),
-  ('complaint-media',    'complaint-media',    true, 5242880,
-    array['image/png','image/jpeg','image/jpg','image/webp']),
+  ('complaint-media',    'complaint-media',    true, 52428800,
+    array['image/png','image/jpeg','image/jpg','image/webp','video/mp4','video/webm','video/quicktime','video/3gpp','video/x-matroska']),
   ('avatars',            'avatars',            true, 2097152,
     array['image/png','image/jpeg','image/jpg']),
   ('logos',              'logos',              true, 2097152,

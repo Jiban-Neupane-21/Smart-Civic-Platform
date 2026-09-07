@@ -368,6 +368,53 @@ export function createMunicipalityRouter(
   router.get("/:municipalityId/complaints/escalated", controller.getEscalatedComplaints);
   router.post("/:municipalityId/complaints/:id/intervene", controller.interveneInComplaint);
 
+  /**
+   * @swagger
+   * /api/municipality/notices:
+   *   get:
+   *     summary: List public notices for municipality
+   *     tags: [Municipality API]
+   *     security: [{ BearerAuth: [] }]
+   *     parameters:
+   *       - in: query
+   *         name: category
+   *         schema:
+   *           type: string
+   *     responses:
+   *       200:
+   *         description: List of municipality notices.
+   *   post:
+   *     summary: Post and broadcast a new public notice
+   *     tags: [Municipality API]
+   *     security: [{ BearerAuth: [] }]
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             required: [title, body]
+   *             properties:
+   *               title:
+   *                 type: string
+   *               body:
+   *                 type: string
+   *               category:
+   *                 type: string
+   *     responses:
+   *       201:
+   *         description: Notice posted and broadcasted successfully.
+   */
+  router.get("/notices", controller.getNotices);
+  router.post("/notices", controller.createNotice);
+  router.patch("/notices/:id", controller.updateNotice);
+  router.delete("/notices/:id", controller.deleteNotice);
+
+  router.get("/:municipalityId/notices", controller.getNotices);
+  router.post("/:municipalityId/notices", controller.createNotice);
+  router.patch("/:municipalityId/notices/:id", controller.updateNotice);
+  router.delete("/:municipalityId/notices/:id", controller.deleteNotice);
+
   router.post("/users/create", controller.createUser);
 
   return router;

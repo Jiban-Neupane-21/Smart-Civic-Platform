@@ -1,7 +1,9 @@
 import { Response } from "express";
 import crypto from "crypto";
+import { ZodError } from "zod";
 import { DepartmentService } from "../services/department.service";
 import { createUserService } from "../../auth/services/auth.service";
+import { departmentKycSchema } from "../../../validation/department.validation";
 
 export class DepartmentController {
   constructor(private service: DepartmentService) { }
@@ -30,10 +32,18 @@ export class DepartmentController {
 
   setupDepartmentProfile = async (req: any, res: Response): Promise<void> => {
     try {
-      const payload = req.body;
+      const payload = departmentKycSchema.parse(req.body);
       const data = await this.service.setupDepartmentProfile(req.departmentId, req.user.id, payload);
       res.status(200).json({ success: true, data, message: "Department KYC updated successfully" });
     } catch (error: any) {
+      if (error instanceof ZodError) {
+        res.status(400).json({
+          success: false,
+          error: error.issues[0]?.message || "Validation error",
+          errors: error.issues,
+        });
+        return;
+      }
       res.status(400).json({ success: false, error: error.message });
     }
   };
@@ -198,6 +208,15 @@ export class DepartmentController {
   getDashboard = async (req: any, res: Response): Promise<void> => {
     try {
       const data = await this.service.getDashboard(req.departmentId);
+      res.status(200).json({ success: true, data });
+    } catch (error: any) {
+      res.status(500).json({ success: false, error: error.message });
+    }
+  };
+
+  getAnalytics = async (req: any, res: Response): Promise<void> => {
+    try {
+      const data = await this.service.getDepartmentAnalytics(req.departmentId);
       res.status(200).json({ success: true, data });
     } catch (error: any) {
       res.status(500).json({ success: false, error: error.message });
@@ -412,6 +431,16 @@ export class DepartmentController {
       res.status(200).json({ success: true, data });
     } catch (error: any) {
       res.status(500).json({ success: false, error: error.message });
+    }
+  };
+
+  getComplaintDetail = async (req: any, res: Response): Promise<void> => {
+    try {
+      const { complaintId } = req.params;
+      const data = await this.service.getComplaintDetail(req.departmentId, complaintId);
+      res.status(200).json({ success: true, data });
+    } catch (error: any) {
+      res.status(404).json({ success: false, error: error.message });
     }
   };
 

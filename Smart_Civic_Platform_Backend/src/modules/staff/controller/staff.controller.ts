@@ -1,5 +1,7 @@
 import { Response } from "express";
+import { ZodError } from "zod";
 import { StaffService } from "../services/staff.service";
+import { staffKycSchema } from "../../../validation/staff.validation";
 
 export class StaffController {
   constructor(private service: StaffService) {}
@@ -178,13 +180,22 @@ export class StaffController {
 
   submitKyc = async (req: any, res: Response): Promise<void> => {
     try {
-      const updated = await this.service.submitStaffKyc(req.user.id, req.body);
+      const parsedBody = staffKycSchema.parse(req.body);
+      const updated = await this.service.submitStaffKyc(req.user.id, parsedBody);
       res.status(200).json({
         success: true,
         message: "Staff KYC submitted successfully. Under review.",
         data: updated,
       });
     } catch (error: any) {
+      if (error instanceof ZodError) {
+        res.status(400).json({
+          success: false,
+          error: error.issues[0]?.message || "Validation error",
+          errors: error.issues,
+        });
+        return;
+      }
       res.status(400).json({ success: false, error: error.message });
     }
   };

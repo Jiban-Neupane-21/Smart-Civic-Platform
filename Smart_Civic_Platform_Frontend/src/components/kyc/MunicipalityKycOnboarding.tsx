@@ -23,12 +23,15 @@ import { Upload, FileText, CheckCircle } from "lucide-react";
 import { useAuth } from "../../hooks/useAuth";
 import { municipalityApi } from "../../api/modules/municipality.api";
 import Swal from "sweetalert2";
+import {
+  isValidNepalPhone,
+  isValidName,
+  isValidIdentityNumber,
+} from "../../validation/kyc.validators";
 
 const steps = ["Municipality Details", "Leadership Info", "Verification Documents", "Review & Submit"];
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-// Nepal mobile (10 digits starting with 98 or 97, optional +977) or general phone
-const NEPAL_PHONE_REGEX = /^(?:\+977[- ]?)?(?:9[78]\d{8}|0[1-9]\d{6,7}|[1-9]\d{6,7})$/;
 
 const ImageUploadBox = ({
   label,
@@ -183,22 +186,33 @@ export const MunicipalityKycOnboarding: React.FC = () => {
       }
       if (!officialContact.trim()) {
         errors.officialContact = "Official contact number is required.";
-      } else if (!NEPAL_PHONE_REGEX.test(officialContact.trim())) {
+      } else if (!isValidNepalPhone(officialContact.trim())) {
         errors.officialContact = "Enter a valid Nepal phone/mobile number (e.g., 98XXXXXXXX or 01XXXXXXX).";
       }
       if (!localLevelType) {
         errors.localLevelType = "Please select local level type.";
       }
-      if (!totalWards || parseInt(totalWards, 10) < 1) {
-        errors.totalWards = "Total wards must be at least 1.";
+      const wardsNum = parseInt(totalWards, 10);
+      if (isNaN(wardsNum) || wardsNum < 1 || wardsNum > 50) {
+        errors.totalWards = "Total wards must be between 1 and 50.";
       }
     } else if (step === 1) {
       if (!mayorName.trim()) {
         errors.mayorName = "Mayor / Chairperson name is required.";
+      } else if (!isValidName(mayorName)) {
+        errors.mayorName = "Enter a valid legal name (at least 3 characters, letters only).";
       }
+
+      if (deputyMayorName.trim() && !isValidName(deputyMayorName)) {
+        errors.deputyMayorName = "Enter a valid legal name (at least 3 characters, letters only).";
+      }
+
       if (!headName.trim()) {
         errors.headName = "Administrative head name is required.";
+      } else if (!isValidName(headName)) {
+        errors.headName = "Enter a valid administrative head legal name (letters only).";
       }
+
       if (!headEmail.trim()) {
         errors.headEmail = "Head email is required.";
       } else if (!EMAIL_REGEX.test(headEmail.trim())) {
@@ -206,8 +220,8 @@ export const MunicipalityKycOnboarding: React.FC = () => {
       }
       if (!headContact.trim()) {
         errors.headContact = "Head mobile number is required.";
-      } else if (!NEPAL_PHONE_REGEX.test(headContact.trim())) {
-        errors.headContact = "Enter a valid Nepal mobile number (e.g., 98XXXXXXXX or 97XXXXXXXX).";
+      } else if (!isValidNepalPhone(headContact.trim())) {
+        errors.headContact = "Enter a valid Nepal mobile number (10 digits starting with 98 or 97).";
       }
     } else if (step === 2) {
       if (!headIdentityType) {
@@ -215,10 +229,18 @@ export const MunicipalityKycOnboarding: React.FC = () => {
       }
       if (!headIdentityNumber.trim()) {
         errors.headIdentityNumber = "Identity document number is required.";
+      } else if (!isValidIdentityNumber(headIdentityType, headIdentityNumber)) {
+        errors.headIdentityNumber = `Invalid ${headIdentityType} number format.`;
       }
       if (!headIdentityFront) {
         errors.headIdentityFront = "Identity document front photo is required.";
       }
+
+      const requiresBack = ["citizenship", "national_id", "driving_license"].includes(headIdentityType);
+      if (requiresBack && !headIdentityBack) {
+        errors.headIdentityBack = `Back photo/scan is required for ${headIdentityType}.`;
+      }
+
       if (!registrationDoc) {
         errors.registrationDoc = "Municipality official registration document is required.";
       }
@@ -514,9 +536,15 @@ export const MunicipalityKycOnboarding: React.FC = () => {
             </Grid>
             <Grid item xs={12} sm={6}>
               <ImageUploadBox
-                label="Back Identity Photo (Optional)"
+                label={
+                  ["citizenship", "national_id", "driving_license"].includes(headIdentityType)
+                    ? "Back Identity Photo *"
+                    : "Back Identity Photo (Optional for Passport)"
+                }
                 value={headIdentityBack}
-                setter={setHeadIdentityBack}
+                setter={(val) => { setHeadIdentityBack(val); clearFieldError("headIdentityBack"); }}
+                error={Boolean(fieldErrors.headIdentityBack)}
+                helperText={fieldErrors.headIdentityBack}
               />
             </Grid>
             <Grid item xs={12}>

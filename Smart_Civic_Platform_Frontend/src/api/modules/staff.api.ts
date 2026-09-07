@@ -71,7 +71,7 @@ export const staffApi = {
    * Submit / Update staff KYC onboarding details
    */
   submitKyc: async (data: any): Promise<ApiResponse<any>> => {
-    const response = await apiClient.put<ApiResponse<any>>('/staff/kyc', data);
+    const response = await apiClient.put<ApiResponse<any>>('/staff/kyc', data, { timeout: 90000 });
     return response.data;
   },
 

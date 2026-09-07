@@ -122,6 +122,8 @@ router.get("/dashboard", C.getDashboard);
  *         description: My complaints list retrieved.
  */
 router.post("/complaints", C.submitComplaint);
+router.post("/complaints/check-duplicates", C.checkDuplicates);
+router.post("/complaints/:id/upvote", C.upvoteComplaint);
 router.get("/complaints", C.getMyComplaints);
 
 /**
@@ -143,6 +145,7 @@ router.get("/complaints", C.getMyComplaints);
  *         description: Complaint detail loaded.
  */
 router.get("/complaints/:id", C.getComplaintDetail);
+router.delete("/complaints/:id", C.deleteComplaint);
 
 /**
  * @swagger

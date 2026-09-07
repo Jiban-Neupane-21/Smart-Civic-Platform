@@ -29,6 +29,8 @@ export interface CitizenDetails {
   currentMunicipalityId?: string;
   currentWardId?: string;
   currentTole?: string;
+  profilePicture?: string | null;
+  profile_picture?: string | null;
 }
 
 export interface UpdateCitizenProfileDto {

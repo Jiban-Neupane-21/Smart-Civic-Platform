@@ -40,11 +40,16 @@ export interface DeptQueueComplaint {
   cross_dept_status: "none" | "pending_collaboration" | "in_collaboration" | "joint_signoff";
   location_source?: string;
   ward_number?: number;
+  latitude?: number | null;
+  longitude?: number | null;
   submitted_date: string;
   sla_due_at?: string | null;
   sla_breached?: boolean;
   complaint_categories: { category_name: string } | null;
-  citizens: { first_name: string; last_name: string; contact_number: string } | null;
+  citizens: { first_name: string; last_name: string; contact_number: string; current_address?: string; permanent_address?: string } | null;
+  citizen?: { first_name: string; last_name: string; contact_number: string; current_address?: string; permanent_address?: string } | null;
+  municipalities?: { id: string; official_name: string } | null;
+  municipality?: { id: string; official_name: string } | null;
 }
 
 // Status update payload
@@ -148,4 +153,75 @@ export interface TeamComplaintAssignment {
     sla_breached?: boolean;
     complaint_categories: { category_name: string } | null;
   };
+}
+
+export interface DeptComplaintMedia {
+  id: string;
+  file_url: string;
+  media_type: string;
+  file_name: string;
+  file_size_bytes?: number | null;
+  created_at?: string;
+}
+
+export interface DeptComplaintTeamMember {
+  id: string;
+  staff_id: string;
+  is_leader: boolean;
+  joined_at?: string;
+  employee_id?: string;
+  expertise?: string;
+  designation?: string;
+  contact_number?: string;
+  full_name?: string;
+  email?: string;
+}
+
+export interface DeptComplaintDetail extends DeptQueueComplaint {
+  latitude?: number | null;
+  longitude?: number | null;
+  rejection_reason?: string | null;
+  resolution_note?: string | null;
+  resolution_date?: string | null;
+  ticket_type?: string;
+  media?: DeptComplaintMedia[];
+  team_members?: DeptComplaintTeamMember[];
+  current_team?: {
+    id: string;
+    team_name: string;
+    description?: string;
+    team_type?: string;
+    is_active?: boolean;
+  } | null;
+  category?: {
+    id: string;
+    category_name: string;
+  } | null;
+  citizen?: {
+    id: string;
+    first_name: string;
+    middle_name?: string;
+    last_name: string;
+    contact_number: string;
+    current_address?: string;
+    permanent_address?: string;
+    profile_picture?: string;
+  } | null;
+  municipality?: {
+    id: string;
+    name?: string;
+    official_name?: string;
+  } | null;
+  municipalities?: {
+    id: string;
+    official_name?: string;
+  } | null;
+  assigned_department?: {
+    id: string;
+    department_name: string;
+  } | null;
+  lead_department?: {
+    id: string;
+    department_name: string;
+  } | null;
 }

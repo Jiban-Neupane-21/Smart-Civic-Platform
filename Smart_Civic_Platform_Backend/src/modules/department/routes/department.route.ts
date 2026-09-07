@@ -47,6 +47,7 @@ export function createDepartmentRouter(
    *         description: Metrics loaded.
    */
   router.get("/dashboard", controller.getDashboard);
+  router.get("/analytics", controller.getAnalytics);
 
   router.get("/profile", controller.getDepartmentProfile);
   router.patch("/profile", controller.setupDepartmentProfile);
@@ -76,6 +77,7 @@ export function createDepartmentRouter(
    *         description: Queue items.
    */
   router.get("/queue", controller.getQueue);
+  router.get("/complaints/:complaintId", controller.getComplaintDetail);
 
   /**
    * @swagger

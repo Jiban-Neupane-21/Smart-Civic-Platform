@@ -1,4 +1,9 @@
 import { z } from "zod";
+import {
+  zodAgeAtLeast18,
+  zodNepalPhone,
+  validateIdentityNumber,
+} from "./common.validation";
 
 export const submitComplaintSchema = z.object({
   municipality_id: z.string().uuid(),
@@ -17,9 +22,9 @@ export const updateProfileSchema = z.object({
   first_name: z.string().min(1, "First name is required").optional(),
   middle_name: z.string().optional(),
   last_name: z.string().min(1, "Last name is required").optional(),
-  phone: z.string().optional(),
+  phone: zodNepalPhone.optional(),
   gender: z.enum(["male", "female", "other", "prefer_not_to_say"]).optional(),
-  date_of_birth: z.string().optional(),
+  date_of_birth: zodAgeAtLeast18.optional(),
   current_address: z.string().optional(),
   permanent_address: z.string().optional(),
   notification_pref: z.enum(["email", "sms", "both", "none"]).optional(),
@@ -39,9 +44,27 @@ export const addressSchema = z.object({
   current: addressSectionSchema.optional(),
 });
 
-export const identityUploadSchema = z.object({
-  identity_type: z.enum(["citizenship", "national_id", "passport", "driving_license", "voter_id"]),
-  identity_number: z.string().min(3, "Identity number must be at least 3 characters"),
-  front_image: z.string().optional(),
-  back_image: z.string().optional(),
-});
+export const identityUploadSchema = z
+  .object({
+    identity_type: z.enum(["citizenship", "national_id", "passport", "driving_license", "voter_id"]),
+    identity_number: z.string().min(3, "Identity number must be at least 3 characters"),
+    front_image: z.string().min(1, "Front document image is required"),
+    back_image: z.string().optional(),
+  })
+  .superRefine((data, ctx) => {
+    if (!validateIdentityNumber(data.identity_type, data.identity_number)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `Invalid format for ${data.identity_type.replace('_', ' ')} number.`,
+        path: ["identity_number"],
+      });
+    }
+
+    if (["citizenship", "national_id", "driving_license"].includes(data.identity_type) && !data.back_image) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Back image is required for this identity document type.",
+        path: ["back_image"],
+      });
+    }
+  });

@@ -483,6 +483,41 @@ export default function ManageStaff() {
     }
   };
 
+  // ─── KYC Review Handler ─────────────────────────────────────────────────────
+
+  const handleKycReview = async (status: "verified" | "rejected") => {
+    if (!reviewTarget || !municipalityId) return;
+    const targetId = reviewTarget.id;
+
+    if (status === "rejected" && !kycRejectionReason.trim()) {
+      Swal.fire("Rejection Reason Required", "Please provide a reason for rejecting the staff KYC submission.", "warning");
+      return;
+    }
+
+    setIsReviewingKyc(true);
+    try {
+      await municipalityApi.reviewStaffKyc(municipalityId, targetId, {
+        status,
+        rejection_reason: status === "rejected" ? kycRejectionReason.trim() : undefined,
+      });
+
+      Swal.fire({
+        icon: "success",
+        title: `KYC ${status === "verified" ? "Approved" : "Rejected"}`,
+        text: `Staff member KYC has been marked as ${status}.`,
+        confirmButtonColor: "#4F46E5",
+      });
+
+      setReviewTarget(null);
+      setKycRejectionReason("");
+      await fetchAll();
+    } catch (err: any) {
+      Swal.fire("Error", err?.response?.data?.error || err.message || "Failed to update staff KYC", "error");
+    } finally {
+      setIsReviewingKyc(false);
+    }
+  };
+
   // ─── Guard: no municipalityId ───────────────────────────────────────────────
 
   if (!municipalityId) {

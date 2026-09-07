@@ -50,25 +50,28 @@ export class ProfileService {
     const fileKey = `${userId}/avatar`; // extension will be implicit or handled if needed, let's append timestamp to bust cache
     const publicUrl = await storageService.upload("avatars", `${fileKey}_${Date.now()}.jpg`, base64Data);
 
-    // Update the correct table based on role
-    let data, error;
-    if (role === "citizen") {
-      ({ data, error } = await this.supabaseAdmin
-        .from("citizens")
-        .update({ profile_picture: publicUrl })
-        .eq("id", userId)
-        .select("profile_picture")
-        .single());
-    } else {
-      ({ data, error } = await this.supabaseAdmin
-        .from("profiles")
-        .update({ profile_picture: publicUrl })
-        .eq("id", userId)
-        .select("profile_picture")
-        .single());
+    // Always update profiles table
+    const { error: profileError } = await this.supabaseAdmin
+      .from("profiles")
+      .update({
+        profile_picture: publicUrl,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", userId);
+
+    if (profileError) {
+      throw new Error(`Failed to update profile picture: ${profileError.message}`);
     }
 
-    if (error) throw new Error(`Failed to update profile picture: ${error.message}`);
-    return data;
+    // Also update citizens table if citizen record exists
+    await this.supabaseAdmin
+      .from("citizens")
+      .update({
+        profile_picture: publicUrl,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", userId);
+
+    return { profile_picture: publicUrl };
   }
 }

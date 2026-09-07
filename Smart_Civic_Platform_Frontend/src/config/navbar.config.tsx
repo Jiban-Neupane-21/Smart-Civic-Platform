@@ -18,6 +18,7 @@ import {
   FiLogOut,
   FiMenu,
   FiVolume2,
+  FiUserCheck,
 } from "react-icons/fi";
 import { MdOutlinePeople, MdGroups2 } from "react-icons/md";
 
@@ -50,7 +51,6 @@ const manageMunicipalityItem = createNavItem(
   "Manage Municipality",
   <FiBriefcase />,
 );
-const userManagementItem = createNavItem("User Management", <FiUsers />);
 const auditLogItem = createNavItem("Audit Log", <FiList />);
 const systemSettingItem = createNavItem("System Setting", <FiSettings />);
 const manageDepartmentStaffItem = createNavItem(
@@ -58,6 +58,7 @@ const manageDepartmentStaffItem = createNavItem(
   <FiGitBranch />,
 );
 const manageStaffItem = createNavItem("Manage Staff", <FiUsers />);
+const citizenKycItem = createNavItem("Citizen KYC", <FiUserCheck />);
 const complaintDetailItem = createNavItem("Complaint Detail", <FiFileText />);
 const complaintQueueItem = createNavItem("Complaint Queue", <FiFileText />);
 const reportAnalyticsItem = createNavItem(
@@ -83,7 +84,6 @@ export const NavbarItems: NavbarConfig = {
     desktop: [
       dashboardItem.desktop,
       manageMunicipalityItem.desktop,
-      userManagementItem.desktop,
       auditLogItem.desktop,
       systemSettingItem.desktop,
       logoutItem.desktop,
@@ -92,7 +92,6 @@ export const NavbarItems: NavbarConfig = {
       primary: [
         dashboardItem.mobile,
         manageMunicipalityItem.mobile,
-        userManagementItem.mobile,
         auditLogItem.mobile,
       ],
       secondary: [systemSettingItem.mobile, logoutItem.mobile],
@@ -102,6 +101,7 @@ export const NavbarItems: NavbarConfig = {
   Municipality: {
     desktop: [
       dashboardItem.desktop,
+      citizenKycItem.desktop,
       manageDepartmentStaffItem.desktop,
       manageStaffItem.desktop,
       crossDeptTeamItem.desktop,
@@ -115,6 +115,7 @@ export const NavbarItems: NavbarConfig = {
     mobile: {
       primary: [
         dashboardItem.mobile,
+        citizenKycItem.mobile,
         manageDepartmentStaffItem.mobile,
         manageStaffItem.mobile,
         crossDeptTeamItem.mobile,

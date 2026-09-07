@@ -351,10 +351,22 @@ export class DepartmentService {
     };
   }
 
+  async getDepartmentAnalytics(departmentId: string) {
+    return await this.repo.getDepartmentAnalytics(departmentId);
+  }
+
   // ===== MULTI-DEPARTMENT & COLLABORATION METHODS =====
 
   async getDepartmentQueue(departmentId: string, statusFilter?: string) {
     return await this.repo.getDepartmentComplaintsQueue(departmentId, statusFilter);
+  }
+
+  async getComplaintDetail(departmentId: string, complaintId: string) {
+    const detail = await this.repo.getDepartmentComplaintDetail(departmentId, complaintId);
+    if (!detail) {
+      throw new Error("Complaint not found or unauthorized access.");
+    }
+    return detail;
   }
 
   async getCollaborations(departmentId: string) {

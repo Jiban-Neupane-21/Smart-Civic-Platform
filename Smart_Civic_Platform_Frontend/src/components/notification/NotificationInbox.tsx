@@ -2,29 +2,35 @@ import React, { useEffect, useState } from 'react';
 import { 
   Box, Typography, Card, List, ListItem, ListItemAvatar, 
   ListItemText, Avatar, Divider, Button, Tabs, Tab, 
-  CircularProgress, alpha, useTheme 
+  CircularProgress, alpha, useTheme, Chip, Stack
 } from '@mui/material';
 import { 
-  FiCheckCircle, FiAlertCircle, FiInfo, FiClock, FiCheck
+  FiCheckCircle, FiAlertCircle, FiInfo, FiClock, FiCheck, FiArrowRight
 } from 'react-icons/fi';
+import { useNavigate } from 'react-router-dom';
 import { formatDistanceToNow } from 'date-fns';
 import { useNotificationPolling } from '../../hooks/useNotificationPolling';
+import { useAuth } from '../../hooks/useAuth';
 import type { NotificationType } from '../../api/types';
 import notificationsApi from '../../api/modules/notifications.api';
 
 export function NotificationInbox() {
   const theme = useTheme();
+  const navigate = useNavigate();
+  const { user } = useAuth();
+  const role = user?.role || 'citizen';
+
   const { unreadCount, markAllAsRead, refresh } = useNotificationPolling();
   const [tab, setTab] = useState(0);
   const [notifications, setNotifications] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Tab indices: 0 = All, 1 = Unread, 2 = System, 3 = Broadcast, 4 = Alerts
+  // Tab indices: 0 = All, 1 = Unread, 2 = Grievances, 3 = Alerts, 4 = Broadcast, 5 = System
   
   const loadNotifications = async () => {
     setLoading(true);
     try {
-      const res = await notificationsApi.getNotifications({ limit: 50 });
+      const res = await notificationsApi.getNotifications({ limit: 100 });
       if (res.success && res.data) {
         setNotifications(res.data);
       }
@@ -37,16 +43,16 @@ export function NotificationInbox() {
 
   useEffect(() => {
     loadNotifications();
-  }, [unreadCount]); // Reload when unread count changes globally (via polling)
+  }, [unreadCount]);
 
-  const handleMarkAsRead = async (id: string, e: React.MouseEvent) => {
-    e.stopPropagation();
+  const handleMarkAsRead = async (id: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
     try {
       await notificationsApi.markAsRead(id);
       setNotifications(prev => 
         prev.map(n => n.id === id ? { ...n, read_at: new Date().toISOString() } : n)
       );
-      refresh(); // Refresh polling hook globally
+      refresh();
     } catch (error) {
       console.error(error);
     }
@@ -57,11 +63,31 @@ export function NotificationInbox() {
     loadNotifications();
   };
 
+  const handleNavigateToEntity = (notif: any, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    if (!notif.read_at) {
+      handleMarkAsRead(notif.id);
+    }
+
+    if (notif.complaint_id) {
+      if (role === 'citizen') {
+        navigate(`/citizen/complaints/${notif.complaint_id}`);
+      } else if (role === 'staff') {
+        navigate(`/staff/complaint/${notif.complaint_id}`);
+      } else if (role === 'department_head') {
+        navigate(`/department_head/complaint-queue`);
+      } else if (role === 'municipality_head') {
+        navigate(`/municipality_head/complaint-detail`);
+      }
+    }
+  };
+
   const filteredNotifications = notifications.filter(n => {
     if (tab === 1) return !n.read_at;
-    if (tab === 2) return n.type === 'system';
-    if (tab === 3) return n.type === 'broadcast';
-    if (tab === 4) return n.type === 'sla_warning' || n.type === 'sla_escalation';
+    if (tab === 2) return ['complaint_update', 'assignment', 'handoff'].includes(n.type);
+    if (tab === 3) return ['sla_warning', 'sla_escalation'].includes(n.type);
+    if (tab === 4) return n.type === 'broadcast';
+    if (tab === 5) return n.type === 'system';
     return true;
   });
 
@@ -97,9 +123,14 @@ export function NotificationInbox() {
   return (
     <Box p={{ xs: 2, md: 4 }} maxWidth="md" sx={{ margin: '0 auto' }}>
       <Box display="flex" justifyContent="space-between" alignItems="center" mb={3} flexWrap="wrap" gap={2}>
-        <Typography variant="h4" fontWeight="bold">
-          Notifications
-        </Typography>
+        <Box>
+          <Typography variant="h4" fontWeight="bold">
+            Notifications
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            Stay informed on grievances, operational assignments, and civic notices.
+          </Typography>
+        </Box>
         <Button 
           variant="outlined" 
           startIcon={<FiCheck />} 
@@ -121,9 +152,10 @@ export function NotificationInbox() {
         >
           <Tab label="All" />
           <Tab label={`Unread (${unreadCount})`} />
-          <Tab label="System" />
-          <Tab label="Broadcast" />
+          <Tab label="Grievances" />
           <Tab label="Alerts" />
+          <Tab label="Broadcasts" />
+          <Tab label="System" />
         </Tabs>
 
         {loading ? (
@@ -150,12 +182,13 @@ export function NotificationInbox() {
                 <React.Fragment key={notif.id}>
                   <ListItem
                     alignItems="flex-start"
+                    onClick={() => handleNavigateToEntity(notif)}
                     sx={{ 
                       p: 2.5, 
                       bgcolor: isUnread ? alpha(theme.palette.primary.main, 0.03) : 'transparent',
                       transition: 'background-color 0.2s',
                       '&:hover': { bgcolor: alpha(theme.palette.action.hover, 0.5) },
-                      cursor: 'pointer'
+                      cursor: notif.complaint_id ? 'pointer' : 'default'
                     }}
                   >
                     <ListItemAvatar>
@@ -170,10 +203,15 @@ export function NotificationInbox() {
                     </ListItemAvatar>
                     <ListItemText
                       primary={
-                        <Box display="flex" justifyContent="space-between" alignItems="flex-start">
-                          <Typography variant="subtitle1" fontWeight={isUnread ? 700 : 500} color={isUnread ? 'text.primary' : 'text.secondary'}>
-                            {notif.title}
-                          </Typography>
+                        <Box display="flex" justifyContent="space-between" alignItems="flex-start" flexWrap="wrap" gap={1}>
+                          <Box display="flex" alignItems="center" gap={1}>
+                            <Typography variant="subtitle1" fontWeight={isUnread ? 700 : 500} color={isUnread ? 'text.primary' : 'text.secondary'}>
+                              {notif.title}
+                            </Typography>
+                            {notif.is_urgent && (
+                              <Chip label="URGENT" size="small" color="error" sx={{ height: 20, fontSize: '0.65rem', fontWeight: 'bold' }} />
+                            )}
+                          </Box>
                           {isUnread && (
                             <Box 
                               sx={{ 
@@ -189,24 +227,37 @@ export function NotificationInbox() {
                           <Typography
                             variant="body2"
                             color="text.primary"
-                            sx={{ display: 'block', mb: 1, opacity: isUnread ? 1 : 0.8 }}
+                            sx={{ display: 'block', mb: 1, opacity: isUnread ? 1 : 0.85 }}
                           >
                             {notif.body}
                           </Typography>
-                          <Box display="flex" justifyContent="space-between" alignItems="center">
+                          <Box display="flex" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={1}>
                             <Typography variant="caption" color="text.disabled" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                               <FiClock size={12} />
                               {notif.created_at ? formatDistanceToNow(new Date(notif.created_at), { addSuffix: true }) : ''}
                             </Typography>
-                            {isUnread && (
-                              <Button 
-                                size="small" 
-                                onClick={(e) => handleMarkAsRead(notif.id, e)}
-                                sx={{ textTransform: 'none', fontSize: '0.75rem', py: 0 }}
-                              >
-                                Mark read
-                              </Button>
-                            )}
+                            <Stack direction="row" spacing={1}>
+                              {notif.complaint_id && (
+                                <Button 
+                                  size="small" 
+                                  variant="outlined"
+                                  endIcon={<FiArrowRight />}
+                                  onClick={(e) => handleNavigateToEntity(notif, e)}
+                                  sx={{ textTransform: 'none', fontSize: '0.75rem', py: 0.2 }}
+                                >
+                                  View Details
+                                </Button>
+                              )}
+                              {isUnread && (
+                                <Button 
+                                  size="small" 
+                                  onClick={(e) => handleMarkAsRead(notif.id, e)}
+                                  sx={{ textTransform: 'none', fontSize: '0.75rem', py: 0.2 }}
+                                >
+                                  Mark read
+                                </Button>
+                              )}
+                            </Stack>
                           </Box>
                         </Box>
                       }

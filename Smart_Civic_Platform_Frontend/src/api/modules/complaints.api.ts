@@ -42,6 +42,14 @@ export const complaintsApi = {
   },
 
   /**
+   * Delete / remove a complaint and its storage files (citizen)
+   */
+  deleteComplaint: async (id: string): Promise<ApiResponse<{ success: boolean; message: string }>> => {
+    const response = await apiClient.delete<ApiResponse<{ success: boolean; message: string }>>(`/citizen/complaints/${id}`);
+    return response.data;
+  },
+
+  /**
    * Submit a new complaint
    */
   createComplaint: async (data: CreateComplaintDto | SubmitComplaintPayload): Promise<ApiResponse<Complaint>> => {

@@ -32,10 +32,10 @@ export class LocationResolverService {
       if (payloadLocation.ward_id) {
         const { data: ward } = await this.supabaseAdmin
           .from("wards")
-          .select("ward_number")
+          .select("ward_no")
           .eq("id", payloadLocation.ward_id)
           .maybeSingle();
-        wardNumber = ward?.ward_number ?? null;
+        wardNumber = ward?.ward_no ?? null;
       }
 
       return {
@@ -56,10 +56,10 @@ export class LocationResolverService {
       if (payloadLocation.ward_id) {
         const { data: ward } = await this.supabaseAdmin
           .from("wards")
-          .select("ward_number")
+          .select("ward_no")
           .eq("id", payloadLocation.ward_id)
           .maybeSingle();
-        wardNumber = ward?.ward_number ?? null;
+        wardNumber = ward?.ward_no ?? null;
       }
 
       if (muniId) {
@@ -100,10 +100,10 @@ export class LocationResolverService {
     if (resolvedWardId) {
       const { data: ward } = await this.supabaseAdmin
         .from("wards")
-        .select("ward_number")
+        .select("ward_no")
         .eq("id", resolvedWardId)
         .maybeSingle();
-      wardNumber = ward?.ward_number ?? null;
+      wardNumber = ward?.ward_no ?? null;
     }
 
     return {

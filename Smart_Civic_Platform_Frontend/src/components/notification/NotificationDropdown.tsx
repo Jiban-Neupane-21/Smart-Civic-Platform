@@ -39,11 +39,23 @@ export function NotificationDropdown({ role }: NotificationDropdownProps) {
     await markAllAsRead();
   };
 
-  const handleNotificationClick = async (id: string, isRead: boolean) => {
-    if (!isRead) {
-      await markAsRead(id);
+  const handleNotificationClick = async (notif: any) => {
+    if (!notif.read_at) {
+      await markAsRead(notif.id);
     }
-    // Could navigate to specific related entity here based on type/id if needed
+    handleClose();
+
+    if (notif.complaint_id) {
+      if (role === 'citizen') {
+        navigate(`/citizen/complaints/${notif.complaint_id}`);
+      } else if (role === 'staff') {
+        navigate(`/staff/complaint/${notif.complaint_id}`);
+      } else if (role === 'department_head') {
+        navigate(`/department_head/complaint-queue`);
+      } else if (role === 'municipality_head') {
+        navigate(`/municipality_head/complaint-detail`);
+      }
+    }
   };
 
   const getIcon = (type: NotificationType) => {
@@ -127,7 +139,7 @@ export function NotificationDropdown({ role }: NotificationDropdownProps) {
               return (
                 <MenuItem
                   key={notif.id}
-                  onClick={() => handleNotificationClick(notif.id, !isUnread)}
+                  onClick={() => handleNotificationClick(notif)}
                   sx={{
                     px: 2,
                     py: 1.5,

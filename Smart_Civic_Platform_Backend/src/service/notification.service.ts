@@ -33,23 +33,58 @@ export class NotificationService {
     }
 
     if (audience === "department" && filters.department_id) {
+      const recipientSet = new Set<string>();
+
+      // 1. Fetch Department Head from departments table
+      const { data: dept } = await this.supabaseAdmin
+        .from("departments")
+        .select("head_profile_id")
+        .eq("id", filters.department_id)
+        .maybeSingle();
+
+      if (dept?.head_profile_id) recipientSet.add(dept.head_profile_id);
+
+      // 2. Fetch Department Heads in profiles
+      const { data: deptHeads } = await this.supabaseAdmin
+        .from("profiles")
+        .select("id")
+        .eq("department_id", filters.department_id)
+        .eq("role", "department_head");
+
+      (deptHeads || []).forEach((h) => recipientSet.add(h.id));
+
+      // 3. Fetch Staff in department
       const { data: staffList } = await this.supabaseAdmin
         .from("staff")
         .select("profile_id")
         .eq("primary_department_id", filters.department_id)
         .eq("is_deleted", false);
 
-      return (staffList || []).map((s: any) => s.profile_id).filter(Boolean);
+      (staffList || []).forEach((s) => s.profile_id && recipientSet.add(s.profile_id));
+
+      return Array.from(recipientSet);
     }
 
     if (audience === "all_staff" && filters.municipality_id) {
+      const recipientSet = new Set<string>();
+
       const { data: staffList } = await this.supabaseAdmin
         .from("staff")
         .select("profile_id")
         .eq("municipality_id", filters.municipality_id)
         .eq("is_deleted", false);
 
-      return (staffList || []).map((s: any) => s.profile_id).filter(Boolean);
+      (staffList || []).forEach((s) => s.profile_id && recipientSet.add(s.profile_id));
+
+      const { data: adminProfiles } = await this.supabaseAdmin
+        .from("profiles")
+        .select("id")
+        .eq("municipality_id", filters.municipality_id)
+        .in("role", ["department_head", "municipality_head", "staff"]);
+
+      (adminProfiles || []).forEach((p) => recipientSet.add(p.id));
+
+      return Array.from(recipientSet);
     }
 
     if (audience === "all_citizens" && filters.municipality_id) {
@@ -73,6 +108,41 @@ export class NotificationService {
     return [];
   }
 
+  private systemProfileId: string = "";
+
+  /**
+   * Helper to resolve a valid profile UUID for automated/system notifications
+   */
+  async getSystemSenderId(): Promise<string> {
+    if (this.systemProfileId) return this.systemProfileId;
+
+    const { data: superadmin } = await this.supabaseAdmin
+      .from("profiles")
+      .select("id")
+      .eq("role", "superadmin")
+      .limit(1)
+      .maybeSingle();
+
+    if (superadmin?.id) {
+      this.systemProfileId = superadmin.id;
+      return superadmin.id;
+    }
+
+    const { data: anyProfile } = await this.supabaseAdmin
+      .from("profiles")
+      .select("id")
+      .limit(1)
+      .maybeSingle();
+
+    this.systemProfileId = anyProfile?.id || "00000000-0000-0000-0000-000000000000";
+    return this.systemProfileId;
+  }
+
+  private isUuid(str?: string): boolean {
+    if (!str) return false;
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
+  }
+
   /**
    * Send notification to a single profile (In-App + SMS)
    */
@@ -83,10 +153,12 @@ export class NotificationService {
     senderId = "system",
     type = "system"
   ) {
+    const resolvedSenderId = this.isUuid(senderId) ? senderId : (this.isUuid(profileId) ? profileId : await this.getSystemSenderId());
+
     const { data: notification, error } = await this.supabaseAdmin
       .from("notifications")
       .insert({
-        sender_id: senderId === "system" ? profileId : senderId,
+        sender_id: resolvedSenderId,
         type: type as any,
         audience: "individual",
         target_profile_id: profileId,
@@ -139,10 +211,12 @@ export class NotificationService {
     senderId = "system",
     type = "system"
   ) {
+    const resolvedSenderId = this.isUuid(senderId) ? senderId : await this.getSystemSenderId();
+
     const { data: notification, error } = await this.supabaseAdmin
       .from("notifications")
       .insert({
-        sender_id: senderId,
+        sender_id: resolvedSenderId,
         type: type as any,
         audience: "department",
         target_department_id: departmentId,
@@ -184,10 +258,12 @@ export class NotificationService {
     senderId = "system",
     type = "team_assignment"
   ) {
+    const resolvedSenderId = this.isUuid(senderId) ? senderId : await this.getSystemSenderId();
+
     const { data: notification, error } = await this.supabaseAdmin
       .from("notifications")
       .insert({
-        sender_id: senderId,
+        sender_id: resolvedSenderId,
         type: type as any,
         audience: "team",
         target_team_id: teamId,
@@ -205,6 +281,52 @@ export class NotificationService {
     }
 
     const recipientIds = await this.resolveRecipients("team", { team_id: teamId });
+    if (recipientIds.length > 0) {
+      const readRows = recipientIds.map((pid) => ({
+        notification_id: notification.id,
+        profile_id: pid,
+        is_seen: false,
+        is_clicked: false,
+      }));
+      await this.supabaseAdmin.from("notification_reads").upsert(readRows);
+    }
+
+    return notification;
+  }
+
+  /**
+   * Send notification to a municipality (Municipality Head & administration)
+   */
+  async notifyMunicipality(
+    municipalityId: string,
+    title: string,
+    body: string,
+    senderId = "system",
+    type = "system"
+  ) {
+    const resolvedSenderId = this.isUuid(senderId) ? senderId : await this.getSystemSenderId();
+
+    const { data: notification, error } = await this.supabaseAdmin
+      .from("notifications")
+      .insert({
+        sender_id: resolvedSenderId,
+        type: type as any,
+        audience: "all_staff",
+        target_municipality_id: municipalityId,
+        title,
+        body,
+        channels: ["in_app"],
+        sent_at: new Date().toISOString(),
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error("[NOTIFICATION-MUNIC-ERROR]", error.message);
+      return null;
+    }
+
+    const recipientIds = await this.resolveRecipients("all_staff", { municipality_id: municipalityId });
     if (recipientIds.length > 0) {
       const readRows = recipientIds.map((pid) => ({
         notification_id: notification.id,

@@ -19,6 +19,7 @@ import type {
   CreateCrossDeptTeamDto,
   StaffAvailabilityResult,
   MunicipTeamComplaintAssignment,
+  CitizenKycItem,
 } from '../types';
 
 export const municipalityApi = {
@@ -304,6 +305,26 @@ export const municipalityApi = {
     data: { status: 'verified' | 'rejected'; rejection_reason?: string }
   ): Promise<ApiResponse<any>> => {
     const response = await apiClient.patch<ApiResponse<any>>(`/municipality/staff/${staffId}/kyc`, data);
+    return response.data;
+  },
+
+  getCitizenKycList: async (status?: string): Promise<ApiResponse<CitizenKycItem[]>> => {
+    const response = await apiClient.get<ApiResponse<CitizenKycItem[]>>('/municipality/kyc-pending', {
+      params: { status: status || 'all' },
+    });
+    return response.data;
+  },
+
+  getCitizenKycDetail: async (citizenId: string): Promise<ApiResponse<CitizenKycItem>> => {
+    const response = await apiClient.get<ApiResponse<CitizenKycItem>>(`/municipality/kyc-pending/${citizenId}`);
+    return response.data;
+  },
+
+  reviewCitizenKyc: async (
+    citizenId: string,
+    data: { status: 'verified' | 'rejected'; rejection_reason?: string }
+  ): Promise<ApiResponse<any>> => {
+    const response = await apiClient.patch<ApiResponse<any>>(`/municipality/kyc-pending/${citizenId}`, data);
     return response.data;
   },
 };

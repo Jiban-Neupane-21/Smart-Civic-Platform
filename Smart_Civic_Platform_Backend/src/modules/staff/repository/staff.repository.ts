@@ -1,5 +1,6 @@
 import { SupabaseClient } from '@supabase/supabase-js';
 import { LifecycleService } from '../../../service/lifecycle.service';
+import { StorageService } from '../../../service/storage.service';
 
 export class StaffRepository {
   constructor(private supabaseAdmin: SupabaseClient) {}
@@ -190,6 +191,36 @@ export class StaffRepository {
 
   async submitStaffKyc(userId: string, payload: any) {
     const nowIso = new Date().toISOString();
+    const storageService = new StorageService(this.supabaseAdmin);
+
+    // Concurrently upload any base64 documents to Supabase Storage
+    const [uploadedPhoto, uploadedFront, uploadedBack, uploadedAppointment] = await Promise.all([
+      payload.photo_url && payload.photo_url.startsWith("data:")
+        ? storageService.uploadIdentityDocument(userId, payload.photo_url, "photo.jpg")
+        : payload.photo_url || null,
+      payload.identity_front_url && payload.identity_front_url.startsWith("data:")
+        ? storageService.uploadIdentityDocument(
+            userId,
+            payload.identity_front_url,
+            payload.identity_front_url.includes("application/pdf") ? "identity_front.pdf" : "identity_front.jpg"
+          )
+        : payload.identity_front_url || null,
+      payload.identity_back_url && payload.identity_back_url.startsWith("data:")
+        ? storageService.uploadIdentityDocument(
+            userId,
+            payload.identity_back_url,
+            payload.identity_back_url.includes("application/pdf") ? "identity_back.pdf" : "identity_back.jpg"
+          )
+        : payload.identity_back_url || null,
+      payload.appointment_letter_url && payload.appointment_letter_url.startsWith("data:")
+        ? storageService.uploadIdentityDocument(
+            userId,
+            payload.appointment_letter_url,
+            payload.appointment_letter_url.includes("application/pdf") ? "appointment_letter.pdf" : "appointment_letter.jpg"
+          )
+        : payload.appointment_letter_url || null,
+    ]);
+
     const staffUpdates: any = {
       kyc_status: 'pending',
       kyc_submitted_at: nowIso,
@@ -204,10 +235,10 @@ export class StaffRepository {
       emergency_contact_phone: payload.emergency_contact_phone || null,
       identity_type: payload.identity_type || null,
       identity_number: payload.identity_number || null,
-      identity_front_url: payload.identity_front_url || null,
-      identity_back_url: payload.identity_back_url || null,
-      appointment_letter_url: payload.appointment_letter_url || null,
-      photo_url: payload.photo_url || null,
+      identity_front_url: uploadedFront,
+      identity_back_url: uploadedBack,
+      appointment_letter_url: uploadedAppointment,
+      photo_url: uploadedPhoto,
     };
 
     if (payload.employee_id) {
@@ -229,7 +260,7 @@ export class StaffRepository {
     if (payload.phone || payload.contact_number) profileUpdates.phone = payload.phone || payload.contact_number;
     if (payload.identity_type) profileUpdates.identity_type = payload.identity_type;
     if (payload.identity_number) profileUpdates.identity_number = payload.identity_number;
-    if (payload.identity_front_url) profileUpdates.identity_document_url = payload.identity_front_url;
+    if (uploadedFront) profileUpdates.identity_document_url = uploadedFront;
 
     await this.supabaseAdmin
       .from('profiles')

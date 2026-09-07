@@ -18,6 +18,12 @@ export const createComplaint4StepSchema = z.object({
     severity_level: z.enum(["low", "medium", "high", "urgent"]).optional().default("medium"),
     ticket_type: z.enum(["complaint", "request", "inquiry"]).optional().default("complaint"),
   }),
+  media: z.array(z.object({
+    media_base64: z.string(),
+    file_name: z.string().optional(),
+    media_type: z.enum(["image", "video"]).optional(),
+    file_size: z.number().optional(),
+  })).optional(),
   submission_step_completed: z.number().int().min(1).max(4).optional().default(4),
 });
 

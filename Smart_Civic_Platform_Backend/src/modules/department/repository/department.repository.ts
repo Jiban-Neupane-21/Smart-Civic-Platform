@@ -111,15 +111,29 @@ export class DepartmentRepository {
       updates.kyc_rejection_reason = null;
     }
 
-    const { data, error } = await this.supabaseAdmin
+    // Attempt matching on staff PK id first, then fallback to profile_id
+    let { data, error } = await this.supabaseAdmin
       .from("staff")
       .update(updates)
       .eq("id", staffId)
       .eq("primary_department_id", departmentId)
-      .select("*, profile:profiles!profile_id(id, full_name, email)")
-      .single();
+      .select("id, profile_id, primary_department_id, kyc_status, kyc_verified_at, kyc_verified_by, kyc_rejection_reason, profile:profiles!profile_id(id, full_name, email)")
+      .maybeSingle();
+
+    if (!data) {
+      const retry = await this.supabaseAdmin
+        .from("staff")
+        .update(updates)
+        .eq("profile_id", staffId)
+        .eq("primary_department_id", departmentId)
+        .select("id, profile_id, primary_department_id, kyc_status, kyc_verified_at, kyc_verified_by, kyc_rejection_reason, profile:profiles!profile_id(id, full_name, email)")
+        .maybeSingle();
+      data = retry.data;
+      error = retry.error;
+    }
 
     if (error) throw error;
+    if (!data) throw new Error("Staff member record not found in this department.");
 
     if (status === "verified" && data?.profile_id) {
       await this.supabaseAdmin
@@ -583,11 +597,12 @@ export class DepartmentRepository {
       .from("complaints")
       .select(`
         co_uid, tracking_id, title, description, status, priority, severity_level,
-        cross_dept_status, location_source, ward_number, submitted_date, sla_due_at, sla_breached,
+        cross_dept_status, location_source, latitude, longitude, ward_number, submitted_date, sla_due_at, sla_breached,
         current_team_id,
         current_team:teams!current_team_id ( id, team_name ),
         complaint_categories!complaints_category_id_fkey ( category_name ),
-        citizens ( first_name, last_name, contact_number )
+        citizens ( first_name, last_name, contact_number, current_address, permanent_address, current_ward_id, permanent_ward_id ),
+        municipalities!municipality_id ( id, official_name )
       `)
       .or(`assigned_department_id.eq.${departmentId},lead_department_id.eq.${departmentId}`);
 
@@ -610,11 +625,12 @@ export class DepartmentRepository {
         .from("complaints")
         .select(`
           co_uid, tracking_id, title, description, status, priority, severity_level,
-          cross_dept_status, location_source, ward_number, submitted_date, sla_due_at, sla_breached,
+          cross_dept_status, location_source, latitude, longitude, ward_number, submitted_date, sla_due_at, sla_breached,
           current_team_id,
           current_team:teams!current_team_id ( id, team_name ),
           complaint_categories!complaints_category_id_fkey ( category_name ),
-          citizens ( first_name, last_name, contact_number )
+          citizens ( first_name, last_name, contact_number, current_address, permanent_address, current_ward_id, permanent_ward_id ),
+          municipalities!municipality_id ( id, official_name )
         `)
         .in("co_uid", collabIds);
 
@@ -626,9 +642,121 @@ export class DepartmentRepository {
 
     // Merge and deduplicate by co_uid
     const mergedMap = new Map<string, any>();
-    [...(primaryData || []), ...supportingData].forEach((item) => mergedMap.set(item.co_uid, item));
+    [...(primaryData || []), ...supportingData].forEach((item) => {
+      let wardNo = item.ward_number;
+      if (!wardNo && item.citizens?.current_address) {
+        const m = item.citizens.current_address.match(/ward\s*(\d+)/i);
+        if (m) wardNo = parseInt(m[1], 10);
+      }
+      mergedMap.set(item.co_uid, {
+        ...item,
+        ward_number: wardNo,
+        citizen: item.citizens,
+        municipality: item.municipalities,
+      });
+    });
 
     return Array.from(mergedMap.values());
+  }
+
+  async getDepartmentComplaintDetail(departmentId: string, complaintId: string) {
+    // 1. Fetch complaint with relations
+    const { data: complaint, error: compErr } = await this.supabaseAdmin
+      .from("complaints")
+      .select(`
+        co_uid, tracking_id, title, description, status, priority, severity_level, ticket_type,
+        cross_dept_status, location_source, latitude, longitude, ward_number,
+        submitted_date, resolution_date, resolution_note, rejection_reason,
+        sla_due_at, sla_breached, current_team_id,
+        current_team:teams!current_team_id ( id, team_name, description, team_type, is_active ),
+        complaint_categories!complaints_category_id_fkey ( id, category_name ),
+        citizens ( id, first_name, middle_name, last_name, contact_number, current_address, permanent_address, current_ward_id, permanent_ward_id, profile_picture ),
+        municipalities!municipality_id ( id, official_name ),
+        assigned_department:departments!assigned_department_id ( id, department_name ),
+        lead_department:departments!lead_department_id ( id, department_name )
+      `)
+      .eq("co_uid", complaintId)
+      .maybeSingle();
+
+    if (compErr) throw compErr;
+    if (!complaint) return null;
+
+    // Fallback ward resolution if complaint.ward_number is null
+    let resolvedWardNumber = complaint.ward_number;
+    const citizenData: any = complaint.citizens;
+    if (!resolvedWardNumber && citizenData) {
+      const citizenWardId = citizenData.current_ward_id || citizenData.permanent_ward_id;
+      if (citizenWardId) {
+        const { data: wardRow } = await this.supabaseAdmin
+          .from("wards")
+          .select("ward_no")
+          .eq("id", citizenWardId)
+          .maybeSingle();
+        if (wardRow?.ward_no) {
+          resolvedWardNumber = wardRow.ward_no;
+        }
+      }
+      if (!resolvedWardNumber && citizenData.current_address) {
+        const m = citizenData.current_address.match(/ward\s*(\d+)/i);
+        if (m) resolvedWardNumber = parseInt(m[1], 10);
+      }
+    }
+
+    // 2. Fetch assigned team members if current_team_id exists
+    let teamMembers: any[] = [];
+    const currentTeam: any = complaint.current_team;
+    const teamId = complaint.current_team_id || (Array.isArray(currentTeam) ? currentTeam[0]?.id : currentTeam?.id);
+    if (teamId) {
+      const { data: members, error: memErr } = await this.supabaseAdmin
+        .from("team_members")
+        .select(`
+          id, staff_id, is_leader, joined_at,
+          staff:staff!staff_id (
+            id, employee_id, expertise, designation, contact_number,
+            profile:profiles!profile_id ( id, full_name, email, phone )
+          )
+        `)
+        .eq("team_id", teamId);
+
+      if (!memErr && members) {
+        teamMembers = members.map((m: any) => ({
+          id: m.id,
+          staff_id: m.staff_id,
+          is_leader: m.is_leader,
+          joined_at: m.joined_at,
+          employee_id: m.staff?.employee_id,
+          expertise: m.staff?.expertise,
+          designation: m.staff?.designation,
+          contact_number: m.staff?.contact_number || m.staff?.profile?.phone,
+          full_name: m.staff?.profile?.full_name,
+          email: m.staff?.profile?.email,
+        }));
+      }
+    }
+
+    // 3. Fetch media attachments
+    const { data: mediaList, error: mediaErr } = await this.supabaseAdmin
+      .from("media")
+      .select("id, file_url, media_type, file_name, file_size_bytes, created_at")
+      .eq("context", "complaint")
+      .eq("context_id", complaintId);
+
+    if (mediaErr) {
+      console.warn("Could not load media attachments for complaint:", mediaErr.message);
+    }
+
+    return {
+      ...complaint,
+      ward_number: resolvedWardNumber,
+      citizen: complaint.citizens,
+      citizens: complaint.citizens,
+      municipality: complaint.municipalities,
+      municipalities: complaint.municipalities,
+      category: complaint.complaint_categories,
+      complaint_categories: complaint.complaint_categories,
+      media: mediaList || [],
+      team_members: teamMembers,
+    };
   }
 
   async getCollaborationRequests(departmentId: string) {
@@ -730,4 +858,240 @@ export class DepartmentRepository {
     if (error) throw error;
     return data || [];
   }
+
+  // Section: In-depth operational report & analytics aggregation
+  async getDepartmentAnalytics(departmentId: string) {
+    const now = new Date();
+
+    const [deptRes, complaintsRes, teamsRes, staffRes, collabsRes] = await Promise.all([
+      this.supabaseAdmin
+        .from("departments")
+        .select("id, department_name, department_category")
+        .eq("id", departmentId)
+        .single(),
+      this.supabaseAdmin
+        .from("complaints")
+        .select(`
+          co_uid, tracking_id, title, description, status, priority, severity_level,
+          ward_number, submitted_date, resolution_date, sla_due_at, sla_breached,
+          current_team_id,
+          current_team:teams!current_team_id ( id, team_name ),
+          category:complaint_categories!complaints_category_id_fkey ( category_name )
+        `)
+        .or(`assigned_department_id.eq.${departmentId},lead_department_id.eq.${departmentId}`)
+        .order("submitted_date", { ascending: false }),
+      this.supabaseAdmin
+        .from("teams")
+        .select("id, team_name, is_active, team_type")
+        .eq("department_id", departmentId),
+      this.supabaseAdmin
+        .from("staff")
+        .select("id", { count: "exact", head: true })
+        .eq("primary_department_id", departmentId)
+        .eq("is_deleted", false),
+      this.supabaseAdmin
+        .from("complaint_collaborations")
+        .select("id, status")
+        .or(`primary_dept_id.eq.${departmentId},supporting_dept_id.eq.${departmentId}`),
+    ]);
+
+    if (deptRes.error) throw deptRes.error;
+    if (complaintsRes.error) throw complaintsRes.error;
+
+    const complaints = complaintsRes.data || [];
+    const teams = teamsRes.data || [];
+    const totalStaff = staffRes.count || 0;
+    const collaborations = collabsRes.data || [];
+
+    // 1. Status Breakdown
+    const statusCounts: Record<string, number> = {
+      pending: 0,
+      under_review: 0,
+      in_progress: 0,
+      resolved: 0,
+      rejected: 0,
+      closed: 0,
+    };
+
+    // 2. Priority Breakdown
+    const priorityCounts: Record<string, number> = {
+      low: 0,
+      medium: 0,
+      high: 0,
+      emergency: 0,
+    };
+
+    // 3. Severity Breakdown
+    const severityCounts: Record<string, number> = {
+      low: 0,
+      medium: 0,
+      high: 0,
+      critical: 0,
+    };
+
+    // 4. Ward Map
+    const wardMap = new Map<number, { ward_number: number; total: number; resolved: number; pending: number; in_progress: number }>();
+
+    // 5. Category Map
+    const categoryMap = new Map<string, { category_name: string; total: number; resolved: number }>();
+
+    // 6. Team Map
+    const teamMap = new Map<string, { id: string; team_name: string; is_active: boolean; team_type: string; total_assigned: number; resolved: number; pending: number }>();
+    teams.forEach((t) => {
+      teamMap.set(t.id, {
+        id: t.id,
+        team_name: t.team_name,
+        is_active: t.is_active ?? true,
+        team_type: t.team_type || "Standard",
+        total_assigned: 0,
+        resolved: 0,
+        pending: 0,
+      });
+    });
+
+    // 7. Monthly Trend Map (Last 6 Months)
+    const monthlyTrendMap = new Map<string, { month: string; submitted: number; resolved: number }>();
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+      monthlyTrendMap.set(key, { month: key, submitted: 0, resolved: 0 });
+    }
+
+    let breachedCount = 0;
+    let totalResolutionHours = 0;
+    let resolvedWithDurationCount = 0;
+
+    for (const c of complaints) {
+      // Status
+      if (c.status in statusCounts) {
+        statusCounts[c.status] += 1;
+      }
+
+      // Priority
+      const prio = (c.priority || "medium").toLowerCase();
+      if (prio in priorityCounts) {
+        priorityCounts[prio] += 1;
+      } else {
+        priorityCounts.medium += 1;
+      }
+
+      // Severity
+      const sev = (c.severity_level || "medium").toLowerCase();
+      if (sev in severityCounts) {
+        severityCounts[sev] += 1;
+      }
+
+      // SLA Breached
+      const isResolvedOrClosed = c.status === "resolved" || c.status === "closed";
+      const isBreached = c.sla_breached || (c.sla_due_at && new Date(c.sla_due_at) < now && !isResolvedOrClosed);
+      if (isBreached) {
+        breachedCount += 1;
+      }
+
+      // Resolution Time
+      if (isResolvedOrClosed && c.submitted_date && c.resolution_date) {
+        const start = new Date(c.submitted_date).getTime();
+        const end = new Date(c.resolution_date).getTime();
+        const diffHours = (end - start) / (1000 * 60 * 60);
+        if (diffHours > 0) {
+          totalResolutionHours += diffHours;
+          resolvedWithDurationCount += 1;
+        }
+      }
+
+      // Ward
+      if (c.ward_number !== null && c.ward_number !== undefined) {
+        const wardNo = Number(c.ward_number);
+        const curr = wardMap.get(wardNo) || { ward_number: wardNo, total: 0, resolved: 0, pending: 0, in_progress: 0 };
+        curr.total += 1;
+        if (isResolvedOrClosed) curr.resolved += 1;
+        else if (c.status === "pending") curr.pending += 1;
+        else curr.in_progress += 1;
+        wardMap.set(wardNo, curr);
+      }
+
+      // Category
+      const catName = (c.category as any)?.category_name || "General";
+      const catCurr = categoryMap.get(catName) || { category_name: catName, total: 0, resolved: 0 };
+      catCurr.total += 1;
+      if (isResolvedOrClosed) catCurr.resolved += 1;
+      categoryMap.set(catName, catCurr);
+
+      // Team Workload
+      if (c.current_team_id && teamMap.has(c.current_team_id)) {
+        const teamObj = teamMap.get(c.current_team_id)!;
+        teamObj.total_assigned += 1;
+        if (isResolvedOrClosed) teamObj.resolved += 1;
+        else teamObj.pending += 1;
+      }
+
+      // Monthly Trend
+      if (c.submitted_date) {
+        const subDate = new Date(c.submitted_date);
+        const subKey = `${subDate.getFullYear()}-${String(subDate.getMonth() + 1).padStart(2, "0")}`;
+        if (monthlyTrendMap.has(subKey)) {
+          monthlyTrendMap.get(subKey)!.submitted += 1;
+        }
+      }
+      if (c.resolution_date && isResolvedOrClosed) {
+        const resDate = new Date(c.resolution_date);
+        const resKey = `${resDate.getFullYear()}-${String(resDate.getMonth() + 1).padStart(2, "0")}`;
+        if (monthlyTrendMap.has(resKey)) {
+          monthlyTrendMap.get(resKey)!.resolved += 1;
+        }
+      }
+    }
+
+    const totalComplaints = complaints.length;
+    const resolvedTotal = statusCounts.resolved + statusCounts.closed;
+    const resolutionRate = totalComplaints > 0 ? Number(((resolvedTotal / totalComplaints) * 100).toFixed(1)) : 0;
+    const slaComplianceRate = totalComplaints > 0
+      ? Number((((totalComplaints - breachedCount) / totalComplaints) * 100).toFixed(1))
+      : 100;
+
+    const avgResolutionHours = resolvedWithDurationCount > 0
+      ? Number((totalResolutionHours / resolvedWithDurationCount).toFixed(1))
+      : 0;
+
+    const wardBreakdown = Array.from(wardMap.values()).sort((a, b) => b.total - a.total);
+    const categoryBreakdown = Array.from(categoryMap.values()).sort((a, b) => b.total - a.total);
+    const teamWorkload = Array.from(teamMap.values()).sort((a, b) => b.total_assigned - a.total_assigned);
+    const monthlyTrend = Array.from(monthlyTrendMap.values());
+
+    return {
+      department: {
+        id: deptRes.data.id,
+        name: deptRes.data.department_name,
+        category: deptRes.data.department_category,
+      },
+      summary: {
+        totalComplaints,
+        pending: statusCounts.pending,
+        under_review: statusCounts.under_review,
+        in_progress: statusCounts.in_progress,
+        resolved: statusCounts.resolved,
+        rejected: statusCounts.rejected,
+        closed: statusCounts.closed,
+        activeWorkload: statusCounts.pending + statusCounts.under_review + statusCounts.in_progress,
+        resolvedTotal,
+        resolutionRate,
+        totalStaff,
+        activeTeams: teams.filter((t) => t.is_active).length,
+        totalCollaborations: collaborations.length,
+      },
+      sla: {
+        breachedCount,
+        onTimeCount: Math.max(0, totalComplaints - breachedCount),
+        slaComplianceRate,
+        avgResolutionHours,
+      },
+      priorityCounts,
+      severityCounts,
+      wardBreakdown,
+      categoryBreakdown,
+      teamWorkload,
+      monthlyTrend,
+    };
+  }
 }
+

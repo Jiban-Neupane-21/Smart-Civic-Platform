@@ -108,14 +108,22 @@ export const getMe = async (req: Request, res: Response) => {
           permanent_province_id, permanent_district_id, permanent_municipality_id, permanent_ward_id, permanent_tole,
           current_province_id, current_district_id, current_municipality_id, current_ward_id, current_tole,
           identity_type, identity_number, identity_front_image_url, identity_back_image_url,
-          kyc_status, kyc_verified_at, kyc_rejection_reason
+          kyc_status, kyc_verified_at, kyc_rejection_reason, profile_picture
         `)
         .eq("id", user.id)
         .maybeSingle();
 
+      const profilePic = citizen?.profile_picture || user.profile_picture || null;
+
       return sendSuccess(res, {
         ...user,
-        citizen_details: citizen ?? null,
+        profile_picture: profilePic,
+        citizen_details: citizen
+          ? {
+              ...citizen,
+              profile_picture: profilePic,
+            }
+          : null,
       });
     }
 

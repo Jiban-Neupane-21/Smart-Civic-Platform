@@ -250,15 +250,29 @@ export class MunicipalityRepository {
       updates.kyc_rejection_reason = null;
     }
 
-    const { data, error } = await this.supabaseAdmin
+    // Attempt matching on staff PK id first, then fallback to profile_id
+    let { data, error } = await this.supabaseAdmin
       .from("staff")
       .update(updates)
       .eq("id", staffId)
       .eq("municipality_id", municipalityId)
-      .select("*, profile:profiles!profile_id(id, full_name, email)")
-      .single();
+      .select("id, profile_id, municipality_id, kyc_status, kyc_verified_at, kyc_verified_by, kyc_rejection_reason, profile:profiles!profile_id(id, full_name, email)")
+      .maybeSingle();
+
+    if (!data) {
+      const retry = await this.supabaseAdmin
+        .from("staff")
+        .update(updates)
+        .eq("profile_id", staffId)
+        .eq("municipality_id", municipalityId)
+        .select("id, profile_id, municipality_id, kyc_status, kyc_verified_at, kyc_verified_by, kyc_rejection_reason, profile:profiles!profile_id(id, full_name, email)")
+        .maybeSingle();
+      data = retry.data;
+      error = retry.error;
+    }
 
     if (error) throw error;
+    if (!data) throw new Error("Staff member record not found in this municipality.");
 
     if (status === "verified" && data?.profile_id) {
       await this.supabaseAdmin
@@ -450,17 +464,26 @@ export class MunicipalityRepository {
 
   // ===== KYC VERIFICATION METHODS =====
 
-  async getPendingKycList(municipalityId: string) {
-    const { data, error } = await this.supabaseAdmin
+  async getPendingKycList(municipalityId: string, statusFilter?: string) {
+    let query = this.supabaseAdmin
       .from("citizens")
       .select(`
-        id, first_name, middle_name, last_name, identity_type, identity_number,
-        identity_front_image_url, identity_back_image_url, kyc_status, registered_at,
-        profile:profiles!id(id, full_name, email, phone)
+        id, first_name, middle_name, last_name, gender, date_of_birth,
+        contact_number, current_address, permanent_address,
+        current_ward_id, permanent_ward_id,
+        identity_type, identity_number,
+        identity_front_image_url, identity_back_image_url,
+        kyc_status, kyc_verified_at, kyc_rejection_reason,
+        registered_at, updated_at,
+        profile:profiles!citizens_id_fkey(id, full_name, email, phone)
       `)
-      .or(`current_municipality_id.eq.${municipalityId},permanent_municipality_id.eq.${municipalityId}`)
-      .eq("kyc_status", "pending")
-      .order("updated_at", { ascending: false });
+      .or(`current_municipality_id.eq.${municipalityId},permanent_municipality_id.eq.${municipalityId}`);
+
+    if (statusFilter && statusFilter !== "all") {
+      query = query.eq("kyc_status", statusFilter);
+    }
+
+    const { data, error } = await query.order("updated_at", { ascending: false });
 
     if (error) throw error;
     return data || [];
@@ -471,7 +494,7 @@ export class MunicipalityRepository {
       .from("citizens")
       .select(`
         *,
-        profile:profiles!id(id, full_name, email, phone)
+        profile:profiles!citizens_id_fkey(id, full_name, email, phone)
       `)
       .eq("id", citizenId)
       .single();
@@ -496,6 +519,24 @@ export class MunicipalityRepository {
 
     if (status === "rejected") {
       updates.kyc_rejection_reason = rejectionReason || "Document verification failed.";
+    } else if (status === "verified") {
+      const { data: currentCitizen } = await this.supabaseAdmin
+        .from("citizens")
+        .select("profile_picture, identity_front_image_url")
+        .eq("id", citizenId)
+        .maybeSingle();
+
+      const profilePicToSet = currentCitizen?.profile_picture || currentCitizen?.identity_front_image_url;
+      if (profilePicToSet) {
+        updates.profile_picture = profilePicToSet;
+        await this.supabaseAdmin
+          .from("profiles")
+          .update({
+            profile_picture: profilePicToSet,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", citizenId);
+      }
     }
 
     const { data, error } = await this.supabaseAdmin
@@ -744,5 +785,173 @@ export class MunicipalityRepository {
       "municipality_head",
       `Administrative Intervention by Municipality Head. Action: ${action}. ${note || ""}`
     );
+  }
+
+  // ===== MUNICIPALITY NOTICES / ANNOUNCEMENTS METHODS =====
+
+  async getNotices(municipalityId: string, categoryFilter?: string) {
+    const { data, error } = await this.supabaseAdmin
+      .from("notifications")
+      .select("*")
+      .eq("target_municipality_id", municipalityId)
+      .eq("type", "broadcast")
+      .order("created_at", { ascending: false });
+
+    if (error) throw error;
+
+    const parseNotice = (n: any) => {
+      let category = "general";
+      let cleanTitle = n.title || "";
+      const match = cleanTitle.match(/^\[([A-Z_]+)\]\s*(.*)$/i);
+      if (match) {
+        category = match[1].toLowerCase();
+        cleanTitle = match[2];
+      } else if (n.is_urgent) {
+        category = "emergency";
+      }
+
+      return {
+        id: n.id,
+        title: cleanTitle,
+        body: n.body,
+        category,
+        created_at: n.created_at,
+        updated_at: n.created_at,
+      };
+    };
+
+    const notices = (data || []).map(parseNotice);
+
+    if (categoryFilter && categoryFilter !== "all") {
+      return notices.filter(
+        (n: any) => n.category.toLowerCase() === categoryFilter.toLowerCase()
+      );
+    }
+
+    return notices;
+  }
+
+  async createNotice(
+    senderId: string,
+    municipalityId: string,
+    data: { title: string; body: string; category?: string }
+  ) {
+    const category = (data.category || "general").toLowerCase();
+    const isUrgent = category === "emergency";
+    const rawTitle = (data.title || "").replace(/^\[[A-Z_]+\]\s*/i, "").trim();
+    const formattedTitle = `[${category.toUpperCase()}] ${rawTitle}`;
+
+    // 1. Insert broadcast notification
+    const { data: notification, error } = await this.supabaseAdmin
+      .from("notifications")
+      .insert({
+        sender_id: senderId,
+        type: "broadcast",
+        audience: "all_citizens",
+        target_municipality_id: municipalityId,
+        title: formattedTitle,
+        body: data.body,
+        is_urgent: isUrgent,
+        sent_at: new Date().toISOString(),
+      })
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    // 2. Resolve recipients and pre-seed notification_reads so citizens & staff in the municipality receive it
+    try {
+      const { NotificationService } = require("../../../service/notification.service");
+      const notifService = new NotificationService(this.supabaseAdmin);
+      const recipientIds = await notifService.resolveRecipients("all_citizens", {
+        municipality_id: municipalityId,
+      });
+
+      if (recipientIds && recipientIds.length > 0) {
+        const readRows = recipientIds.map((pid: string) => ({
+          notification_id: notification.id,
+          profile_id: pid,
+          is_seen: false,
+          is_clicked: false,
+        }));
+        await this.supabaseAdmin.from("notification_reads").upsert(readRows);
+      }
+    } catch (deliveryErr) {
+      console.error("[MUNICIPALITY-NOTICE-DELIVERY-WARN]", deliveryErr);
+    }
+
+    return {
+      id: notification.id,
+      title: rawTitle,
+      body: notification.body,
+      category,
+      created_at: notification.created_at,
+      updated_at: notification.created_at,
+    };
+  }
+
+  async updateNotice(
+    id: string,
+    municipalityId: string,
+    data: { title?: string; body?: string; category?: string }
+  ) {
+    const updatePayload: any = {};
+
+    if (data.title !== undefined || data.category !== undefined) {
+      const category = (data.category || "general").toLowerCase();
+      const rawTitle = (data.title || "").replace(/^\[[A-Z_]+\]\s*/i, "").trim();
+      updatePayload.title = `[${category.toUpperCase()}] ${rawTitle}`;
+      updatePayload.is_urgent = category === "emergency";
+    }
+
+    if (data.body !== undefined) {
+      updatePayload.body = data.body;
+    }
+
+    const { data: updated, error } = await this.supabaseAdmin
+      .from("notifications")
+      .update(updatePayload)
+      .eq("id", id)
+      .eq("target_municipality_id", municipalityId)
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    let category = "general";
+    let cleanTitle = updated.title || "";
+    const match = cleanTitle.match(/^\[([A-Z_]+)\]\s*(.*)$/i);
+    if (match) {
+      category = match[1].toLowerCase();
+      cleanTitle = match[2];
+    } else if (updated.is_urgent) {
+      category = "emergency";
+    }
+
+    return {
+      id: updated.id,
+      title: cleanTitle,
+      body: updated.body,
+      category,
+      created_at: updated.created_at,
+      updated_at: updated.created_at,
+    };
+  }
+
+  async deleteNotice(id: string, municipalityId: string) {
+    // Delete reads first
+    await this.supabaseAdmin
+      .from("notification_reads")
+      .delete()
+      .eq("notification_id", id);
+
+    const { error } = await this.supabaseAdmin
+      .from("notifications")
+      .delete()
+      .eq("id", id)
+      .eq("target_municipality_id", municipalityId);
+
+    if (error) throw error;
+    return { success: true };
   }
 }

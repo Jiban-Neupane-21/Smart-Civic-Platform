@@ -25,6 +25,14 @@ import { Upload, FileText, CheckCircle, Clock, XCircle } from "lucide-react";
 import { useAuth } from "../../hooks/useAuth";
 import { staffApi } from "../../api/modules/staff.api";
 import Swal from "sweetalert2";
+import {
+  isAtLeast18,
+  getMaxDobFor18,
+  getMinDob,
+  isValidNepalPhone,
+  isValidName,
+  isValidIdentityNumber,
+} from "../../validation/kyc.validators";
 
 const steps = [
   "Personal Info",
@@ -32,6 +40,51 @@ const steps = [
   "Identity Documents",
   "Review & Submit",
 ];
+
+const compressImageFile = (file: File, maxDim = 1600, quality = 0.8): Promise<string> => {
+  return new Promise((resolve) => {
+    if (file.type === "application/pdf") {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = () => resolve("");
+      reader.readAsDataURL(file);
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const dataUrl = e.target?.result as string;
+      const img = new Image();
+      img.onload = () => {
+        let { width, height } = img;
+        if (width > maxDim || height > maxDim) {
+          if (width > height) {
+            height = Math.round((height * maxDim) / width);
+            width = maxDim;
+          } else {
+            width = Math.round((width * maxDim) / height);
+            height = maxDim;
+          }
+        }
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+          resolve(dataUrl);
+          return;
+        }
+        ctx.drawImage(img, 0, 0, width, height);
+        const mime = file.type === "image/png" || file.type === "image/jpeg" ? "image/jpeg" : file.type;
+        resolve(canvas.toDataURL(mime, quality));
+      };
+      img.onerror = () => resolve(dataUrl);
+      img.src = dataUrl;
+    };
+    reader.onerror = () => resolve("");
+    reader.readAsDataURL(file);
+  });
+};
 
 const DocumentUploadBox = ({
   label,
@@ -47,16 +100,15 @@ const DocumentUploadBox = ({
   const inputRef = useRef<HTMLInputElement>(null);
   const isPdf = value?.startsWith("data:application/pdf");
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (file.size > 5 * 1024 * 1024) {
-      Swal.fire("File Too Large", "Max file size is 5MB", "warning");
+    if (file.size > 10 * 1024 * 1024) {
+      Swal.fire("File Too Large", "Max file size is 10MB", "warning");
       return;
     }
-    const reader = new FileReader();
-    reader.onloadend = () => setter(reader.result as string);
-    reader.readAsDataURL(file);
+    const compressed = await compressImageFile(file);
+    if (compressed) setter(compressed);
   };
 
   return (
@@ -148,8 +200,8 @@ export const StaffKycOnboarding: React.FC = () => {
   const [identityBack, setIdentityBack] = useState<string | null>(null);
   const [appointmentLetter, setAppointmentLetter] = useState<string | null>(null);
 
-  // Step 4: Declarations
   const [declarationAccepted, setDeclarationAccepted] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
     const fetchExistingKyc = async () => {
@@ -195,31 +247,72 @@ export const StaffKycOnboarding: React.FC = () => {
     fetchExistingKyc();
   }, [user]);
 
-  const handleNext = () => {
-    setError(null);
+  const validateStep = (step: number): boolean => {
+    const errors: Record<string, string> = {};
 
-    // Validation by step
-    if (activeStep === 0) {
-      if (!fullName.trim() || !contactNumber.trim()) {
-        setError("Please enter your full name and contact number.");
-        return;
+    if (step === 0) {
+      if (!fullName.trim()) {
+        errors.fullName = "Full legal name is required";
+      } else if (!isValidName(fullName)) {
+        errors.fullName = "Please enter a valid legal name (at least 3 characters, letters only)";
       }
-    } else if (activeStep === 1) {
+
+      if (!contactNumber.trim()) {
+        errors.contactNumber = "Primary contact phone is required";
+      } else if (!isValidNepalPhone(contactNumber)) {
+        errors.contactNumber = "Must be a valid 10-digit Nepal mobile number (e.g. 98XXXXXXXX)";
+      }
+
+      if (!dateOfBirth) {
+        errors.dateOfBirth = "Date of birth is required for verification";
+      } else if (!isAtLeast18(dateOfBirth)) {
+        errors.dateOfBirth = "You must be at least 18 years old to complete verification";
+      }
+
+      if (emergencyContactPhone.trim()) {
+        if (!isValidNepalPhone(emergencyContactPhone)) {
+          errors.emergencyContactPhone = "Must be a valid 10-digit Nepal phone number";
+        } else if (emergencyContactPhone.trim() === contactNumber.trim()) {
+          errors.emergencyContactPhone = "Emergency contact must be different from primary contact";
+        }
+        if (!emergencyContactName.trim()) {
+          errors.emergencyContactName = "Contact person name is required when emergency phone is provided";
+        }
+      }
+    } else if (step === 1) {
       if (!designation.trim() && !employeeId.trim()) {
-        setError("Please provide either your employee designation or badge ID.");
-        return;
+        errors.designation = "Please provide your official job designation or employee badge ID";
       }
-    } else if (activeStep === 2) {
-      if (!identityType || !identityNumber.trim()) {
-        setError("Please select an identity document type and enter the document number.");
-        return;
+    } else if (step === 2) {
+      if (!identityNumber.trim()) {
+        errors.identityNumber = "Document identification number is required";
+      } else if (!isValidIdentityNumber(identityType, identityNumber)) {
+        errors.identityNumber = `Invalid ${identityType.replace("_", " ")} format`;
       }
+
       if (!identityFront) {
-        setError("Please upload at least the front image of your official identity document.");
-        return;
+        errors.identityFront = "Front photo/scan of identity document is required";
+      }
+
+      const requiresBack = ["citizenship", "national_id", "driving_license"].includes(identityType);
+      if (requiresBack && !identityBack) {
+        errors.identityBack = `Back photo/scan is required for ${identityType.replace("_", " ")}`;
       }
     }
 
+    setFieldErrors(errors);
+    if (Object.keys(errors).length > 0) {
+      setError(Object.values(errors)[0]);
+      return false;
+    }
+    return true;
+  };
+
+  const handleNext = () => {
+    setError(null);
+    if (!validateStep(activeStep)) {
+      return;
+    }
     setActiveStep((prev) => prev + 1);
   };
 
@@ -229,6 +322,9 @@ export const StaffKycOnboarding: React.FC = () => {
   };
 
   const handleSubmit = async () => {
+    if (!validateStep(0) || !validateStep(1) || !validateStep(2)) {
+      return;
+    }
     if (!declarationAccepted) {
       setError("Please confirm the verification declaration to submit your KYC.");
       return;
@@ -376,16 +472,15 @@ export const StaffKycOnboarding: React.FC = () => {
                   type="file"
                   hidden
                   accept="image/*"
-                  onChange={(e) => {
+                  onChange={async (e) => {
                     const file = e.target.files?.[0];
                     if (!file) return;
-                    if (file.size > 5 * 1024 * 1024) {
-                      Swal.fire("File Too Large", "Max file size is 5MB", "warning");
+                    if (file.size > 10 * 1024 * 1024) {
+                      Swal.fire("File Too Large", "Max file size is 10MB", "warning");
                       return;
                     }
-                    const reader = new FileReader();
-                    reader.onloadend = () => setPhotoBase64(reader.result as string);
-                    reader.readAsDataURL(file);
+                    const compressed = await compressImageFile(file, 800, 0.85);
+                    if (compressed) setPhotoBase64(compressed);
                   }}
                 />
                 <Avatar
@@ -414,7 +509,12 @@ export const StaffKycOnboarding: React.FC = () => {
                 fullWidth
                 label="Full Legal Name *"
                 value={fullName}
-                onChange={(e) => setFullName(e.target.value)}
+                error={!!fieldErrors.fullName}
+                helperText={fieldErrors.fullName}
+                onChange={(e) => {
+                  setFullName(e.target.value);
+                  if (fieldErrors.fullName) setFieldErrors((prev) => ({ ...prev, fullName: "" }));
+                }}
               />
             </Grid>
             <Grid item xs={12} sm={6}>
@@ -432,7 +532,12 @@ export const StaffKycOnboarding: React.FC = () => {
                 fullWidth
                 label="Primary Contact Number *"
                 value={contactNumber}
-                onChange={(e) => setContactNumber(e.target.value)}
+                error={!!fieldErrors.contactNumber}
+                helperText={fieldErrors.contactNumber || "10-digit mobile (98XXXXXXXX or 97XXXXXXXX)"}
+                onChange={(e) => {
+                  setContactNumber(e.target.value);
+                  if (fieldErrors.contactNumber) setFieldErrors((prev) => ({ ...prev, contactNumber: "" }));
+                }}
               />
             </Grid>
             <Grid item xs={12} sm={6}>
@@ -451,10 +556,16 @@ export const StaffKycOnboarding: React.FC = () => {
               <TextField
                 fullWidth
                 type="date"
-                label="Date of Birth"
+                label="Date of Birth *"
                 InputLabelProps={{ shrink: true }}
+                inputProps={{ max: getMaxDobFor18(), min: getMinDob() }}
                 value={dateOfBirth}
-                onChange={(e) => setDateOfBirth(e.target.value)}
+                error={!!fieldErrors.dateOfBirth}
+                helperText={fieldErrors.dateOfBirth || "Must be 18 years or older"}
+                onChange={(e) => {
+                  setDateOfBirth(e.target.value);
+                  if (fieldErrors.dateOfBirth) setFieldErrors((prev) => ({ ...prev, dateOfBirth: "" }));
+                }}
               />
             </Grid>
             <Grid item xs={12} sm={6}>
@@ -471,7 +582,12 @@ export const StaffKycOnboarding: React.FC = () => {
                 fullWidth
                 label="Emergency Contact Person"
                 value={emergencyContactName}
-                onChange={(e) => setEmergencyContactName(e.target.value)}
+                error={!!fieldErrors.emergencyContactName}
+                helperText={fieldErrors.emergencyContactName}
+                onChange={(e) => {
+                  setEmergencyContactName(e.target.value);
+                  if (fieldErrors.emergencyContactName) setFieldErrors((prev) => ({ ...prev, emergencyContactName: "" }));
+                }}
               />
             </Grid>
             <Grid item xs={12} sm={6}>
@@ -479,7 +595,12 @@ export const StaffKycOnboarding: React.FC = () => {
                 fullWidth
                 label="Emergency Contact Phone"
                 value={emergencyContactPhone}
-                onChange={(e) => setEmergencyContactPhone(e.target.value)}
+                error={!!fieldErrors.emergencyContactPhone}
+                helperText={fieldErrors.emergencyContactPhone || "Must be different from primary contact"}
+                onChange={(e) => {
+                  setEmergencyContactPhone(e.target.value);
+                  if (fieldErrors.emergencyContactPhone) setFieldErrors((prev) => ({ ...prev, emergencyContactPhone: "" }));
+                }}
               />
             </Grid>
           </Grid>
@@ -507,10 +628,15 @@ export const StaffKycOnboarding: React.FC = () => {
             <Grid item xs={12} sm={6}>
               <TextField
                 fullWidth
-                label="Official Job Designation"
+                label="Official Job Designation *"
                 placeholder="e.g. Field Inspector, Sanitation Lead"
                 value={designation}
-                onChange={(e) => setDesignation(e.target.value)}
+                error={!!fieldErrors.designation}
+                helperText={fieldErrors.designation}
+                onChange={(e) => {
+                  setDesignation(e.target.value);
+                  if (fieldErrors.designation) setFieldErrors((prev) => ({ ...prev, designation: "" }));
+                }}
               />
             </Grid>
 
@@ -537,7 +663,10 @@ export const StaffKycOnboarding: React.FC = () => {
                 <Select
                   value={identityType}
                   label="Identity Document Type *"
-                  onChange={(e) => setIdentityType(e.target.value)}
+                  onChange={(e) => {
+                    setIdentityType(e.target.value);
+                    if (fieldErrors.identityNumber) setFieldErrors((prev) => ({ ...prev, identityNumber: "" }));
+                  }}
                 >
                   <MenuItem value="citizenship">Citizenship Card (नागरिकता)</MenuItem>
                   <MenuItem value="national_id">National Identity Card (राष्ट्रिय परिचयपत्र)</MenuItem>
@@ -551,7 +680,12 @@ export const StaffKycOnboarding: React.FC = () => {
                 fullWidth
                 label="Document Identification Number *"
                 value={identityNumber}
-                onChange={(e) => setIdentityNumber(e.target.value)}
+                error={!!fieldErrors.identityNumber}
+                helperText={fieldErrors.identityNumber || "Must match official Nepali document format"}
+                onChange={(e) => {
+                  setIdentityNumber(e.target.value);
+                  if (fieldErrors.identityNumber) setFieldErrors((prev) => ({ ...prev, identityNumber: "" }));
+                }}
               />
             </Grid>
 
@@ -559,15 +693,35 @@ export const StaffKycOnboarding: React.FC = () => {
               <DocumentUploadBox
                 label="Document Front Photo / Scan *"
                 value={identityFront}
-                setter={setIdentityFront}
+                setter={(val) => {
+                  setIdentityFront(val);
+                  if (fieldErrors.identityFront) setFieldErrors((prev) => ({ ...prev, identityFront: "" }));
+                }}
               />
+              {fieldErrors.identityFront && (
+                <Typography variant="caption" color="error" sx={{ mt: 0.5, display: "block" }}>
+                  {fieldErrors.identityFront}
+                </Typography>
+              )}
             </Grid>
             <Grid item xs={12} sm={6}>
               <DocumentUploadBox
-                label="Document Back Photo / Scan (Optional)"
+                label={
+                  ["citizenship", "national_id", "driving_license"].includes(identityType)
+                    ? "Document Back Photo / Scan *"
+                    : "Document Back Photo / Scan (Optional for Passport)"
+                }
                 value={identityBack}
-                setter={setIdentityBack}
+                setter={(val) => {
+                  setIdentityBack(val);
+                  if (fieldErrors.identityBack) setFieldErrors((prev) => ({ ...prev, identityBack: "" }));
+                }}
               />
+              {fieldErrors.identityBack && (
+                <Typography variant="caption" color="error" sx={{ mt: 0.5, display: "block" }}>
+                  {fieldErrors.identityBack}
+                </Typography>
+              )}
             </Grid>
 
             <Grid item xs={12}>

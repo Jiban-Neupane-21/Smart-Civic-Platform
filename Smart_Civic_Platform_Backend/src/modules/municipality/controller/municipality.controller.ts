@@ -1,8 +1,10 @@
 import { Response } from "express";
 import crypto from "crypto";
+import { ZodError } from "zod";
 import type { ComplaintStatus } from "../../../types/database.type";
 import { MunicipalityService } from "../services/municipality.service";
 import { createUserService } from "../../auth/services/auth.service";
+import { municipalityKycSchema } from "../../../validation/municipality.validation";
 
 export class MunicipalityController {
   constructor(private service: MunicipalityService) {}
@@ -42,7 +44,8 @@ export class MunicipalityController {
 
   updateMunicipalityProfile = async (req: any, res: Response): Promise<void> => {
     try {
-      const data = await this.service.updateMunicipalityProfile(req.municipalityId, req.body, req.user?.id);
+      const parsedBody = municipalityKycSchema.parse(req.body);
+      const data = await this.service.updateMunicipalityProfile(req.municipalityId, parsedBody, req.user?.id);
       res.status(200).json({
         success: true,
         data,
@@ -51,6 +54,14 @@ export class MunicipalityController {
           : "Profile updated successfully.",
       });
     } catch (error: any) {
+      if (error instanceof ZodError) {
+        res.status(400).json({
+          success: false,
+          error: error.issues[0]?.message || "Validation error",
+          errors: error.issues,
+        });
+        return;
+      }
       res.status(500).json({ success: false, error: error.message });
     }
   };
@@ -541,7 +552,8 @@ export class MunicipalityController {
 
   getPendingKycList = async (req: any, res: Response): Promise<void> => {
     try {
-      const list = await this.service.getPendingKycList(req.municipalityId);
+      const statusFilter = req.query.status as string | undefined;
+      const list = await this.service.getPendingKycList(req.municipalityId, statusFilter);
       res.status(200).json({ success: true, data: list });
     } catch (error: any) {
       res.status(500).json({ success: false, error: error.message });
@@ -721,6 +733,73 @@ export class MunicipalityController {
         message: `Municipality Head intervention recorded cleanly (${action}).`,
         data: result,
       });
+    } catch (error: any) {
+      res.status(400).json({ success: false, error: error.message });
+    }
+  };
+
+  // ===== MUNICIPALITY NOTICES / ANNOUNCEMENTS HANDLERS =====
+
+  getNotices = async (req: any, res: Response): Promise<void> => {
+    try {
+      const municipalityId = req.params.municipalityId || req.municipalityId;
+      const category = req.query.category as string | undefined;
+      const notices = await this.service.getNotices(municipalityId, category);
+      res.status(200).json({ success: true, data: notices });
+    } catch (error: any) {
+      res.status(500).json({ success: false, error: error.message });
+    }
+  };
+
+  createNotice = async (req: any, res: Response): Promise<void> => {
+    try {
+      const municipalityId = req.params.municipalityId || req.municipalityId;
+      const senderId = req.user?.id;
+      const { title, body, category } = req.body;
+
+      if (!title || !body) {
+        res.status(400).json({
+          success: false,
+          error: "title and body are required fields.",
+        });
+        return;
+      }
+
+      const notice = await this.service.createNotice(
+        senderId,
+        municipalityId,
+        { title, body, category }
+      );
+      res.status(201).json({ success: true, data: notice, message: "Notice published successfully." });
+    } catch (error: any) {
+      res.status(400).json({ success: false, error: error.message });
+    }
+  };
+
+  updateNotice = async (req: any, res: Response): Promise<void> => {
+    try {
+      const municipalityId = req.params.municipalityId || req.municipalityId;
+      const { id } = req.params;
+      const { title, body, category } = req.body;
+
+      const notice = await this.service.updateNotice(
+        id,
+        municipalityId,
+        { title, body, category }
+      );
+      res.status(200).json({ success: true, data: notice, message: "Notice updated successfully." });
+    } catch (error: any) {
+      res.status(400).json({ success: false, error: error.message });
+    }
+  };
+
+  deleteNotice = async (req: any, res: Response): Promise<void> => {
+    try {
+      const municipalityId = req.params.municipalityId || req.municipalityId;
+      const { id } = req.params;
+
+      await this.service.deleteNotice(id, municipalityId);
+      res.status(200).json({ success: true, message: "Notice deleted successfully." });
     } catch (error: any) {
       res.status(400).json({ success: false, error: error.message });
     }

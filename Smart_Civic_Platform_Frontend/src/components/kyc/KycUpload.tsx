@@ -17,6 +17,8 @@ import {
 import DeleteIcon from "@mui/icons-material/Delete";
 import CloudUploadIcon from "@mui/icons-material/CloudUpload";
 
+import { isValidIdentityNumber } from "../../validation/kyc.validators";
+
 export interface KycUploadPayload {
   identity_type: string;
   identity_number: string;
@@ -77,8 +79,13 @@ export const KycUpload: React.FC<KycUploadProps> = ({
     };
 
   const handleSubmit = async () => {
-    if (!identityType || !identityNumber) {
+    if (!identityType || !identityNumber.trim()) {
       setError("Identity Type and Number are required");
+      return;
+    }
+
+    if (!isValidIdentityNumber(identityType, identityNumber.trim())) {
+      setError(`Invalid format for ${identityType.replace("_", " ")} document number`);
       return;
     }
 
@@ -87,9 +94,16 @@ export const KycUpload: React.FC<KycUploadProps> = ({
       return;
     }
 
-    if (mode === "front-back" && (!frontBase64 || !backBase64)) {
-      setError("Please upload both front and back images of your identity document");
-      return;
+    if (mode === "front-back") {
+      if (!frontBase64) {
+        setError("Please upload the front image of your identity document");
+        return;
+      }
+      const requiresBack = ["citizenship", "national_id", "driving_license"].includes(identityType);
+      if (requiresBack && !backBase64) {
+        setError(`Please upload the back image of your ${identityType.replace("_", " ")}`);
+        return;
+      }
     }
 
     setLoading(true);

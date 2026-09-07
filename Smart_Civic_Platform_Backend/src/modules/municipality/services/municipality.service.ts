@@ -276,8 +276,8 @@ export class MunicipalityService {
 
   // ===== KYC VERIFICATION METHODS =====
 
-  async getPendingKycList(municipalityId: string) {
-    return await this.repo.getPendingKycList(municipalityId);
+  async getPendingKycList(municipalityId: string, statusFilter?: string) {
+    return await this.repo.getPendingKycList(municipalityId, statusFilter);
   }
 
   async getKycCitizenDetail(municipalityId: string, citizenId: string) {
@@ -387,5 +387,37 @@ export class MunicipalityService {
     note?: string
   ) {
     return await this.repo.interveneInComplaint(municipalityId, complaintId, action, note);
+  }
+
+  // ===== MUNICIPALITY NOTICES / ANNOUNCEMENTS =====
+
+  async getNotices(municipalityId: string, categoryFilter?: string) {
+    return await this.repo.getNotices(municipalityId, categoryFilter);
+  }
+
+  async createNotice(
+    senderId: string,
+    municipalityId: string,
+    data: { title: string; body: string; category?: string }
+  ) {
+    if (!data.title || !data.title.trim()) {
+      throw new Error("Notice title is required.");
+    }
+    if (!data.body || !data.body.trim()) {
+      throw new Error("Notice body content is required.");
+    }
+    return await this.repo.createNotice(senderId, municipalityId, data);
+  }
+
+  async updateNotice(
+    id: string,
+    municipalityId: string,
+    data: { title?: string; body?: string; category?: string }
+  ) {
+    return await this.repo.updateNotice(id, municipalityId, data);
+  }
+
+  async deleteNotice(id: string, municipalityId: string) {
+    return await this.repo.deleteNotice(id, municipalityId);
   }
 }

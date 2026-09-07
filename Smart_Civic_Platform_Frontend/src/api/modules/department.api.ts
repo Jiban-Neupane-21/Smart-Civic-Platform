@@ -12,6 +12,7 @@ import type {
   Team,
   CreateTeamDto,
   TeamComplaintAssignment,
+  DeptComplaintDetail,
 } from '../types';
 export const departmentApi = {
   /**
@@ -83,6 +84,11 @@ export const departmentApi = {
     return response.data;
   },
 
+  getComplaintDetail: async (complaintId: string): Promise<ApiResponse<DeptComplaintDetail>> => {
+    const response = await apiClient.get<ApiResponse<DeptComplaintDetail>>(`/department/complaints/${complaintId}`);
+    return response.data;
+  },
+
   updateComplaintState: async (complaintId: string, data: UpdateComplaintStateDto): Promise<ApiResponse<void>> => {
     const response = await apiClient.patch<ApiResponse<void>>(`/department/complaints/${complaintId}/state`, data);
     return response.data;
@@ -150,6 +156,18 @@ export const departmentApi = {
     data: { status: 'verified' | 'rejected'; rejection_reason?: string }
   ): Promise<ApiResponse<any>> => {
     const response = await apiClient.patch<ApiResponse<any>>(`/department/staff/${staffId}/kyc`, data);
+    return response.data;
+  },
+
+  getAnalytics: async (): Promise<ApiResponse<any>> => {
+    const response = await apiClient.get<ApiResponse<any>>('/department/analytics');
+    return response.data;
+  },
+
+  exportComplaintsCsv: async (): Promise<any> => {
+    const response = await apiClient.get('/department/complaints/export', {
+      responseType: 'blob',
+    });
     return response.data;
   },
 };

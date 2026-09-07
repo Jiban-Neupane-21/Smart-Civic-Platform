@@ -26,6 +26,7 @@ import {
   type SelectChangeEvent,
 } from "@mui/material";
 import { registerSchema } from "../../validation/auth.schema";
+import { getMaxDobFor18 } from "../../validation/kyc.validators";
 import apiClient, { API_BASE_URL } from "../../api/client";
 import { citizenApi, publicApi } from "../../api";
 import { useAuth } from "../../hooks/useAuth";
@@ -445,14 +446,17 @@ const RegisterBase: React.FC = () => {
           fullWidth
           id="dateOfBirth"
           name="dateOfBirth"
-          label="Date of Birth"
+          label="Date of Birth (18+ only)"
           type="date"
-          slotProps={{ inputLabel: { shrink: true } }}
+          slotProps={{
+            inputLabel: { shrink: true },
+            htmlInput: { max: getMaxDobFor18() },
+          }}
           value={formik.values.dateOfBirth}
           onChange={formik.handleChange}
           onBlur={formik.handleBlur}
           error={formik.touched.dateOfBirth && Boolean(formik.errors.dateOfBirth)}
-          helperText={formik.touched.dateOfBirth && formik.errors.dateOfBirth}
+          helperText={(formik.touched.dateOfBirth && formik.errors.dateOfBirth) || "You must be at least 18 years of age."}
         />
       </Grid>
 

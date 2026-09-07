@@ -8,6 +8,8 @@ import { TrackingIdService } from "../../../service/tracking-id.service";
 import { SlaMonitorService } from "../../../service/sla-monitor.service";
 import { CollaborationService } from "../../../service/collaboration.service";
 import { NotificationService } from "../../../service/notification.service";
+import { SeverityDetectorService } from "../../../service/severity-detector.service";
+import { DuplicateDetectorService, type DuplicateCheckInput } from "../../../service/duplicate-detector.service";
 
 type CitizenSupabaseClient = {
   from: <TableName extends keyof Database["public"]["Tables"]>(
@@ -91,10 +93,19 @@ export const submitComplaint = async (
   );
   console.log("GENERATED TRACKING ID:", trackingId);
 
+  const complaintTitle = detailsPayload.title || body.title || "";
+  const complaintDescription = detailsPayload.description || body.description || "";
+
+  // Auto-detect severity if not explicitly specified by user or if baseline medium
+  const detectedSeverityResult = SeverityDetectorService.detectSeverity(complaintTitle, complaintDescription);
+  const resolvedSeverity = detailsPayload.severity_level && detailsPayload.severity_level !== "medium"
+    ? detailsPayload.severity_level
+    : detectedSeverityResult.severity;
+
   // 5. SLA Due Date calculation
   console.log("--> [submitComplaint] Step 5: SLA Due Date calculation");
   const slaService = new SlaMonitorService(supabaseAdmin);
-  const slaDueAt = slaService.calculateSlaDueDate(detailsPayload.severity_level || "medium");
+  const slaDueAt = slaService.calculateSlaDueDate(resolvedSeverity || "medium");
 
   // 6. Insert complaint record
   console.log("--> [submitComplaint] Step 6: Insert complaint record");
@@ -112,10 +123,10 @@ export const submitComplaint = async (
     lead_department_id: routing.lead_department_id,
     cross_dept_status: routing.cross_dept_status,
     ticket_type: detailsPayload.ticket_type || "complaint",
-    title: detailsPayload.title || body.title,
-    description: detailsPayload.description || body.description,
-    severity_level: detailsPayload.severity_level || "medium",
-    priority: detailsPayload.severity_level === "urgent" ? "urgent" : "medium",
+    title: complaintTitle,
+    description: complaintDescription,
+    severity_level: resolvedSeverity || "medium",
+    priority: resolvedSeverity === "urgent" || resolvedSeverity === "high" ? "urgent" : "medium",
     status: routing.supporting_department_id ? "cross_dept_pending" : "pending",
     sla_due_at: slaDueAt,
     submission_step_completed: body.submission_step_completed || 4,
@@ -152,7 +163,61 @@ export const submitComplaint = async (
     `New grievance '${payload.title}' (${trackingId}) assigned to your department.`
   );
 
-  return complaint;
+  // 9. Process optional media attachments (photos and short video clips)
+  const attachedMedia = body.media || detailsPayload.media || [];
+  const uploadedMediaRecords: any[] = [];
+  if (Array.isArray(attachedMedia) && attachedMedia.length > 0) {
+    console.log(`--> [submitComplaint] Step 9: Processing ${attachedMedia.length} media proof file(s)`);
+    const storageService = new StorageService(supabaseAdmin);
+    for (let i = 0; i < attachedMedia.length; i++) {
+      const item = attachedMedia[i];
+      if (!item || !item.media_base64) continue;
+      try {
+        const rawFileName = item.file_name || `proof_${i + 1}.jpg`;
+        const sanitizedFileName = rawFileName.replace(/[^a-zA-Z0-9._-]/g, "_");
+        const fileKey = `${citizenId}/complaints/${complaint.co_uid}/${Date.now()}_${i}_${sanitizedFileName}`;
+
+        const isVideo = item.media_type === "video" || 
+                        item.media_type?.startsWith("video/") || 
+                        /\.(mp4|webm|mov|3gp|mkv)$/i.test(rawFileName);
+        const mediaType = isVideo ? "video" : "image";
+
+        const publicUrl = await storageService.upload(
+          "complaint-media",
+          fileKey,
+          item.media_base64,
+          item.media_type
+        );
+
+        const { data: mediaRecord, error: mediaErr } = await supabaseAdmin
+          .from("media")
+          .insert({
+            context: "complaint",
+            context_id: complaint.co_uid,
+            uploaded_by: citizenId,
+            file_url: publicUrl,
+            media_type: mediaType,
+            file_name: rawFileName,
+            file_size_bytes: item.file_size || null,
+          })
+          .select()
+          .single();
+
+        if (!mediaErr && mediaRecord) {
+          uploadedMediaRecords.push(mediaRecord);
+        } else if (mediaErr) {
+          console.warn("Error inserting media record:", mediaErr.message);
+        }
+      } catch (err) {
+        console.error("Failed to upload proof media attachment:", err);
+      }
+    }
+  }
+
+  return {
+    ...complaint,
+    media: uploadedMediaRecords,
+  };
 };
 
 export const getMyComplaints = async (
@@ -204,7 +269,18 @@ export const getComplaintDetail = async (
     .single();
 
   if (error) throw new Error("Complaint not found");
-  return data;
+
+  // Fetch attached evidence / proof media
+  const { data: mediaList } = await supabaseAdmin
+    .from("media")
+    .select("id, file_url, media_type, file_name, file_size_bytes, created_at")
+    .eq("context", "complaint")
+    .eq("context_id", complaintId);
+
+  return {
+    ...data,
+    media: mediaList || [],
+  };
 };
 
 export const reopenComplaint = async (
@@ -302,6 +378,7 @@ export const uploadComplaintMedia = async (
     mediaBase64
   );
 
+  const mediaType = /\.(mp4|webm|mov|3gp|mkv)$/i.test(fileName) ? "video" : "image";
   const { data, error } = await supabaseAdmin
     .from("media")
     .insert({
@@ -309,6 +386,8 @@ export const uploadComplaintMedia = async (
       context_id: complaintId,
       uploaded_by: citizenId,
       file_url: publicUrl,
+      media_type: mediaType,
+      file_name: fileName,
     })
     .select()
     .single();
@@ -648,3 +727,337 @@ export const updateProfile = async (
 
   return { message: "Profile updated successfully" };
 };
+
+/**
+ * Check for spatiotemporal near-duplicate complaints
+ */
+export const checkComplaintDuplicates = async (
+  citizenId: string,
+  params: DuplicateCheckInput
+) => {
+  if (!params.title || params.title.trim().length < 3) {
+    return { duplicates: [] };
+  }
+
+  // Fetch active candidate complaints in this municipality
+  const query = supabaseAdmin
+    .from("complaints")
+    .select(`
+      co_uid, tracking_id, title, description, category_id,
+      status, severity_level, priority, latitude, longitude, ward_number,
+      upvote_count, submitted_date, citizen_id,
+      complaint_categories!category_id ( category_name ),
+      departments!assigned_department_id ( department_name )
+    `)
+    .eq("municipality_id", params.municipality_id)
+    .in("status", ["pending", "assigned", "under_review", "in_progress", "cross_dept_pending"])
+    .order("submitted_date", { ascending: false })
+    .limit(100);
+
+  const { data: candidates, error } = await query;
+  if (error) {
+    console.error("Duplicate search query error:", error.message);
+    return { duplicates: [] };
+  }
+
+  const mappedCandidates = (candidates || []).map((c: any) => ({
+    co_uid: c.co_uid,
+    tracking_id: c.tracking_id,
+    title: c.title,
+    description: c.description || "",
+    category_id: c.category_id,
+    category_name: c.complaint_categories?.category_name,
+    department_name: c.departments?.department_name,
+    status: c.status,
+    severity_level: c.severity_level,
+    priority: c.priority,
+    latitude: c.latitude != null ? Number(c.latitude) : null,
+    longitude: c.longitude != null ? Number(c.longitude) : null,
+    ward_number: c.ward_number != null ? Number(c.ward_number) : null,
+    upvote_count: c.upvote_count || 1,
+    submitted_date: c.submitted_date,
+    citizen_id: c.citizen_id,
+  }));
+
+  const matches = DuplicateDetectorService.findDuplicates(params, mappedCandidates, 55);
+
+  // Check if current citizen has already upvoted each candidate
+  const matchedIds = matches.map((m) => m.complaint.co_uid);
+  const userUpvotedSet = new Set<string>();
+
+  if (matchedIds.length > 0) {
+    try {
+      const { data: upvotes } = await supabaseAdmin
+        .from("complaint_upvotes")
+        .select("complaint_id")
+        .eq("citizen_id", citizenId)
+        .in("complaint_id", matchedIds);
+
+      if (upvotes) {
+        upvotes.forEach((u: any) => userUpvotedSet.add(u.complaint_id));
+      }
+    } catch {
+      // Fallback to complaint_updates check if complaint_upvotes table isn't created yet
+      try {
+        const { data: updates } = await supabaseAdmin
+          .from("complaint_updates")
+          .select("complaint_id")
+          .eq("author_id", citizenId)
+          .in("complaint_id", matchedIds)
+          .ilike("note", "%upvoted%");
+        if (updates) {
+          updates.forEach((u: any) => userUpvotedSet.add(u.complaint_id));
+        }
+      } catch {
+        // Safe ignore
+      }
+    }
+  }
+
+  const enrichedMatches = matches.map((m) => {
+    const isAuthor = (candidates || []).find((c: any) => c.co_uid === m.complaint.co_uid)?.citizen_id === citizenId;
+    return {
+      ...m,
+      has_user_upvoted: userUpvotedSet.has(m.complaint.co_uid) || isAuthor,
+      is_user_author: isAuthor,
+    };
+  });
+
+  return { duplicates: enrichedMatches };
+};
+
+/**
+ * Upvote / endorse an existing complaint (+1 citizen affected)
+ */
+export const upvoteComplaint = async (citizenId: string, complaintId: string) => {
+  // 1. Fetch complaint
+  const { data: complaint, error: compErr } = await supabaseAdmin
+    .from("complaints")
+    .select("co_uid, tracking_id, citizen_id, title, priority, status, upvote_count, assigned_department_id")
+    .eq("co_uid", complaintId)
+    .single();
+
+  if (compErr || !complaint) {
+    throw new Error("Complaint not found.");
+  }
+
+  if (complaint.citizen_id === citizenId) {
+    throw new Error("You are the author of this complaint.");
+  }
+
+  // 2. Check if already upvoted
+  let alreadyUpvoted = false;
+  try {
+    const { data: existingUpvote } = await supabaseAdmin
+      .from("complaint_upvotes")
+      .select("id")
+      .eq("complaint_id", complaintId)
+      .eq("citizen_id", citizenId)
+      .maybeSingle();
+
+    if (existingUpvote) alreadyUpvoted = true;
+  } catch {
+    // Fallback if table doesn't exist yet
+    const { data: existingUpdates } = await supabaseAdmin
+      .from("complaint_updates")
+      .select("id")
+      .eq("complaint_id", complaintId)
+      .eq("author_id", citizenId)
+      .ilike("note", "%upvoted%");
+
+    if (existingUpdates && existingUpdates.length > 0) alreadyUpvoted = true;
+  }
+
+  if (alreadyUpvoted) {
+    return {
+      success: true,
+      already_upvoted: true,
+      tracking_id: complaint.tracking_id,
+      upvote_count: complaint.upvote_count || 1,
+      message: "You have already upvoted this complaint.",
+    };
+  }
+
+  // 3. Register upvote in complaint_upvotes (if table exists)
+  try {
+    await supabaseAdmin.from("complaint_upvotes").insert({
+      complaint_id: complaintId,
+      citizen_id: citizenId,
+    });
+  } catch (err: any) {
+    console.warn("Could not insert to complaint_upvotes (table might not exist yet):", err.message);
+  }
+
+  // 4. Always record in complaint_updates timeline
+  try {
+    await supabaseAdmin.from("complaint_updates").insert({
+      complaint_id: complaintId,
+      author_id: citizenId,
+      note: "Citizen endorsed and upvoted this complaint (+1 affected resident).",
+      is_internal: false,
+    });
+  } catch (updErr: any) {
+    console.warn("Could not insert to complaint_updates:", updErr.message);
+  }
+
+  // 5. Increment upvote_count & handle auto-priority escalation
+  const currentUpvotes = Number(complaint.upvote_count) || 1;
+  const newUpvoteCount = currentUpvotes + 1;
+
+  let newPriority = complaint.priority;
+  let priorityEscalated = false;
+
+  if (newUpvoteCount >= 10 && complaint.priority !== "urgent") {
+    newPriority = "urgent";
+    priorityEscalated = true;
+  } else if (newUpvoteCount >= 4 && complaint.priority === "low") {
+    newPriority = "medium";
+    priorityEscalated = true;
+  } else if (newUpvoteCount >= 4 && complaint.priority === "medium") {
+    newPriority = "high";
+    priorityEscalated = true;
+  }
+
+  const updates: Record<string, any> = {
+    updated_at: new Date().toISOString(),
+  };
+
+  try {
+    updates.upvote_count = newUpvoteCount;
+    if (priorityEscalated) {
+      updates.priority = newPriority;
+    }
+    await supabaseAdmin
+      .from("complaints")
+      .update(updates)
+      .eq("co_uid", complaintId);
+  } catch (err: any) {
+    console.warn("Could not update complaints upvote_count:", err.message);
+  }
+
+  // 6. Send in-app notification confirming subscription
+  try {
+    const notifService = new NotificationService(supabaseAdmin);
+    await notifService.notifyProfile(
+      citizenId,
+      "Grievance Endorsed",
+      `You are now supporting complaint '${complaint.title}' (${complaint.tracking_id}). You will receive live updates as municipal teams resolve it.`
+    );
+
+    if (priorityEscalated && complaint.assigned_department_id) {
+      await notifService.notifyDepartment(
+        complaint.assigned_department_id,
+        "Priority Escalated (Citizen Endorsements)",
+        `Complaint '${complaint.title}' (${complaint.tracking_id}) has reached ${newUpvoteCount} endorsements and was auto-escalated to ${newPriority.toUpperCase()}.`
+      );
+    }
+  } catch (notifErr: any) {
+    console.warn("Notification dispatch failed:", notifErr.message);
+  }
+
+  return {
+    success: true,
+    tracking_id: complaint.tracking_id,
+    upvote_count: newUpvoteCount,
+    priority_escalated: priorityEscalated,
+    new_priority: newPriority,
+    message: `Thank you! You are now supporting complaint #${complaint.tracking_id}.`,
+  };
+};
+
+export const deleteComplaint = async (
+  citizenId: string,
+  complaintId: string,
+  userClient?: SupabaseClient
+) => {
+  const client = userClient || supabaseAdmin;
+
+  // 1. Fetch complaint and verify ownership
+  const { data: complaint, error: fetchErr } = await client
+    .from("complaints")
+    .select("co_uid, tracking_id, citizen_id, title, status")
+    .eq("co_uid", complaintId)
+    .maybeSingle();
+
+  if (fetchErr) throw new Error(fetchErr.message);
+  if (!complaint) {
+    throw new Error("Complaint not found.");
+  }
+
+  if (complaint.citizen_id !== citizenId) {
+    throw new Error("Unauthorized: You can only remove complaints that you registered.");
+  }
+
+  // 2. Clean up media storage files from Supabase Storage bucket 'complaint-media'
+  try {
+    const storageService = new StorageService(supabaseAdmin);
+    // Remove entire complaint proof folder
+    await storageService.deleteFolder("complaint-media", `${citizenId}/complaints/${complaintId}`);
+
+    // Also remove any files tracked in media table
+    const { data: mediaFiles } = await supabaseAdmin
+      .from("media")
+      .select("file_url")
+      .eq("context", "complaint")
+      .eq("context_id", complaintId);
+
+    if (mediaFiles && mediaFiles.length > 0) {
+      const keys = mediaFiles
+        .map((m: any) => {
+          if (!m.file_url) return null;
+          const match = m.file_url.match(/complaint-media\/(.+)$/);
+          return match ? match[1] : null;
+        })
+        .filter(Boolean) as string[];
+
+      if (keys.length > 0) {
+        await storageService.deleteFiles("complaint-media", keys);
+      }
+    }
+  } catch (storageErr: any) {
+    console.warn(`[deleteComplaint] Storage cleanup warning:`, storageErr.message);
+  }
+
+  // 3. Clean up related child database rows
+  await supabaseAdmin.from("media").delete().eq("context", "complaint").eq("context_id", complaintId);
+  await supabaseAdmin.from("complaint_updates").delete().eq("complaint_id", complaintId);
+  await supabaseAdmin.from("complaint_collaborations").delete().eq("complaint_id", complaintId);
+  await supabaseAdmin.from("complaint_sign_offs").delete().eq("complaint_id", complaintId);
+  await supabaseAdmin.from("complaint_upvotes").delete().eq("complaint_id", complaintId);
+
+  // 4. Delete the complaint record itself
+  const { error: delErr } = await supabaseAdmin
+    .from("complaints")
+    .delete()
+    .eq("co_uid", complaintId)
+    .eq("citizen_id", citizenId);
+
+  if (delErr) {
+    throw new Error(`Failed to delete complaint: ${delErr.message}`);
+  }
+
+  // 5. Audit log entry
+  try {
+    await supabaseAdmin.from("audit_logs").insert({
+      actor_id: citizenId,
+      action: "DELETE",
+      resource_type: "complaint",
+      resource_id: complaintId,
+      metadata: {
+        tracking_id: complaint.tracking_id,
+        title: complaint.title,
+        reason: "Citizen requested complaint removal and storage cleanup",
+      },
+    });
+  } catch (auditErr: any) {
+    console.warn("[deleteComplaint] Audit log warning:", auditErr.message);
+  }
+
+  return {
+    success: true,
+    message: `Complaint #${complaint.tracking_id} and all associated media files were removed cleanly.`,
+    complaint_id: complaintId,
+    tracking_id: complaint.tracking_id,
+  };
+};
+

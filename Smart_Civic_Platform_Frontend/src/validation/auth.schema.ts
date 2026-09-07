@@ -30,10 +30,11 @@ export const registerSchema = Yup.object().shape({
     .email('Invalid email address')
     .required('Email is required'),
   phone: Yup.string()
-    .matches(/^(?:\+977-?)?(98|97)\d{8}$/, 'Invalid Nepal phone number')
+    .matches(/^(?:\+977[- ]?)?(?:9[78]\d{8}|0\d{1,2}[- ]?\d{6,7})$/, 'Invalid Nepal phone number (e.g. 98XXXXXXXX or 97XXXXXXXX)')
     .optional(),
   dateOfBirth: Yup.date()
-    .max(new Date(Date.now() - 16 * 365 * 24 * 60 * 60 * 1000), 'Must be at least 16 years old')
+    .max(new Date(Date.now() - 18 * 365.25 * 24 * 60 * 60 * 1000), 'You must be at least 18 years old')
+    .min(new Date(Date.now() - 120 * 365.25 * 24 * 60 * 60 * 1000), 'Invalid date of birth')
     .required('Date of birth is required')
     .typeError('Invalid date'),
   gender: Yup.string()

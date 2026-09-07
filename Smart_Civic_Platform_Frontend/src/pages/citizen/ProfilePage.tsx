@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Box,
@@ -15,6 +15,12 @@ import {
   Alert,
   MenuItem,
   Divider,
+  Tooltip,
+  IconButton,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
 } from "@mui/material";
 import {
   Edit as EditIcon,
@@ -31,12 +37,20 @@ import {
   NotificationsOutlined,
   Wc,
   Assignment,
+  PhotoCamera,
+  Verified as VerifiedIcon,
+  CheckCircle,
+  HourglassEmpty,
+  ErrorOutlined,
+  Close as CloseIcon,
+  ZoomIn,
 } from "@mui/icons-material";
-import { fetchWithAuth, BASE_URL } from "../../api";
+import { fetchWithAuth, BASE_URL, citizenApi } from "../../api";
 import { useAuth } from "../../hooks/useAuth";
 import Swal from "sweetalert2";
 import { KycUpload, type KycUploadPayload } from "../../components/kyc/KycUpload";
 import { profileApi } from "../../api/modules/profile.api";
+import { isAtLeast18, isValidNepalPhone } from "../../validation/kyc.validators";
 
 interface CitizenDetails {
   first_name: string | null;
@@ -53,6 +67,9 @@ interface CitizenDetails {
   identity_number?: string | null;
   identity_front_image_url?: string | null;
   identity_back_image_url?: string | null;
+  profile_picture?: string | null;
+  kyc_verified_at?: string | null;
+  kyc_rejection_reason?: string | null;
 }
 
 interface ProfileData {
@@ -64,6 +81,7 @@ interface ProfileData {
   municipality_id: string | null;
   department_id: string | null;
   created_at: string;
+  profile_picture?: string | null;
   citizen_details: CitizenDetails | null;
 }
 
@@ -168,8 +186,13 @@ export const Profile: React.FC = () => {
     confirm_password: "",
   });
   const [changingPassword, setChangingPassword] = useState(false);
-
   const [tabIndex, setTabIndex] = useState(0);
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [previewDocUrl, setPreviewDocUrl] = useState<string | null>(null);
+  const [previewDocTitle, setPreviewDocTitle] = useState<string>("");
+  const [showReupload, setShowReupload] = useState(false);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -222,6 +245,24 @@ export const Profile: React.FC = () => {
 
   const handleSaveProfile = async () => {
     try {
+      if (form.date_of_birth && !isAtLeast18(form.date_of_birth)) {
+        Swal.fire({
+          icon: "warning",
+          title: "Invalid Date of Birth",
+          text: "You must be at least 18 years old to update your profile.",
+        });
+        return;
+      }
+
+      if (form.phone && !isValidNepalPhone(form.phone)) {
+        Swal.fire({
+          icon: "warning",
+          title: "Invalid Phone Number",
+          text: "Please enter a valid 10-digit Nepal mobile number (e.g. 98XXXXXXXX or 97XXXXXXXX).",
+        });
+        return;
+      }
+
       setSaving(true);
       const payload: Record<string, string> = {};
       if (form.first_name !== (profile?.citizen_details?.first_name || "")) payload.first_name = form.first_name;
@@ -311,6 +352,70 @@ export const Profile: React.FC = () => {
     }
   };
 
+  const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 2 * 1024 * 1024) {
+      Swal.fire({
+        icon: "warning",
+        title: "File Too Large",
+        text: "Please select an image smaller than 2MB.",
+      });
+      return;
+    }
+
+    if (!file.type.startsWith("image/")) {
+      Swal.fire({
+        icon: "warning",
+        title: "Invalid File Type",
+        text: "Please select a valid image file (JPG, PNG, WebP).",
+      });
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = async () => {
+      const base64Data = reader.result as string;
+      try {
+        setUploadingAvatar(true);
+        const res = await profileApi.updateProfilePicture(base64Data);
+        const newUrl = res.data?.profile_picture || res.profile_picture || base64Data;
+
+        setProfile((prev) =>
+          prev
+            ? {
+                ...prev,
+                profile_picture: newUrl,
+                citizen_details: prev.citizen_details
+                  ? { ...prev.citizen_details, profile_picture: newUrl }
+                  : prev.citizen_details,
+              }
+            : prev
+        );
+
+        Swal.fire({
+          icon: "success",
+          title: "Profile Picture Updated",
+          timer: 1500,
+          showConfirmButton: false,
+        });
+      } catch (err: any) {
+        Swal.fire({
+          icon: "error",
+          title: "Upload Failed",
+          text: err.response?.data?.message || err.message || "Failed to update profile picture.",
+        });
+      } finally {
+        setUploadingAvatar(false);
+        if (fileInputRef.current) {
+          fileInputRef.current.value = "";
+        }
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
   if (loading) {
     return (
       <Box display="flex" justifyContent="center" alignItems="center" minHeight="60vh">
@@ -331,6 +436,10 @@ export const Profile: React.FC = () => {
   const displayName = cd
     ? `${cd.first_name || ""}${cd.middle_name ? " " + cd.middle_name : ""} ${cd.last_name || ""}`.trim()
     : profile.full_name;
+
+  const currentAvatarUrl = cd?.profile_picture || profile.profile_picture || undefined;
+  const isKycVerified = cd?.kyc_status === "verified";
+  const isKycPending = cd?.kyc_status === "pending";
 
   const recentComplaints = dashboard?.recentComplaints || [];
 
@@ -353,19 +462,83 @@ export const Profile: React.FC = () => {
               zIndex: 2,
             }}
           >
-            <Avatar
-              sx={{
-                width: { xs: 96, sm: 112 },
-                height: { xs: 96, sm: 112 },
-                bgcolor: "primary.dark",
-                fontSize: { xs: "2.5rem", sm: "3rem" },
-                fontWeight: "bold",
-                border: "4px solid white",
-                boxShadow: "0 2px 12px rgba(0,0,0,0.15)",
-              }}
-            >
-              {getInitials(displayName)}
-            </Avatar>
+            <Box position="relative" display="inline-block">
+              <Avatar
+                src={currentAvatarUrl}
+                alt={displayName}
+                sx={{
+                  width: { xs: 96, sm: 112 },
+                  height: { xs: 96, sm: 112 },
+                  bgcolor: "primary.dark",
+                  fontSize: { xs: "2.5rem", sm: "3rem" },
+                  fontWeight: "bold",
+                  border: "4px solid white",
+                  boxShadow: isKycVerified
+                    ? "0 0 0 3px #2563EB, 0 4px 16px rgba(37,99,235,0.35)"
+                    : "0 2px 12px rgba(0,0,0,0.15)",
+                }}
+              >
+                {getInitials(displayName)}
+              </Avatar>
+
+              {/* Verified Badge */}
+              {isKycVerified && (
+                <Tooltip title="KYC Identity Verified" arrow>
+                  <Box
+                    sx={{
+                      position: "absolute",
+                      bottom: 2,
+                      right: 2,
+                      bgcolor: "#2563EB",
+                      borderRadius: "50%",
+                      width: 28,
+                      height: 28,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      border: "2px solid white",
+                      boxShadow: "0 2px 8px rgba(37,99,235,0.4)",
+                      zIndex: 3,
+                    }}
+                  >
+                    <VerifiedIcon sx={{ fontSize: 18, color: "white" }} />
+                  </Box>
+                </Tooltip>
+              )}
+
+              {/* Upload photo button */}
+              <Tooltip title="Upload Profile Picture" arrow>
+                <IconButton
+                  component="label"
+                  size="small"
+                  disabled={uploadingAvatar}
+                  sx={{
+                    position: "absolute",
+                    top: -4,
+                    right: -4,
+                    bgcolor: "background.paper",
+                    boxShadow: 2,
+                    border: "1px solid",
+                    borderColor: "divider",
+                    "&:hover": { bgcolor: "grey.100" },
+                    zIndex: 3,
+                  }}
+                >
+                  {uploadingAvatar ? (
+                    <CircularProgress size={16} />
+                  ) : (
+                    <PhotoCamera sx={{ fontSize: 16 }} color="primary" />
+                  )}
+                  <input
+                    type="file"
+                    hidden
+                    ref={fileInputRef}
+                    accept="image/jpeg,image/png,image/webp"
+                    onChange={handleAvatarChange}
+                  />
+                </IconButton>
+              </Tooltip>
+            </Box>
           </Box>
         </Box>
 
@@ -392,6 +565,36 @@ export const Profile: React.FC = () => {
                 </Typography>
               </Box>
               <Chip label="Citizen" size="small" color="primary" variant="outlined" />
+              {isKycVerified ? (
+                <Chip
+                  icon={<VerifiedIcon sx={{ fontSize: "16px !important", color: "#2563EB !important" }} />}
+                  label="KYC Verified"
+                  size="small"
+                  sx={{
+                    bgcolor: "rgba(37, 99, 235, 0.08)",
+                    color: "#2563EB",
+                    border: "1px solid #93C5FD",
+                    fontWeight: 700,
+                  }}
+                />
+              ) : isKycPending ? (
+                <Chip
+                  icon={<HourglassEmpty sx={{ fontSize: "14px !important" }} />}
+                  label="KYC Pending"
+                  size="small"
+                  color="warning"
+                  variant="outlined"
+                  sx={{ fontWeight: 600 }}
+                />
+              ) : (
+                <Chip
+                  label="KYC Unverified"
+                  size="small"
+                  color="default"
+                  variant="outlined"
+                  sx={{ color: "text.secondary" }}
+                />
+              )}
             </Box>
           </Box>
           <Button
@@ -534,52 +737,304 @@ export const Profile: React.FC = () => {
           {/* ═══ KYC Tab ═══ */}
           {tabIndex === 2 && (
             <Box>
-              {profile.citizen_details?.kyc_status === "verified" ? (
-                <Alert severity="success" sx={{ mb: 3 }}>
-                  Your identity has been successfully verified.
-                </Alert>
-              ) : profile.citizen_details?.kyc_status === "pending" ? (
-                <Alert severity="warning" sx={{ mb: 3 }}>
-                  Your identity verification is currently pending review.
-                </Alert>
-              ) : (
-                <Alert severity="info" sx={{ mb: 3 }}>
-                  Please submit your identity documents for KYC verification.
-                </Alert>
-              )}
+              {isKycVerified && !showReupload ? (
+                <Box>
+                  <Alert
+                    severity="success"
+                    icon={<CheckCircle fontSize="inherit" />}
+                    sx={{ mb: 3, borderRadius: 2 }}
+                    action={
+                      <Button
+                        color="inherit"
+                        size="small"
+                        onClick={() => setShowReupload(true)}
+                        sx={{ fontWeight: 600, textTransform: "none" }}
+                      >
+                        Re-upload Documents
+                      </Button>
+                    }
+                  >
+                    <Typography variant="subtitle2" fontWeight={700}>
+                      Identity Verified Officially
+                    </Typography>
+                    Your citizen KYC verification is complete and confirmed. Your official profile picture and identity records are verified.
+                  </Alert>
 
-              <KycUpload
-                mode="front-back"
-                initialValues={{
-                  identity_type: profile.citizen_details?.identity_type || "",
-                  identity_number: profile.citizen_details?.identity_number || "",
-                }}
-                onSubmit={async (payload) => {
-                  try {
-                    await profileApi.updateIdentity(payload);
-                    Swal.fire(
-                      "Success",
-                      "Your identity documents have been submitted successfully.",
-                      "success"
-                    );
-                    setProfile((prev) =>
-                      prev
-                        ? {
-                            ...prev,
-                            citizen_details: {
-                              ...prev.citizen_details!,
-                              kyc_status: "pending",
-                              identity_type: payload.identity_type,
-                              identity_number: payload.identity_number,
-                            },
-                          }
-                        : prev
-                    );
-                  } catch (err: any) {
-                    Swal.fire("Error", err.message || "Failed to submit KYC", "error");
-                  }
-                }}
-              />
+                  <Grid container spacing={3}>
+                    {/* Left: Verified Profile Picture Card */}
+                    <Grid size={{ xs: 12, md: 4 }}>
+                      <Card variant="outlined" sx={{ p: 3, textAlign: "center", borderRadius: 3, height: "100%" }}>
+                        <Typography variant="subtitle1" fontWeight={700} gutterBottom>
+                          Verified Profile Picture
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                          Official citizen identification portrait
+                        </Typography>
+
+                        <Box position="relative" display="inline-block" my={1}>
+                          <Avatar
+                            src={currentAvatarUrl}
+                            alt={displayName}
+                            sx={{
+                              width: 120,
+                              height: 120,
+                              mx: "auto",
+                              fontSize: "3rem",
+                              fontWeight: "bold",
+                              bgcolor: "primary.main",
+                              border: "4px solid #2563EB",
+                              boxShadow: "0 4px 20px rgba(37,99,235,0.25)",
+                            }}
+                          >
+                            {getInitials(displayName)}
+                          </Avatar>
+                          <Box
+                            sx={{
+                              position: "absolute",
+                              bottom: 4,
+                              right: 4,
+                              bgcolor: "#2563EB",
+                              borderRadius: "50%",
+                              width: 32,
+                              height: 32,
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              border: "2px solid white",
+                              boxShadow: "0 2px 8px rgba(0,0,0,0.2)",
+                            }}
+                          >
+                            <VerifiedIcon sx={{ fontSize: 20, color: "white" }} />
+                          </Box>
+                        </Box>
+
+                        <Box mt={2}>
+                          <Button
+                            variant="outlined"
+                            size="small"
+                            startIcon={<PhotoCamera />}
+                            onClick={() => fileInputRef.current?.click()}
+                            disabled={uploadingAvatar}
+                            sx={{ textTransform: "none", borderRadius: 2 }}
+                          >
+                            {uploadingAvatar ? "Uploading..." : "Change Profile Photo"}
+                          </Button>
+                        </Box>
+                      </Card>
+                    </Grid>
+
+                    {/* Right: Verified Credentials & Document Proofs */}
+                    <Grid size={{ xs: 12, md: 8 }}>
+                      <Card variant="outlined" sx={{ p: 3, borderRadius: 3, height: "100%" }}>
+                        <Box display="flex" alignItems="center" justifyContent="space-between" mb={2}>
+                          <Typography variant="subtitle1" fontWeight={700}>
+                            Identity Credentials & Documents
+                          </Typography>
+                          <Chip
+                            icon={<VerifiedIcon sx={{ fontSize: "16px !important" }} />}
+                            label="Verified"
+                            color="success"
+                            size="small"
+                            sx={{ fontWeight: 700 }}
+                          />
+                        </Box>
+
+                        <Grid container spacing={2} mb={3}>
+                          <Grid size={{ xs: 12, sm: 6 }}>
+                            <Box sx={{ p: 1.5, bgcolor: "grey.50", borderRadius: 2 }}>
+                              <Typography variant="caption" color="text.secondary" fontWeight={600}>
+                                DOCUMENT TYPE
+                              </Typography>
+                              <Typography variant="body1" fontWeight={600} textTransform="capitalize">
+                                {cd?.identity_type ? cd.identity_type.replace(/_/g, " ") : "Citizenship Card"}
+                              </Typography>
+                            </Box>
+                          </Grid>
+                          <Grid size={{ xs: 12, sm: 6 }}>
+                            <Box sx={{ p: 1.5, bgcolor: "grey.50", borderRadius: 2 }}>
+                              <Typography variant="caption" color="text.secondary" fontWeight={600}>
+                                IDENTITY NUMBER
+                              </Typography>
+                              <Typography variant="body1" fontWeight={600}>
+                                {cd?.identity_number || "—"}
+                              </Typography>
+                            </Box>
+                          </Grid>
+                          {cd?.kyc_verified_at && (
+                            <Grid size={{ xs: 12 }}>
+                              <Box sx={{ p: 1.5, bgcolor: "grey.50", borderRadius: 2 }}>
+                                <Typography variant="caption" color="text.secondary" fontWeight={600}>
+                                  VERIFIED ON
+                                </Typography>
+                                <Typography variant="body2" fontWeight={500}>
+                                  {formatDate(cd.kyc_verified_at)}
+                                </Typography>
+                              </Box>
+                            </Grid>
+                          )}
+                        </Grid>
+
+                        <Typography variant="subtitle2" fontWeight={700} gutterBottom>
+                          Verified Document Images
+                        </Typography>
+                        <Grid container spacing={2}>
+                          {cd?.identity_front_image_url && (
+                            <Grid size={{ xs: 12, sm: 6 }}>
+                              <Card
+                                variant="outlined"
+                                sx={{
+                                  p: 1,
+                                  borderRadius: 2,
+                                  textAlign: "center",
+                                  cursor: "pointer",
+                                  "&:hover": { borderColor: "primary.main" },
+                                }}
+                                onClick={() => {
+                                  setPreviewDocUrl(cd.identity_front_image_url!);
+                                  setPreviewDocTitle("Front Identity Document");
+                                }}
+                              >
+                                <Box
+                                  component="img"
+                                  src={cd.identity_front_image_url}
+                                  alt="Front Document"
+                                  sx={{
+                                    width: "100%",
+                                    height: 120,
+                                    objectFit: "cover",
+                                    borderRadius: 1,
+                                  }}
+                                />
+                                <Box display="flex" alignItems="center" justifyContent="center" gap={0.5} mt={1}>
+                                  <ZoomIn fontSize="small" color="primary" />
+                                  <Typography variant="caption" fontWeight={600}>
+                                    Front Document (Click to view)
+                                  </Typography>
+                                </Box>
+                              </Card>
+                            </Grid>
+                          )}
+                          {cd?.identity_back_image_url && (
+                            <Grid size={{ xs: 12, sm: 6 }}>
+                              <Card
+                                variant="outlined"
+                                sx={{
+                                  p: 1,
+                                  borderRadius: 2,
+                                  textAlign: "center",
+                                  cursor: "pointer",
+                                  "&:hover": { borderColor: "primary.main" },
+                                }}
+                                onClick={() => {
+                                  setPreviewDocUrl(cd.identity_back_image_url!);
+                                  setPreviewDocTitle("Back Identity Document");
+                                }}
+                              >
+                                <Box
+                                  component="img"
+                                  src={cd.identity_back_image_url}
+                                  alt="Back Document"
+                                  sx={{
+                                    width: "100%",
+                                    height: 120,
+                                    objectFit: "cover",
+                                    borderRadius: 1,
+                                  }}
+                                />
+                                <Box display="flex" alignItems="center" justifyContent="center" gap={0.5} mt={1}>
+                                  <ZoomIn fontSize="small" color="primary" />
+                                  <Typography variant="caption" fontWeight={600}>
+                                    Back Document (Click to view)
+                                  </Typography>
+                                </Box>
+                              </Card>
+                            </Grid>
+                          )}
+                        </Grid>
+                      </Card>
+                    </Grid>
+                  </Grid>
+                </Box>
+              ) : (
+                <Box>
+                  {isKycPending ? (
+                    <Alert severity="warning" icon={<HourglassEmpty fontSize="inherit" />} sx={{ mb: 3, borderRadius: 2 }}>
+                      <Typography variant="subtitle2" fontWeight={700}>
+                        Verification Pending
+                      </Typography>
+                      Your identity documents have been submitted and are awaiting municipal approval.
+                    </Alert>
+                  ) : cd?.kyc_status === "rejected" ? (
+                    <Alert severity="error" icon={<ErrorOutlined fontSize="inherit" />} sx={{ mb: 3, borderRadius: 2 }}>
+                      <Typography variant="subtitle2" fontWeight={700}>
+                        Identity Verification Rejected
+                      </Typography>
+                      {cd.kyc_rejection_reason || "Document verification was rejected. Please re-upload clear photos of your valid identity document."}
+                    </Alert>
+                  ) : (
+                    <Alert severity="info" sx={{ mb: 3, borderRadius: 2 }}>
+                      Please submit your identity documents for citizen KYC verification.
+                    </Alert>
+                  )}
+
+                  {showReupload && (
+                    <Box mb={2} display="flex" justifyContent="flex-end">
+                      <Button
+                        size="small"
+                        onClick={() => setShowReupload(false)}
+                        sx={{ textTransform: "none" }}
+                      >
+                        Cancel & View Current Verified Credentials
+                      </Button>
+                    </Box>
+                  )}
+
+                  <KycUpload
+                    mode="front-back"
+                    initialValues={{
+                      identity_type: cd?.identity_type || "",
+                      identity_number: cd?.identity_number || "",
+                    }}
+                    onSubmit={async (payload) => {
+                      try {
+                        await citizenApi.uploadIdentity({
+                          identity_type: payload.identity_type as any,
+                          identity_number: payload.identity_number,
+                          front_image: payload.front_image || payload.identity_document || "",
+                          back_image: payload.back_image || "",
+                        });
+                        Swal.fire(
+                          "Success",
+                          "Your identity documents have been submitted successfully for verification.",
+                          "success"
+                        );
+                        setProfile((prev) =>
+                          prev
+                            ? {
+                                ...prev,
+                                citizen_details: {
+                                  ...prev.citizen_details!,
+                                  kyc_status: "pending",
+                                  identity_type: payload.identity_type,
+                                  identity_number: payload.identity_number,
+                                  identity_front_image_url: payload.front_image || payload.identity_document || null,
+                                  identity_back_image_url: payload.back_image || null,
+                                },
+                              }
+                            : prev
+                        );
+                        setShowReupload(false);
+                      } catch (err: any) {
+                        Swal.fire(
+                          "Error",
+                          err.response?.data?.message || err.message || "Failed to submit KYC",
+                          "error"
+                        );
+                      }
+                    }}
+                  />
+                </Box>
+              )}
             </Box>
           )}
 
@@ -701,6 +1156,41 @@ export const Profile: React.FC = () => {
           </Grid>
         </Grid>
       </Card>
+
+      {/* ─── Document Preview Dialog ─── */}
+      <Dialog
+        open={Boolean(previewDocUrl)}
+        onClose={() => setPreviewDocUrl(null)}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle sx={{ m: 0, p: 2, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <Typography variant="h6" fontWeight="bold">
+            {previewDocTitle || "Document Preview"}
+          </Typography>
+          <IconButton onClick={() => setPreviewDocUrl(null)} size="small">
+            <CloseIcon />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent dividers sx={{ textAlign: "center", bgcolor: "#f8fafc", p: 3 }}>
+          {previewDocUrl && (
+            <img
+              src={previewDocUrl}
+              alt={previewDocTitle}
+              style={{
+                maxWidth: "100%",
+                maxHeight: "70vh",
+                objectFit: "contain",
+                borderRadius: 8,
+                boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+              }}
+            />
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setPreviewDocUrl(null)}>Close</Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 };

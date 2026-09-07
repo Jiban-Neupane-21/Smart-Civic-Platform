@@ -1,11 +1,23 @@
 import { z } from "zod";
+import { calculateAge, NEPAL_PHONE_REGEX } from "./common.validation";
 
 export const registerSchema = z.object({
   full_name:        z.string().min(1, "Full name is required"),
   email:            z.string().email("Invalid email address"),
   password:         z.string().min(8, "Password must be at least 8 characters"),
-  phone:            z.string().optional().transform(val => val?.trim() || undefined),
-  date_of_birth:    z.string().optional().transform(val => val?.trim() || undefined),
+  phone:            z.string().optional().transform(val => val?.trim() || undefined).refine(val => !val || NEPAL_PHONE_REGEX.test(val), {
+                      message: "Invalid Nepal phone number format.",
+                    }),
+  date_of_birth:    z.string().optional().transform(val => val?.trim() || undefined).refine(
+                      val => {
+                        if (!val) return true;
+                        const age = calculateAge(val);
+                        return age >= 18 && age <= 120;
+                      },
+                      {
+                        message: "You must be at least 18 years old to register.",
+                      }
+                    ),
   full_address:     z.string().optional().transform(val => val?.trim() || undefined),
   current_address:  z.string().optional().transform(val => val?.trim() || undefined),
   gender:           z.preprocess(

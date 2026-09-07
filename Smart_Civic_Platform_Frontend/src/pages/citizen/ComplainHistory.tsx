@@ -16,9 +16,15 @@ import {
   CircularProgress,
   Alert,
   Button,
+  TablePagination,
+  IconButton,
+  Tooltip,
+  Stack,
 } from "@mui/material";
 import { Search, Refresh } from "@mui/icons-material";
+import { FiTrash2, FiEye } from "react-icons/fi";
 import { useNavigate } from "react-router-dom";
+import Swal from "sweetalert2";
 import { complaintsApi } from "../../api/modules/complaints.api";
 import type { ComplaintHistoryResponse } from "../../api/types/complaints.types";
 
@@ -47,6 +53,9 @@ export const ComplaintReport: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState(ALL_STATUSES);
 
+  const [page, setPage] = useState<number>(0);
+  const [rowsPerPage, setRowsPerPage] = useState<number>(10);
+
   const fetchComplaints = async () => {
     setLoading(true);
     setError(null);
@@ -70,6 +79,11 @@ export const ComplaintReport: React.FC = () => {
     fetchComplaints();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [statusFilter]);
+
+  // Reset page when search term or status filter changes
+  useEffect(() => {
+    setPage(0);
+  }, [searchTerm, statusFilter]);
 
   const getStatusChipProps = (status: string): { color: any; label: string; sx?: any } => {
     switch (status) {
@@ -115,6 +129,46 @@ export const ComplaintReport: React.FC = () => {
       );
     });
   }, [complaints, searchTerm]);
+
+  // Paginated complaints slice (10 items per page by default)
+  const paginatedComplaints = useMemo(() => {
+    const start = page * rowsPerPage;
+    return filteredComplaints.slice(start, start + rowsPerPage);
+  }, [filteredComplaints, page, rowsPerPage]);
+
+  const handleDeleteComplaint = async (item: ComplaintHistoryResponse, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const result = await Swal.fire({
+      title: "Remove Complaint?",
+      text: `Are you sure you want to remove complaint #${item.tracking_id}? Attached proof photos, videos, and history records will be permanently removed to free up storage.`,
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonColor: "#d32f2f",
+      cancelButtonColor: "#6B7280",
+      confirmButtonText: "Yes, Remove Complaint",
+      cancelButtonText: "Keep Complaint",
+    });
+
+    if (!result.isConfirmed) return;
+
+    try {
+      const res = await complaintsApi.deleteComplaint(item.co_uid);
+      if (res.success) {
+        Swal.fire({
+          icon: "success",
+          title: "Complaint Removed",
+          text: res.message || "Complaint and media files were removed cleanly.",
+          timer: 2000,
+          showConfirmButton: false,
+        });
+        fetchComplaints();
+      } else {
+        Swal.fire("Error", (res as any).error || "Failed to remove complaint.", "error");
+      }
+    } catch (err: any) {
+      Swal.fire("Error", err.response?.data?.message || err.message || "Failed to delete complaint.", "error");
+    }
+  };
 
   return (
     <Box p={3}>
@@ -187,17 +241,18 @@ export const ComplaintReport: React.FC = () => {
               <TableCell sx={{ fontWeight: "bold" }}>Severity</TableCell>
               <TableCell sx={{ fontWeight: "bold" }}>Submitted Date</TableCell>
               <TableCell sx={{ fontWeight: "bold" }}>Status</TableCell>
+              <TableCell align="center" sx={{ fontWeight: "bold" }}>Actions</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
             {loading ? (
               <TableRow>
-                <TableCell colSpan={6} align="center" sx={{ py: 6 }}>
+                <TableCell colSpan={7} align="center" sx={{ py: 6 }}>
                   <CircularProgress />
                 </TableCell>
               </TableRow>
-            ) : filteredComplaints.length > 0 ? (
-              filteredComplaints.map((row) => (
+            ) : paginatedComplaints.length > 0 ? (
+              paginatedComplaints.map((row) => (
                 <TableRow 
                   key={row.co_uid} 
                   hover 
@@ -242,11 +297,33 @@ export const ComplaintReport: React.FC = () => {
                       {...getStatusChipProps(row.status)}
                     />
                   </TableCell>
+                  <TableCell align="center" onClick={(e) => e.stopPropagation()}>
+                    <Stack direction="row" spacing={0.5} justifyContent="center">
+                      <Tooltip title="View Complaint Details">
+                        <IconButton
+                          size="small"
+                          color="primary"
+                          onClick={() => navigate(`/citizen/complaints/${row.co_uid}`)}
+                        >
+                          <FiEye size={18} />
+                        </IconButton>
+                      </Tooltip>
+                      <Tooltip title="Remove / Withdraw Complaint">
+                        <IconButton
+                          size="small"
+                          color="error"
+                          onClick={(e) => handleDeleteComplaint(row, e)}
+                        >
+                          <FiTrash2 size={18} />
+                        </IconButton>
+                      </Tooltip>
+                    </Stack>
+                  </TableCell>
                 </TableRow>
               ))
             ) : (
               <TableRow>
-                <TableCell colSpan={6} align="center" sx={{ py: 6 }}>
+                <TableCell colSpan={7} align="center" sx={{ py: 6 }}>
                   <Typography color="textSecondary" mb={2}>
                     No complaints found matching your criteria.
                   </Typography>
@@ -258,6 +335,23 @@ export const ComplaintReport: React.FC = () => {
             )}
           </TableBody>
         </Table>
+
+        {/* Pagination Toolbar */}
+        {filteredComplaints.length > 0 && (
+          <TablePagination
+            rowsPerPageOptions={[5, 10, 25, 50]}
+            component="div"
+            count={filteredComplaints.length}
+            rowsPerPage={rowsPerPage}
+            page={page}
+            onPageChange={(_, newPage) => setPage(newPage)}
+            onRowsPerPageChange={(e) => {
+              setRowsPerPage(parseInt(e.target.value, 10));
+              setPage(0);
+            }}
+            sx={{ borderTop: 1, borderColor: "divider" }}
+          />
+        )}
       </TableContainer>
     </Box>
   );

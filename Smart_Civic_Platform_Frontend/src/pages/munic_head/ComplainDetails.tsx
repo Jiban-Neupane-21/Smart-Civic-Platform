@@ -166,7 +166,7 @@ export default function ComplainDetails() {
                     {c.tracking_id}
                   </Typography>
                   {isScopeMismatch(c) && (
-                    <Chip size="small" icon={<ErrorOutline fontSize="small" />} label="Out of Scope" color="error" variant="outlined" sx={{ mt: 0.5, height: 20, fontSize: "0.65rem" }} />
+                    <Chip size="small" icon={<ErrorOutlined fontSize="small" />} label="Out of Scope" color="error" variant="outlined" sx={{ mt: 0.5, height: 20, fontSize: "0.65rem" }} />
                   )}
                 </TableCell>
                 <TableCell>

@@ -22,6 +22,12 @@ import { Upload, FileText, CheckCircle } from "lucide-react";
 import { useAuth } from "../../hooks/useAuth";
 import { departmentApi } from "../../api/modules/department.api";
 import Swal from "sweetalert2";
+import {
+  isValidNepalPhone,
+  isValidName,
+  isValidIdentityNumber,
+  isValidEmail,
+} from "../../validation/kyc.validators";
 
 const steps = ["Department Details", "Leadership Info", "Verification Documents", "Review & Submit"];
 
@@ -80,6 +86,7 @@ export const DepartmentKycOnboarding: React.FC = () => {
   const [activeStep, setActiveStep] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   // Step 1: Department Details
   const [logoBase64, setLogoBase64] = useState<string | null>(null);
@@ -124,12 +131,71 @@ export const DepartmentKycOnboarding: React.FC = () => {
     fetchExistingData();
   }, []);
 
-  const handleNext = () => setActiveStep((prev) => prev + 1);
-  const handleBack = () => setActiveStep((prev) => prev - 1);
+  const validateStep = (step: number): boolean => {
+    const errors: Record<string, string> = {};
+
+    if (step === 0) {
+      if (officialEmail.trim() && !isValidEmail(officialEmail)) {
+        errors.officialEmail = "Please enter a valid official email address";
+      }
+    } else if (step === 1) {
+      if (!headName.trim()) {
+        errors.headName = "Department head name is required";
+      } else if (!isValidName(headName)) {
+        errors.headName = "Please enter a valid legal name (at least 3 characters, letters only)";
+      }
+
+      if (headEmail.trim() && !isValidEmail(headEmail)) {
+        errors.headEmail = "Please enter a valid email address";
+      }
+
+      if (!headContact.trim()) {
+        errors.headContact = "Head contact phone number is required";
+      } else if (!isValidNepalPhone(headContact)) {
+        errors.headContact = "Must be a valid 10-digit Nepal mobile number (e.g. 98XXXXXXXX)";
+      }
+    } else if (step === 2) {
+      if (!headIdentityType) {
+        errors.headIdentityType = "Please select identity document type";
+      }
+
+      if (!headIdentityNumber.trim()) {
+        errors.headIdentityNumber = "Identity document number is required";
+      } else if (!isValidIdentityNumber(headIdentityType, headIdentityNumber)) {
+        errors.headIdentityNumber = `Invalid ${headIdentityType} format`;
+      }
+
+      if (!headIdentityFront) {
+        errors.headIdentityFront = "Front photo/scan of identity document is required";
+      }
+
+      const requiresBack = ["citizenship", "national_id"].includes(headIdentityType);
+      if (requiresBack && !headIdentityBack) {
+        errors.headIdentityBack = `Back photo/scan is required for ${headIdentityType}`;
+      }
+    }
+
+    setFieldErrors(errors);
+    if (Object.keys(errors).length > 0) {
+      setError(Object.values(errors)[0]);
+      return false;
+    }
+    return true;
+  };
+
+  const handleNext = () => {
+    setError(null);
+    if (!validateStep(activeStep)) return;
+    setActiveStep((prev) => prev + 1);
+  };
+
+  const handleBack = () => {
+    setError(null);
+    setActiveStep((prev) => prev - 1);
+  };
 
   const handleSubmit = async () => {
-    if (!headName || !headContact || !headIdentityType || !headIdentityNumber || !headIdentityFront) {
-      setError("Please ensure all mandatory fields and documents are provided.");
+    if (!validateStep(0) || !validateStep(1) || !validateStep(2)) {
       return;
     }
 
@@ -215,34 +281,133 @@ export const DepartmentKycOnboarding: React.FC = () => {
             </Grid>
             <Grid item xs={12}><TextField fullWidth label="Department Name" disabled value={departmentName} /></Grid>
             <Grid item xs={12}><TextField fullWidth label="Department Category" disabled value={departmentCategory} /></Grid>
-            <Grid item xs={12}><TextField fullWidth label="Official Email" value={officialEmail} onChange={(e) => setOfficialEmail(e.target.value)} /></Grid>
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                label="Official Email"
+                value={officialEmail}
+                error={!!fieldErrors.officialEmail}
+                helperText={fieldErrors.officialEmail}
+                onChange={(e) => {
+                  setOfficialEmail(e.target.value);
+                  if (fieldErrors.officialEmail) setFieldErrors((prev) => ({ ...prev, officialEmail: "" }));
+                }}
+              />
+            </Grid>
           </Grid>
         )}
 
         {activeStep === 1 && (
           <Grid container spacing={3}>
             <Grid item xs={12}><Divider>Department Head Details</Divider></Grid>
-            <Grid item xs={12}><TextField fullWidth label="Head Name *" value={headName} onChange={(e) => setHeadName(e.target.value)} /></Grid>
-            <Grid item xs={12} sm={6}><TextField fullWidth label="Head Email" value={headEmail} onChange={(e) => setHeadEmail(e.target.value)} /></Grid>
-            <Grid item xs={12} sm={6}><TextField fullWidth label="Head Contact No. *" value={headContact} onChange={(e) => setHeadContact(e.target.value)} /></Grid>
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                label="Head Name *"
+                value={headName}
+                error={!!fieldErrors.headName}
+                helperText={fieldErrors.headName}
+                onChange={(e) => {
+                  setHeadName(e.target.value);
+                  if (fieldErrors.headName) setFieldErrors((prev) => ({ ...prev, headName: "" }));
+                }}
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                label="Head Email"
+                value={headEmail}
+                error={!!fieldErrors.headEmail}
+                helperText={fieldErrors.headEmail}
+                onChange={(e) => {
+                  setHeadEmail(e.target.value);
+                  if (fieldErrors.headEmail) setFieldErrors((prev) => ({ ...prev, headEmail: "" }));
+                }}
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                label="Head Contact No. *"
+                value={headContact}
+                error={!!fieldErrors.headContact}
+                helperText={fieldErrors.headContact || "10-digit mobile (98XXXXXXXX or 97XXXXXXXX)"}
+                onChange={(e) => {
+                  setHeadContact(e.target.value);
+                  if (fieldErrors.headContact) setFieldErrors((prev) => ({ ...prev, headContact: "" }));
+                }}
+              />
+            </Grid>
           </Grid>
         )}
 
         {activeStep === 2 && (
           <Grid container spacing={3}>
             <Grid item xs={12} sm={6}>
-              <FormControl fullWidth>
+              <FormControl fullWidth error={!!fieldErrors.headIdentityType}>
                 <InputLabel>Identity Type *</InputLabel>
-                <Select value={headIdentityType} label="Identity Type *" onChange={(e) => setHeadIdentityType(e.target.value)}>
-                  <MenuItem value="citizenship">Citizenship</MenuItem>
-                  <MenuItem value="national_id">National ID</MenuItem>
+                <Select
+                  value={headIdentityType}
+                  label="Identity Type *"
+                  onChange={(e) => {
+                    setHeadIdentityType(e.target.value);
+                    if (fieldErrors.headIdentityType) setFieldErrors((prev) => ({ ...prev, headIdentityType: "" }));
+                  }}
+                >
+                  <MenuItem value="citizenship">Citizenship Card (नागरिकता)</MenuItem>
+                  <MenuItem value="national_id">National Identity Card (राष्ट्रिय परिचयपत्र)</MenuItem>
                   <MenuItem value="passport">Passport</MenuItem>
                 </Select>
               </FormControl>
             </Grid>
-            <Grid item xs={12} sm={6}><TextField fullWidth label="Identity Number *" value={headIdentityNumber} onChange={(e) => setHeadIdentityNumber(e.target.value)} /></Grid>
-            <Grid item xs={12} sm={6}><ImageUploadBox label="Front Identity Photo *" value={headIdentityFront} setter={setHeadIdentityFront} /></Grid>
-            <Grid item xs={12} sm={6}><ImageUploadBox label="Back Identity Photo" value={headIdentityBack} setter={setHeadIdentityBack} /></Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                label="Identity Number *"
+                value={headIdentityNumber}
+                error={!!fieldErrors.headIdentityNumber}
+                helperText={fieldErrors.headIdentityNumber}
+                onChange={(e) => {
+                  setHeadIdentityNumber(e.target.value);
+                  if (fieldErrors.headIdentityNumber) setFieldErrors((prev) => ({ ...prev, headIdentityNumber: "" }));
+                }}
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <ImageUploadBox
+                label="Front Identity Photo *"
+                value={headIdentityFront}
+                setter={(val) => {
+                  setHeadIdentityFront(val);
+                  if (fieldErrors.headIdentityFront) setFieldErrors((prev) => ({ ...prev, headIdentityFront: "" }));
+                }}
+              />
+              {fieldErrors.headIdentityFront && (
+                <Typography variant="caption" color="error" sx={{ mt: 0.5, display: "block" }}>
+                  {fieldErrors.headIdentityFront}
+                </Typography>
+              )}
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <ImageUploadBox
+                label={
+                  ["citizenship", "national_id"].includes(headIdentityType)
+                    ? "Back Identity Photo *"
+                    : "Back Identity Photo (Optional for Passport)"
+                }
+                value={headIdentityBack}
+                setter={(val) => {
+                  setHeadIdentityBack(val);
+                  if (fieldErrors.headIdentityBack) setFieldErrors((prev) => ({ ...prev, headIdentityBack: "" }));
+                }}
+              />
+              {fieldErrors.headIdentityBack && (
+                <Typography variant="caption" color="error" sx={{ mt: 0.5, display: "block" }}>
+                  {fieldErrors.headIdentityBack}
+                </Typography>
+              )}
+            </Grid>
           </Grid>
         )}
 

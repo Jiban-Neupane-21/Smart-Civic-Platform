@@ -34,6 +34,7 @@ export interface Complaint {
   assignedStaffId?: string;
   assignedStaffName?: string;
   attachments?: string[];
+  media?: ComplaintMediaItem[];
   comments?: ComplaintComment[];
   createdAt: string;
   updatedAt: string;
@@ -91,6 +92,7 @@ export interface ComplaintResponse {
   sla_breached: boolean;
   complaint_categories?: { category_name: string };
   departments?: { department_name: string };
+  media?: ComplaintMediaItem[];
 }
 
 export interface ComplaintUpdate {
@@ -106,6 +108,22 @@ export interface ComplaintHistoryEntry {
   old_value: string | null;
   new_value: string | null;
   created_at: string;
+}
+
+export interface MediaProofPayload {
+  media_base64: string;
+  file_name: string;
+  media_type: 'image' | 'video';
+  file_size?: number;
+}
+
+export interface ComplaintMediaItem {
+  id: string;
+  file_url: string;
+  media_type?: 'image' | 'video' | string;
+  file_name?: string;
+  file_size_bytes?: number;
+  created_at?: string;
 }
 
 export interface SubmitComplaintPayload {
@@ -125,6 +143,7 @@ export interface SubmitComplaintPayload {
     description: string;
     severity_level: 'low' | 'medium' | 'high';
   };
+  media?: MediaProofPayload[];
   step_completed: number;
 }
 

@@ -29,6 +29,7 @@ import DeptManageTeam from "../pages/dept_head/ManageTeam";
 import DeptComplainDetails from "../pages/dept_head/ComplainDetails";
 import DeptNotification from "../pages/dept_head/Notification";
 import DeptProfilePage from "../pages/dept_head/DeptProfilePage";
+import DeptReportAnalytics from "../pages/dept_head/ReportAnalytics";
 
 // Staff Pages
 import StaffDashboard from "../pages/staff/Homepage";
@@ -49,6 +50,7 @@ import MunicNotification from "../pages/munic_head/Notification";
 import MunicProfilePage from "../pages/munic_head/ProfilePage";
 import ManageCrossDeptTeam from "../pages/munic_head/ManageCrossDeptTeam";
 import MunicipalityKycUpdatePage from "../pages/munic_head/MunicipalityKycUpdatePage";
+import MunicCitizenKycVerification from "../pages/munic_head/CitizenKycVerification";
 
 function AppRoute() {
   return (
@@ -86,6 +88,7 @@ function AppRoute() {
             <Route path="/superadmin/users" element={<UserManagement />} />
             <Route path="/superadmin/audit-log" element={<AuditLog />} />
             <Route path="/superadmin/system-setting" element={<SystemSetting />} />
+            <Route path="/superadmin/notification" element={<Notifications />} />
           </Route>
         </Route>
 
@@ -95,6 +98,7 @@ function AppRoute() {
         >
           <Route element={<MainLayout />}>
             <Route path="/municipality_head/dashboard" element={<MunicHomepage />} />
+            <Route path="/municipality_head/citizen-kyc" element={<MunicCitizenKycVerification />} />
             <Route path="/municipality_head/manage-department-staff" element={<MunicManageDept />} />
             <Route path="/municipality_head/manage-staff" element={<MunicManageStaff />} />
             <Route path="/municipality_head/complaint-detail" element={<MunicComplainDetails />} />
@@ -133,6 +137,14 @@ function AppRoute() {
             <Route
               path="/department_head/profile"
               element={<DeptProfilePage />}
+            />
+            <Route
+              path="/department_head/report-&-analytics"
+              element={<DeptReportAnalytics />}
+            />
+            <Route
+              path="/department-head/report-&-analytics"
+              element={<DeptReportAnalytics />}
             />
           </Route>
         </Route>

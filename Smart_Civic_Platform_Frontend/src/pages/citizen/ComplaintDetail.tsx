@@ -33,6 +33,8 @@ import BusinessIcon from "@mui/icons-material/Business";
 import AccessTimeIcon from "@mui/icons-material/AccessTime";
 import ThumbUpIcon from "@mui/icons-material/ThumbUp";
 import GavelIcon from "@mui/icons-material/Gavel";
+import AttachFileIcon from "@mui/icons-material/AttachFile";
+import { FiTrash2 } from "react-icons/fi";
 import { format, parseISO } from "date-fns";
 import Swal from "sweetalert2";
 
@@ -208,10 +210,44 @@ export const CitizenComplaintDetailPage: React.FC = () => {
 
   const isResolved = complaint.status === "resolved";
 
+  const handleDeleteComplaint = async () => {
+    if (!complaint) return;
+    const result = await Swal.fire({
+      title: "Remove Complaint?",
+      text: `Are you sure you want to remove complaint #${complaint.tracking_id || complaint.co_uid}? All attached proof photos, videos, and history records will be permanently removed to free up storage.`,
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonColor: "#d32f2f",
+      cancelButtonColor: "#6B7280",
+      confirmButtonText: "Yes, Remove Complaint",
+      cancelButtonText: "Keep Complaint",
+    });
+
+    if (!result.isConfirmed) return;
+
+    try {
+      const res = await complaintsApi.deleteComplaint(complaint.co_uid);
+      if (res.success) {
+        Swal.fire({
+          icon: "success",
+          title: "Complaint Removed",
+          text: res.message || "Complaint has been deleted cleanly.",
+          timer: 2000,
+          showConfirmButton: false,
+        });
+        navigate("/citizen/complaints");
+      } else {
+        Swal.fire("Error", (res as any).error || "Failed to remove complaint.", "error");
+      }
+    } catch (err: any) {
+      Swal.fire("Error", err.response?.data?.message || err.message || "Failed to delete complaint.", "error");
+    }
+  };
+
   return (
-    <Box sx={{ p: { xs: 2, md: 4 }, maxWidth: 1200, mx: "auto" }}>
-      {/* Top Bar */}
-      <Stack direction="row" alignItems="center" spacing={2} sx={{ mb: 3 }}>
+    <Box sx={{ maxWidth: 1200, mx: "auto", p: { xs: 2, md: 3 } }}>
+      {/* Header with Back button and Status */}
+      <Stack direction="row" alignItems="center" spacing={2} sx={{ mb: 3 }} flexWrap="wrap">
         <IconButton onClick={() => navigate("/citizen/complaints")} sx={{ border: "1px solid", borderColor: "divider" }}>
           <ArrowBackIcon />
         </IconButton>
@@ -223,9 +259,18 @@ export const CitizenComplaintDetailPage: React.FC = () => {
             Submitted on {formatDate(complaint.submitted_date)}
           </Typography>
         </Box>
-        <Box sx={{ ml: "auto !important" }}>
+        <Stack direction="row" spacing={1.5} alignItems="center" sx={{ ml: "auto !important" }}>
           {getStatusChip(complaint.status)}
-        </Box>
+          <Button
+            variant="outlined"
+            color="error"
+            size="small"
+            startIcon={<FiTrash2 size={16} />}
+            onClick={handleDeleteComplaint}
+          >
+            Remove
+          </Button>
+        </Stack>
       </Stack>
 
       {/* Action Banner for Resolved Grievance */}
@@ -339,6 +384,66 @@ export const CitizenComplaintDetailPage: React.FC = () => {
               </Grid>
             </Grid>
           </Card>
+
+          {/* Attached Evidence & Proof Gallery */}
+          {complaint.media && complaint.media.length > 0 && (
+            <Card elevation={0} sx={{ p: 3, borderRadius: 3, border: "1px solid", borderColor: "divider", mb: 3 }}>
+              <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 2 }}>
+                <AttachFileIcon color="primary" />
+                <Typography variant="h6" fontWeight={700}>
+                  Attached Evidence & Proof ({complaint.media.length})
+                </Typography>
+              </Stack>
+              <Divider sx={{ mb: 2 }} />
+              <Grid container spacing={2}>
+                {complaint.media.map((item: any) => {
+                  const isVideo = item.media_type === 'video' || /\.(mp4|webm|mov|3gp|mkv)$/i.test(item.file_url);
+                  return (
+                    <Grid item xs={12} sm={isVideo ? 12 : 6} key={item.id}>
+                      <Paper variant="outlined" sx={{ p: 1.5, borderRadius: 2, bgcolor: "grey.50" }}>
+                        {isVideo ? (
+                          <Box sx={{ borderRadius: 1.5, overflow: 'hidden', bgcolor: '#000' }}>
+                            <video
+                              src={item.file_url}
+                              controls
+                              preload="metadata"
+                              style={{ width: '100%', maxHeight: 260, display: 'block' }}
+                            />
+                          </Box>
+                        ) : (
+                          <Box
+                            component="a"
+                            href={item.file_url}
+                            target="_blank"
+                            rel="noreferrer"
+                            sx={{ display: 'block', height: 160, borderRadius: 1.5, overflow: 'hidden', bgcolor: 'grey.200' }}
+                          >
+                            <img
+                              src={item.file_url}
+                              alt={item.file_name || "Complaint proof"}
+                              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                            />
+                          </Box>
+                        )}
+                        <Box mt={1} display="flex" justifyContent="space-between" alignItems="center">
+                          <Typography variant="body2" fontWeight={600} noWrap title={item.file_name || "Evidence file"}>
+                            {item.file_name || (isVideo ? "Video Evidence" : "Photo Proof")}
+                          </Typography>
+                          <Chip
+                            size="small"
+                            label={isVideo ? "🎬 Video" : "📷 Photo"}
+                            color={isVideo ? "secondary" : "default"}
+                            variant="outlined"
+                            sx={{ fontSize: "0.7rem", height: 22 }}
+                          />
+                        </Box>
+                      </Paper>
+                    </Grid>
+                  );
+                })}
+              </Grid>
+            </Card>
+          )}
         </Grid>
 
         {/* Right Column: Timeline of Updates */}
