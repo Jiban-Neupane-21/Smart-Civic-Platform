@@ -106,14 +106,36 @@ app.use(
     contentSecurityPolicy: false,
   }),
 );
+const allowedLocalOrigins = [
+  "http://localhost:3000",
+  "http://localhost:5173",
+  "http://localhost:8080",
+];
+
+const configuredClientUrls = env.CLIENT_URL
+  ? env.CLIENT_URL.split(",")
+      .map((url) => url.trim().replace(/\/+$/, ""))
+      .filter(Boolean)
+  : [];
+
+const allowedOrigins = new Set([...allowedLocalOrigins, ...configuredClientUrls]);
+
 app.use(
   cors({
-    origin: [
-      "http://localhost:3000",
-      "http://localhost:5173",
-      "http://localhost:8080",
-      ...(env.CLIENT_URL ? [env.CLIENT_URL] : []),
-    ],
+    origin: (origin, callback) => {
+      if (!origin) return callback(null, true);
+
+      const normalizedOrigin = origin.replace(/\/+$/, "");
+
+      if (
+        allowedOrigins.has(normalizedOrigin) ||
+        normalizedOrigin.endsWith(".pages.dev")
+      ) {
+        return callback(null, true);
+      }
+
+      callback(null, false);
+    },
     credentials: true,
   }),
 );

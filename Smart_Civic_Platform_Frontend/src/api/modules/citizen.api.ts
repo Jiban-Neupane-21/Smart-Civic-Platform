@@ -2,8 +2,17 @@ import apiClient from '../client';
 import type { ApiResponse } from '../types';
 import type { CitizenDetails, UpdateCitizenProfileDto } from '../types';
 import type { Complaint, Province, District, Municipality, Ward, AddressPayload, IdentityPayload } from '../types';
+import type { CitizenDashboardData } from '../../types/dashboard.type';
 
 export const citizenApi = {
+  /**
+   * Get citizen dashboard statistics and recent records
+   */
+  getDashboard: async (): Promise<ApiResponse<CitizenDashboardData>> => {
+    const response = await apiClient.get<ApiResponse<CitizenDashboardData>>('/citizen/dashboard');
+    return response.data;
+  },
+
   /**
    * Get citizen profile details
    */

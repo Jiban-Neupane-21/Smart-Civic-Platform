@@ -352,8 +352,11 @@ export const createUserService = async (body: {
 };
 
 export const forgotPasswordService = async (email: string) => {
+  const clientBase = process.env.CLIENT_URL
+    ? process.env.CLIENT_URL.split(",")[0].trim().replace(/\/+$/, "")
+    : "http://localhost:8080";
   const { error } = await supabase.auth.resetPasswordForEmail(email, {
-    redirectTo: `${process.env.CLIENT_URL}/reset-password`,
+    redirectTo: `${clientBase}/reset-password`,
   });
   if (error) throw new Error(error.message);
   return { message: "Password reset email sent if the account exists." };

@@ -25,6 +25,7 @@ import {
   ChevronRight,
 } from "@mui/icons-material";
 import type { CitizenDashboardData } from "../../types/dashboard.type";
+import { citizenApi } from "../../api/modules/citizen.api";
 import { Bold } from "lucide-react";
 
 export const CitizenDashboard: React.FC = () => {
@@ -33,24 +34,22 @@ export const CitizenDashboard: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    // Replace with your actual API integration setup
     const fetchDashboardData = async () => {
       try {
         setLoading(true);
-        const response = await fetch("http://localhost:3000/api/citizen/dashboard", {
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem("access_token")}`,
-          },
-        });
-        const result = await response.json();
+        const result = await citizenApi.getDashboard();
 
-        if (result.success) {
+        if (result.success && result.data) {
           setData(result.data);
         } else {
           setError(result.message || "Failed to fetch dashboard data.");
         }
-      } catch (err) {
-        setError("A network error occurred. Please try again.");
+      } catch (err: any) {
+        setError(
+          err.response?.data?.message ||
+            err.message ||
+            "A network error occurred. Please try again."
+        );
       } finally {
         setLoading(false);
       }

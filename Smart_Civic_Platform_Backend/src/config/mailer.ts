@@ -80,7 +80,10 @@ export const sendMail = async ({
 
 // 1️⃣ Password Reset Email
 export const sendPasswordResetEmail = async (email: string, token: string) => {
-  const link = `${env.CLIENT_URL}/reset-password?token=${token}`;
+  const clientBase = env.CLIENT_URL
+    ? env.CLIENT_URL.split(",")[0].trim().replace(/\/+$/, "")
+    : "http://localhost:8080";
+  const link = `${clientBase}/reset-password?token=${token}`;
 
   const html = `
     <h2>Password Reset</h2>

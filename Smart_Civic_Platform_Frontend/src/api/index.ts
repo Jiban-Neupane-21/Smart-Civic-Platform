@@ -2,7 +2,11 @@
 export { default as apiClient, API_BASE_URL } from './client';
 
 // Legacy Fetch Support & Backward Compatibility Endpoints
-export const BASE_URL = import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000/api';
+export const BASE_URL = (
+  import.meta.env.VITE_API_BASE_URL ||
+  import.meta.env.VITE_API_URL ||
+  'http://localhost:3000/api'
+).replace(/\/+$/, '');
 
 export const API_ENDPOINTS = {
   AUTH: {

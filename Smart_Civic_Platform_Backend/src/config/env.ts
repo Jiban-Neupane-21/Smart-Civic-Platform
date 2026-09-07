@@ -31,8 +31,8 @@ const envSchema = z.object({
   SMTP_USER: z.string().optional(),
   SMTP_PASS: z.string().optional(),
 
-  // Frontend URL (for invite links, reset links)
-  CLIENT_URL: z.string().url().optional(),
+  // Frontend URL (for invite links, reset links, CORS)
+  CLIENT_URL: z.string().optional(),
 });
 
 // ===============================
