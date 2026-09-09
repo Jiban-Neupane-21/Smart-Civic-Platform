@@ -17,4 +17,17 @@ export const departmentApi = {
 
     return result.data;
   },
+
+  getNotices: async (category?: string): Promise<any[]> => {
+    const params = category ? `?category=${encodeURIComponent(category)}` : "";
+    const response = await fetchWithAuth(`${BASE_URL}/department/notices${params}`);
+    const result = (await response.json()) as ApiResponse<any[]>;
+
+    if (!result.success) {
+      throw new Error("Failed to fetch department notices.");
+    }
+
+    return result.data || [];
+  },
 };
+

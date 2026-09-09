@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import crypto from "crypto";
 import { SuperadminService } from "../services/superadmin.services";
 import { createUserService } from "../../auth/services/auth.service";
+import { AuditService } from "../../../service/audit.service";
 
 export class SuperadminController {
   constructor(private service: SuperadminService) {}
@@ -91,7 +92,8 @@ export class SuperadminController {
           municipality_id,
           profile.id,
           head_name,
-          head_email
+          head_email,
+          (req as any).user?.id
         );
       } catch (activateError: any) {
         // Rollback created user account
@@ -208,7 +210,7 @@ export class SuperadminController {
         return;
       }
 
-      await this.service.adjustUserAuthorization(targetUserId, newRole);
+      await this.service.adjustUserAuthorization(targetUserId, newRole, (req as any).user?.id);
       res.status(200).json({
         success: true,
         message: `User role successfully targeted to ${newRole}.`,
@@ -229,7 +231,7 @@ export class SuperadminController {
         return;
       }
 
-      const profile = await this.service.modifyUserAccess(targetUserId, status);
+      const profile = await this.service.modifyUserAccess(targetUserId, status, (req as any).user?.id);
       res.status(200).json({ success: true, data: profile });
     } catch (error: any) {
       res.status(400).json({ success: false, error: error.message });
@@ -240,9 +242,31 @@ export class SuperadminController {
     try {
       const page = parseInt(req.query.page as string) || 1;
       const limit = parseInt(req.query.limit as string) || 20;
+      const action = req.query.action as string | undefined;
+      const role = req.query.role as string | undefined;
+      const severity = req.query.severity as string | undefined;
+      const search = req.query.search as string | undefined;
+      const actorId = req.query.actor_id as string | undefined;
+      const targetUserId = req.query.target_user_id as string | undefined;
+      const municipalityId = req.query.municipality_id as string | undefined;
 
-      const logs = await this.service.fetchSystemAuditTrail(page, limit);
-      res.status(200).json({ success: true, data: logs });
+      const result = await this.service.fetchSystemAuditTrail(page, limit, {
+        action,
+        role,
+        severity,
+        search,
+        actorId,
+        targetUserId,
+        municipalityId,
+      });
+
+      res.status(200).json({
+        success: true,
+        data: result.logs,
+        total: result.total,
+        page,
+        limit,
+      });
     } catch (error: any) {
       res.status(500).json({ success: false, error: error.message });
     }
@@ -280,6 +304,26 @@ export class SuperadminController {
         created_by: (req as any).user.id,
       });
 
+      AuditService.logAction({
+        actionBy: (req as any).user.id,
+        actionRole: "superadmin",
+        targetUserId: profile.id,
+        municipalityId: municipality_id,
+        tableName: "profiles",
+        recordId: profile.id,
+        action: "INSERT",
+        newValue: {
+          email,
+          full_name,
+          role,
+          municipality_id,
+          department_id,
+          phone,
+          created_by: (req as any).user.id,
+        },
+        severity: "info",
+      }).catch((err) => console.error("[Audit createUser]", err));
+
       res.status(201).json({ success: true, data: profile });
     } catch (error: any) {
       res.status(400).json({ success: false, error: error.message });
@@ -303,7 +347,7 @@ export class SuperadminController {
         return;
       }
 
-      const updated = await this.service.modifyMunicipality(id, req.body);
+      const updated = await this.service.modifyMunicipality(id, req.body, (req as any).user?.id);
       res.status(200).json({ success: true, data: updated });
     } catch (error: any) {
       res.status(400).json({ success: false, error: error.message });

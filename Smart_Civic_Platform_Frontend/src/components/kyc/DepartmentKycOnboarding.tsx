@@ -19,6 +19,7 @@ import {
   Divider,
 } from "@mui/material";
 import { Upload, FileText, CheckCircle } from "lucide-react";
+import { KycFilePreviewCard } from "./KycFilePreviewCard";
 import { useAuth } from "../../hooks/useAuth";
 import { departmentApi } from "../../api/modules/department.api";
 import Swal from "sweetalert2";
@@ -422,11 +423,36 @@ export const DepartmentKycOnboarding: React.FC = () => {
               <Grid item xs={6}><Typography variant="subtitle2" color="text.secondary">Category</Typography><Typography fontWeight={600}>{departmentCategory || "-"}</Typography></Grid>
               <Grid item xs={6}><Typography variant="subtitle2" color="text.secondary">Head Name</Typography><Typography fontWeight={600}>{headName || "-"}</Typography></Grid>
               <Grid item xs={12} mt={2}>
-                <Typography variant="subtitle2" color="text.secondary" gutterBottom>Uploaded Documents</Typography>
-                <Box display="flex" gap={2}>
-                  {logoBase64 && <Typography variant="body2" color="primary">✓ Logo</Typography>}
-                  {headIdentityFront && <Typography variant="body2" color="primary">✓ Identity Document</Typography>}
-                </Box>
+                <Divider sx={{ mb: 2 }} />
+                <Typography variant="subtitle1" fontWeight={700} gutterBottom>
+                  Attached Verification Documents
+                </Typography>
+                <Typography variant="caption" color="text.secondary" display="block" mb={2}>
+                  Click any document card to inspect full-size image before final submission.
+                </Typography>
+                <Grid container spacing={2}>
+                  <Grid item xs={12} sm={4}>
+                    <KycFilePreviewCard
+                      label="Department Official Logo"
+                      fileData={logoBase64}
+                      height={150}
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={4}>
+                    <KycFilePreviewCard
+                      label="Head Identity (Front)"
+                      fileData={headIdentityFront}
+                      height={150}
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={4}>
+                    <KycFilePreviewCard
+                      label="Head Identity (Back)"
+                      fileData={headIdentityBack}
+                      height={150}
+                    />
+                  </Grid>
+                </Grid>
               </Grid>
             </Grid>
           </Box>

@@ -98,8 +98,20 @@ export class SuperadminRepository {
   }
 
   // Section 20: Reads the immutable database audit trail
-  async getAuditLogs(limit: number = 50, offset: number = 0) {
-    const { data, error } = await this.supabaseAdmin
+  async getAuditLogs(
+    limit: number = 50,
+    offset: number = 0,
+    filters?: {
+      action?: string;
+      role?: string;
+      severity?: string;
+      search?: string;
+      actorId?: string;
+      targetUserId?: string;
+      municipalityId?: string;
+    }
+  ) {
+    let query = this.supabaseAdmin
       .from("audit_logs")
       .select(`
         id,
@@ -117,14 +129,52 @@ export class SuperadminRepository {
         actor:profiles!action_by ( full_name, email ),
         municipality:municipalities!municipality_id ( official_name ),
         target_user:profiles!target_user_id ( full_name, email )
-      `)
+      `, { count: "exact" });
+
+    if (filters?.action) {
+      if (filters.action.includes(",")) {
+        const actions = filters.action.split(",").map((a) => a.trim()).filter(Boolean);
+        query = query.in("action", actions);
+      } else {
+        query = query.eq("action", filters.action);
+      }
+    }
+
+    if (filters?.role) {
+      query = query.eq("action_by_role", filters.role);
+    }
+
+    if (filters?.severity) {
+      query = query.eq("severity", filters.severity);
+    }
+
+    if (filters?.actorId) {
+      query = query.eq("action_by", filters.actorId);
+    }
+
+    if (filters?.targetUserId) {
+      query = query.eq("target_user_id", filters.targetUserId);
+    }
+
+    if (filters?.municipalityId) {
+      query = query.eq("municipality_id", filters.municipalityId);
+    }
+
+    if (filters?.search) {
+      const s = filters.search.trim();
+      query = query.or(`table_name.ilike.%${s}%,record_id.ilike.%${s}%`);
+    }
+
+    query = query
       .order("created_at", { ascending: false })
       .range(offset, offset + limit - 1);
+
+    const { data, count, error } = await query;
 
     if (error) throw error;
 
     // Flatten joined fields for a clean response shape
-    return (data ?? []).map((row: any) => ({
+    const logs = (data ?? []).map((row: any) => ({
       id: row.id,
       action: row.action,
       action_by: row.action_by,
@@ -143,6 +193,11 @@ export class SuperadminRepository {
       severity: row.severity,
       created_at: row.created_at,
     }));
+
+    return {
+      logs,
+      total: count ?? logs.length,
+    };
   }
 
 

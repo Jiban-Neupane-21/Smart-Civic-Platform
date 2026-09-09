@@ -425,8 +425,7 @@ export const getComplaintHistory = async (
 export const getProvinces = async () => {
   const { data, error } = await supabaseAdmin
     .from("provinces")
-    .select("id, name, code, is_active")
-    .eq("is_active", true)
+    .select("id, name, capital, created_at")
     .order("name");
   if (error) throw new Error(error.message);
   return data;
@@ -435,8 +434,7 @@ export const getProvinces = async () => {
 export const getDistricts = async (provinceId?: string) => {
   let query = supabaseAdmin
     .from("districts")
-    .select("id, province_id, name, code, is_active")
-    .eq("is_active", true);
+    .select("id, province_id, name, created_at");
 
   if (provinceId) query = query.eq("province_id", provinceId);
 
@@ -448,8 +446,7 @@ export const getDistricts = async (provinceId?: string) => {
 export const getMunicipalities = async (districtId?: string) => {
   let query = supabaseAdmin
     .from("municipalities")
-    .select("id, district_id, official_name, official_email, local_level_type, total_wards, is_active")
-    .eq("is_active", true);
+    .select("id, district_id, official_name, official_email, local_level_type, total_wards, is_active");
 
   if (districtId) query = query.eq("district_id", districtId);
 
@@ -461,10 +458,39 @@ export const getMunicipalities = async (districtId?: string) => {
 export const getWards = async (municipalityId: string) => {
   const { data, error } = await supabaseAdmin
     .from("wards")
-    .select("id, municipality_id, ward_number, office_address, contact_phone")
+    .select("id, municipality_id, ward_no, ward_office_name, ward_chairperson_name, contact_number")
     .eq("municipality_id", municipalityId)
-    .order("ward_number");
+    .order("ward_no");
   if (error) throw new Error(error.message);
+
+  if (data && data.length === 0) {
+    const { data: muniData } = await supabaseAdmin
+      .from("municipalities")
+      .select("total_wards")
+      .eq("id", municipalityId)
+      .single();
+
+    if (muniData && muniData.total_wards > 0) {
+      const wardsToInsert = Array.from({ length: muniData.total_wards }).map((_, i) => ({
+        municipality_id: municipalityId,
+        ward_no: i + 1,
+      }));
+
+      const { error: insertError } = await supabaseAdmin
+        .from("wards")
+        .insert(wardsToInsert);
+
+      if (!insertError) {
+        const { data: generatedWards } = await supabaseAdmin
+          .from("wards")
+          .select("id, municipality_id, ward_no, ward_office_name, ward_chairperson_name, contact_number")
+          .eq("municipality_id", municipalityId)
+          .order("ward_no");
+        return generatedWards || [];
+      }
+    }
+  }
+
   return data;
 };
 
@@ -593,9 +619,18 @@ export const updateStructuredAddress = async (
     current?: { province_id?: string; district_id?: string; municipality_id?: string; ward_id?: string; tole?: string; full_address?: string };
   }
 ) => {
+  // Check if citizen KYC is verified
+  const { data: cit } = await supabaseAdmin
+    .from("citizens")
+    .select("kyc_status")
+    .eq("id", citizenId)
+    .single();
+
+  const isKycVerified = cit?.kyc_status === "verified";
   const updates: Record<string, any> = { updated_at: new Date().toISOString() };
 
-  if (body.permanent) {
+  // Only allow updating permanent address if KYC is not verified
+  if (body.permanent && !isKycVerified) {
     if (body.permanent.province_id !== undefined) updates.permanent_province_id = body.permanent.province_id;
     if (body.permanent.district_id !== undefined) updates.permanent_district_id = body.permanent.district_id;
     if (body.permanent.municipality_id !== undefined) updates.permanent_municipality_id = body.permanent.municipality_id;
@@ -608,7 +643,10 @@ export const updateStructuredAddress = async (
     if (body.current.province_id !== undefined) updates.current_province_id = body.current.province_id;
     if (body.current.district_id !== undefined) updates.current_district_id = body.current.district_id;
     if (body.current.municipality_id !== undefined) updates.current_municipality_id = body.current.municipality_id;
-    if (body.current.ward_id !== undefined) updates.current_ward_id = body.current.ward_id;
+    if (body.current.ward_id !== undefined) {
+      updates.current_ward_id = body.current.ward_id;
+      updates.ward_id = body.current.ward_id; // Sync legacy ward_id
+    }
     if (body.current.tole !== undefined) updates.current_tole = body.current.tole;
     if (body.current.full_address !== undefined) updates.current_address = body.current.full_address;
   }
@@ -621,6 +659,16 @@ export const updateStructuredAddress = async (
     .single();
 
   if (error) throw new Error(error.message);
+
+  // Sync profiles.municipality_id if current or permanent municipality changed
+  const newMuniId = body.current?.municipality_id || (!isKycVerified ? body.permanent?.municipality_id : undefined);
+  if (newMuniId) {
+    await supabaseAdmin
+      .from("profiles")
+      .update({ municipality_id: newMuniId })
+      .eq("id", citizenId);
+  }
+
   return data;
 };
 
@@ -689,22 +737,34 @@ export const updateProfile = async (
   profileId: string,
   body: Record<string, unknown>,
 ) => {
+  // Check if citizen is KYC verified
+  const { data: cit } = await supabaseAdmin
+    .from("citizens")
+    .select("kyc_status")
+    .eq("id", profileId)
+    .single();
+
+  const isKycVerified = cit?.kyc_status === "verified";
+
   const profileFields: Record<string, unknown> = {};
   const citizenFields: Record<string, unknown> = {};
 
-  if (body.first_name || body.middle_name || body.last_name) {
-    const firstName = (body.first_name as string) || "";
-    const middleName = (body.middle_name as string) || "";
-    const lastName = (body.last_name as string) || "";
-    profileFields.full_name = `${firstName}${middleName ? " " + middleName : ""}${lastName ? " " + lastName : ""}`.trim();
+  // Only allow editing name and DOB if KYC is not verified
+  if (!isKycVerified) {
+    if (body.first_name || body.middle_name || body.last_name) {
+      const firstName = (body.first_name as string) || "";
+      const middleName = (body.middle_name as string) || "";
+      const lastName = (body.last_name as string) || "";
+      profileFields.full_name = `${firstName}${middleName ? " " + middleName : ""}${lastName ? " " + lastName : ""}`.trim();
+    }
+    if (body.first_name !== undefined) citizenFields.first_name = body.first_name;
+    if (body.middle_name !== undefined) citizenFields.middle_name = body.middle_name || null;
+    if (body.last_name !== undefined) citizenFields.last_name = body.last_name;
+    if (body.date_of_birth !== undefined) citizenFields.date_of_birth = body.date_of_birth;
   }
-  if (body.phone !== undefined) profileFields.phone = body.phone;
 
-  if (body.first_name !== undefined) citizenFields.first_name = body.first_name;
-  if (body.middle_name !== undefined) citizenFields.middle_name = body.middle_name || null;
-  if (body.last_name !== undefined) citizenFields.last_name = body.last_name;
+  if (body.phone !== undefined) profileFields.phone = body.phone;
   if (body.gender !== undefined) citizenFields.gender = body.gender;
-  if (body.date_of_birth !== undefined) citizenFields.date_of_birth = body.date_of_birth;
   if (body.current_address !== undefined) citizenFields.current_address = body.current_address;
   if (body.permanent_address !== undefined) citizenFields.permanent_address = body.permanent_address;
   if (body.notification_pref !== undefined) citizenFields.notification_pref = body.notification_pref;

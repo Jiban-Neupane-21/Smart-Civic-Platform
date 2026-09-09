@@ -495,6 +495,20 @@ export class MunicipalityController {
     }
   };
 
+  getComplaintDetail = async (req: any, res: Response): Promise<void> => {
+    try {
+      const municipalityId = req.params.municipalityId || req.municipalityId;
+      const complaintId = req.params.id || req.params.complaintId;
+      const complaint = await this.service.getComplaintDetail(
+        municipalityId,
+        complaintId,
+      );
+      res.status(200).json({ success: true, data: complaint });
+    } catch (error: any) {
+      res.status(error.message?.includes("not found") ? 404 : 500).json({ success: false, error: error.message });
+    }
+  };
+
   createUser = async (req: any, res: Response): Promise<void> => {
     try {
       const { email, password, full_name, role, department_id, phone } = req.body;
@@ -755,7 +769,7 @@ export class MunicipalityController {
     try {
       const municipalityId = req.params.municipalityId || req.municipalityId;
       const senderId = req.user?.id;
-      const { title, body, category } = req.body;
+      const { title, body, category, audience, target_department_id } = req.body;
 
       if (!title || !body) {
         res.status(400).json({
@@ -768,7 +782,7 @@ export class MunicipalityController {
       const notice = await this.service.createNotice(
         senderId,
         municipalityId,
-        { title, body, category }
+        { title, body, category, audience, target_department_id }
       );
       res.status(201).json({ success: true, data: notice, message: "Notice published successfully." });
     } catch (error: any) {

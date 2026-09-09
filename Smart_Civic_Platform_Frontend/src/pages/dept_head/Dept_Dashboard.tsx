@@ -13,6 +13,12 @@ import {
   List,
   ListItem,
   ListItemText,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Button,
+  Stack,
 } from "@mui/material";
 import {
   FiGrid,
@@ -27,12 +33,21 @@ import {
   FiArchive,
   FiXCircle,
   FiList,
+  FiBell,
 } from "react-icons/fi";
 import { departmentApi } from "../../api/department";
 import type {
   DepartmentDashboardData,
   DepartmentComplaintStatus,
 } from "../../types/dashboard.type";
+
+const NOTICE_CATEGORY_COLOR: Record<string, "default" | "error" | "warning" | "info" | "success"> = {
+  general: "default",
+  emergency: "error",
+  maintenance: "warning",
+  event: "info",
+  policy: "success",
+};
 
 const StatCard = ({
   title,
@@ -111,6 +126,8 @@ const getStatusChipColor = (
 
 export const DeptDashboard: React.FC = () => {
   const [data, setData] = useState<DepartmentDashboardData | null>(null);
+  const [notices, setNotices] = useState<any[]>([]);
+  const [selectedNotice, setSelectedNotice] = useState<any | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -118,8 +135,15 @@ export const DeptDashboard: React.FC = () => {
     const fetchData = async () => {
       try {
         setIsLoading(true);
-        const dashboardData = await departmentApi.getDashboard();
+        const [dashboardData, noticesData] = await Promise.all([
+          departmentApi.getDashboard(),
+          departmentApi.getNotices().catch((err) => {
+            console.error("Failed to load notices for department dashboard:", err);
+            return [];
+          }),
+        ]);
         setData(dashboardData);
+        setNotices(noticesData || []);
       } catch (err: unknown) {
         console.error("Department dashboard error:", err);
         const message =
@@ -560,6 +584,144 @@ export const DeptDashboard: React.FC = () => {
         </Grid>
       </Grid>
 
+      {/* Municipality Directives & Notices */}
+      <Card
+        variant="outlined"
+        sx={{
+          mb: 5,
+          borderRadius: 3,
+          borderColor: "rgba(99, 102, 241, 0.25)",
+          boxShadow: "0 4px 20px rgba(99, 102, 241, 0.05)",
+          overflow: "hidden",
+        }}
+      >
+        <CardContent
+          sx={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            bgcolor: "rgba(99, 102, 241, 0.04)",
+            py: 2,
+            px: 3,
+          }}
+        >
+          <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
+            <Box
+              sx={{
+                p: 1,
+                borderRadius: 2,
+                bgcolor: "primary.main",
+                color: "white",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <FiBell size={20} />
+            </Box>
+            <Box>
+              <Typography variant="h6" fontWeight={700} sx={{ lineHeight: 1.2 }}>
+                Municipality Directives & Notices
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                Official bulletins, policy alerts, and directives issued by Municipal Administration
+              </Typography>
+            </Box>
+          </Box>
+          <Chip
+            label={`${notices.length} Notice${notices.length === 1 ? "" : "s"}`}
+            color={notices.length > 0 ? "primary" : "default"}
+            size="small"
+            sx={{ fontWeight: 600 }}
+          />
+        </CardContent>
+        <Divider />
+        <List disablePadding>
+          {notices.length === 0 ? (
+            <ListItem sx={{ py: 4, textAlign: "center" }}>
+              <ListItemText
+                primary="No municipal notices or directives posted yet."
+                secondary="New broadcasts from the Municipality Head will appear here."
+                sx={{ color: "text.secondary" }}
+              />
+            </ListItem>
+          ) : (
+            notices.map((notice, index) => (
+              <ListItem
+                key={notice.id || index}
+                divider={index < notices.length - 1}
+                sx={{
+                  px: 3,
+                  py: 2,
+                  "&:hover": { bgcolor: "rgba(99, 102, 241, 0.03)" },
+                  cursor: "pointer",
+                }}
+                onClick={() => setSelectedNotice(notice)}
+                secondaryAction={
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSelectedNotice(notice);
+                    }}
+                    sx={{ borderRadius: 2, textTransform: "none", fontWeight: 600 }}
+                  >
+                    View Notice
+                  </Button>
+                }
+              >
+                <ListItemText
+                  primary={
+                    <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 0.5, flexWrap: "wrap" }}>
+                      <Typography variant="subtitle1" fontWeight={700}>
+                        {notice.title}
+                      </Typography>
+                      <Chip
+                        label={notice.category || "General"}
+                        color={NOTICE_CATEGORY_COLOR[String(notice.category || "").toLowerCase()] || "default"}
+                        size="small"
+                        sx={{ textTransform: "capitalize", height: 22, fontSize: "0.75rem" }}
+                      />
+                      {notice.target_department_id && (
+                        <Chip
+                          label="Department Specific"
+                          color="secondary"
+                          variant="outlined"
+                          size="small"
+                          sx={{ height: 22, fontSize: "0.72rem" }}
+                        />
+                      )}
+                    </Box>
+                  }
+                  secondary={
+                    <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}>
+                      <Typography
+                        variant="body2"
+                        color="text.secondary"
+                        sx={{
+                          display: "-webkit-box",
+                          WebkitLineClamp: 2,
+                          WebkitBoxOrient: "vertical",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          pr: 8,
+                        }}
+                      >
+                        {notice.body}
+                      </Typography>
+                      <Typography variant="caption" color="text.disabled">
+                        Posted {notice.created_at ? new Date(notice.created_at).toLocaleString() : "Recently"}
+                      </Typography>
+                    </Box>
+                  }
+                />
+              </ListItem>
+            ))
+          )}
+        </List>
+      </Card>
+
       {/* Recent Complaints */}
       <Card variant="outlined">
         <CardContent
@@ -605,6 +767,56 @@ export const DeptDashboard: React.FC = () => {
           )}
         </List>
       </Card>
+
+      {/* Notice Detail Dialog */}
+      <Dialog
+        open={!!selectedNotice}
+        onClose={() => setSelectedNotice(null)}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{ sx: { borderRadius: 3 } }}
+      >
+        <DialogTitle sx={{ pb: 1, pt: 3, px: 3, fontWeight: 700 }}>
+          {selectedNotice?.title}
+        </DialogTitle>
+        <DialogContent sx={{ px: 3 }}>
+          <Stack direction="row" spacing={1} sx={{ mb: 2, flexWrap: "wrap", gap: 1 }}>
+            <Chip
+              label={selectedNotice?.category || "General"}
+              color={NOTICE_CATEGORY_COLOR[String(selectedNotice?.category || "").toLowerCase()] || "default"}
+              size="small"
+              sx={{ textTransform: "capitalize" }}
+            />
+            {selectedNotice?.target_department_id && (
+              <Chip
+                label="Department Specific"
+                color="secondary"
+                variant="outlined"
+                size="small"
+              />
+            )}
+            <Typography variant="caption" color="text.secondary" sx={{ alignSelf: "center" }}>
+              Posted {selectedNotice?.created_at ? new Date(selectedNotice.created_at).toLocaleString() : ""}
+            </Typography>
+          </Stack>
+          <Divider sx={{ mb: 2 }} />
+          <Typography
+            variant="body1"
+            sx={{ whiteSpace: "pre-wrap", lineHeight: 1.7, color: "text.primary" }}
+          >
+            {selectedNotice?.body}
+          </Typography>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 3 }}>
+          <Button
+            onClick={() => setSelectedNotice(null)}
+            variant="contained"
+            sx={{ borderRadius: 2, px: 3, fontWeight: 600 }}
+          >
+            Close
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 };

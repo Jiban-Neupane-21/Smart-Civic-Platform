@@ -373,14 +373,19 @@ export class StaffRepository {
   async getComplaintDetail(identifier: string): Promise<any> {
     const complaintSelect = `
       co_uid, tracking_id, title, description, status, priority, severity_level,
-      ticket_type, ward_number, location_source, latitude, longitude, submitted_date, resolution_date, resolution_note,
+      ticket_type, ward_number, ward_id, location_source, latitude, longitude,
+      submitted_date, resolution_date, resolution_note, rejection_reason,
+      sla_due_at, sla_breached, sla_breached_at, current_team_id,
       citizen:citizens!citizen_id(
-        id, first_name, last_name, contact_number,
+        id, first_name, middle_name, last_name, contact_number,
+        current_address, permanent_address, current_ward_id, permanent_ward_id,
         profile:profiles!citizens_id_fkey(id, full_name, email, phone)
       ),
       category:complaint_categories!category_id(id, category_name),
       department:departments!assigned_department_id(id, department_name),
-      current_team:teams!current_team_id(id, team_name, is_active)
+      lead_department:departments!lead_department_id(id, department_name),
+      municipality:municipalities!municipality_id(id, official_name),
+      current_team:teams!current_team_id(id, team_name, description, team_type, is_active)
     `;
 
     // 1. Direct query by complaint co_uid or tracking_id
@@ -453,23 +458,123 @@ export class StaffRepository {
       }
     }
 
-    const citizenInfo = resolvedComplaint.citizen?.profile || {};
-    const citizenName = citizenInfo.full_name || [resolvedComplaint.citizen?.first_name, resolvedComplaint.citizen?.last_name].filter(Boolean).join(" ") || "Citizen";
-    const citizenPhone = citizenInfo.phone || resolvedComplaint.citizen?.contact_number || "";
+    // Resolve assigned team id
+    const activeTeamId = teamId || resolvedComplaint.current_team_id || resolvedComplaint.current_team?.id;
 
-    const fallbackAddress = resolvedComplaint.ward_number
-      ? `Ward ${resolvedComplaint.ward_number}`
-      : resolvedComplaint.location_source === "registered_address"
-      ? "Citizen Registered Address"
-      : resolvedComplaint.location_source || "Field Location";
+    // 4. Fetch assigned team members
+    let teamMembers: any[] = [];
+    if (activeTeamId) {
+      const { data: members, error: memErr } = await this.supabaseAdmin
+        .from('team_members')
+        .select(`
+          id, staff_id, is_leader, joined_at,
+          staff:staff!staff_id (
+            id, employee_id, expertise, designation, contact_number,
+            profile:profiles!profile_id ( id, full_name, email, phone )
+          )
+        `)
+        .eq('team_id', activeTeamId);
+
+      if (!memErr && members) {
+        teamMembers = members.map((m: any) => ({
+          id: m.id,
+          staff_id: m.staff_id,
+          is_leader: m.is_leader,
+          joined_at: m.joined_at,
+          employee_id: m.staff?.employee_id,
+          designation: m.staff?.designation || "Field Operations",
+          expertise: m.staff?.expertise,
+          contact_number: m.staff?.contact_number || m.staff?.profile?.phone,
+          full_name: m.staff?.profile?.full_name || "Squad Member",
+          email: m.staff?.profile?.email,
+        }));
+      }
+    }
+
+    // 5. Fetch attached evidence / proof media
+    const { data: mediaList, error: mediaErr } = await this.supabaseAdmin
+      .from('media')
+      .select('id, file_url, media_type, file_name, file_size_bytes, created_at')
+      .eq('context', 'complaint')
+      .eq('context_id', resolvedComplaint.co_uid);
+
+    if (mediaErr) {
+      console.warn('Could not load media attachments for complaint:', mediaErr.message);
+    }
+
+    // 6. Resolve Ward number if missing from ward_id
+    let resolvedWardNumber = resolvedComplaint.ward_number;
+    if (!resolvedWardNumber && resolvedComplaint.ward_id) {
+      const { data: wardRow } = await this.supabaseAdmin
+        .from('wards')
+        .select('ward_no')
+        .eq('id', resolvedComplaint.ward_id)
+        .maybeSingle();
+      if (wardRow?.ward_no) {
+        resolvedWardNumber = wardRow.ward_no;
+      }
+    }
+
+    // 7. Extract landmark or location note from description if present
+    let landmarkNote: string | null = null;
+    if (resolvedComplaint.description) {
+      const landmarkMatch = resolvedComplaint.description.match(/\[Location \/ Landmark:\s*([^\]]+)\]/i);
+      if (landmarkMatch) {
+        landmarkNote = landmarkMatch[1].trim();
+      }
+    }
+
+    // 8. Build Incident Location details (Exact destination for field crew)
+    const muniName = resolvedComplaint.municipality?.official_name || 'Municipality';
+    const wardLabel = resolvedWardNumber ? `Ward ${resolvedWardNumber}` : '';
+    const displayParts = [landmarkNote, wardLabel, muniName].filter(Boolean);
+    const displayAddress = displayParts.length > 0 ? displayParts.join(', ') : (resolvedComplaint.location_source || 'Field Location');
+
+    const incidentLocation = {
+      source: resolvedComplaint.location_source || 'manual',
+      latitude: resolvedComplaint.latitude != null ? Number(resolvedComplaint.latitude) : null,
+      longitude: resolvedComplaint.longitude != null ? Number(resolvedComplaint.longitude) : null,
+      has_coordinates: !!(resolvedComplaint.latitude != null && resolvedComplaint.longitude != null),
+      ward_number: resolvedWardNumber,
+      ward_id: resolvedComplaint.ward_id,
+      municipality_name: muniName,
+      landmark: landmarkNote,
+      display_address: displayAddress,
+      google_maps_url: (resolvedComplaint.latitude != null && resolvedComplaint.longitude != null)
+        ? `https://www.google.com/maps/dir/?api=1&destination=${resolvedComplaint.latitude},${resolvedComplaint.longitude}`
+        : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(displayAddress)}`,
+    };
+
+    // 9. Build Complainant Details (Citizen Contact & Registered Residence)
+    const citizenData = resolvedComplaint.citizen || {};
+    const citizenProfile = citizenData.profile || {};
+    const citizenFullName = citizenProfile.full_name || [citizenData.first_name, citizenData.middle_name, citizenData.last_name].filter(Boolean).join(' ') || 'Citizen';
+    const citizenPhone = citizenProfile.phone || citizenData.contact_number || '';
+    const citizenEmail = citizenProfile.email || '';
+    const citizenHomeAddress = citizenData.current_address || citizenData.permanent_address || null;
+    const citizenPermanentAddress = citizenData.permanent_address || null;
+
+    const complainantInfo = {
+      name: citizenFullName,
+      phone: citizenPhone,
+      email: citizenEmail,
+      registered_home_address: citizenHomeAddress,
+      registered_permanent_address: citizenPermanentAddress,
+      registered_ward_id: citizenData.current_ward_id || citizenData.permanent_ward_id || null,
+    };
 
     return {
       ...resolvedComplaint,
-      address: fallbackAddress,
-      citizen_name: citizenName,
+      ward_number: resolvedWardNumber,
+      address: displayAddress,
+      citizen_name: citizenFullName,
       citizen_phone: citizenPhone,
       assignment_id: assignmentId,
-      team_id: teamId,
+      team_id: activeTeamId,
+      incident_location: incidentLocation,
+      complainant: complainantInfo,
+      team_members: teamMembers,
+      media: mediaList || [],
     };
   }
 

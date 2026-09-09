@@ -616,4 +616,18 @@ export class DepartmentController {
       res.status(400).json({ success: false, error: error.message });
     }
   };
+
+  getNotices = async (req: any, res: Response): Promise<void> => {
+    try {
+      const municipalityId = req.municipalityId;
+      const departmentId = req.departmentId;
+      const category = req.query.category as string | undefined;
+
+      const notices = await this.service.getNotices(municipalityId, departmentId, category);
+      res.status(200).json({ success: true, data: notices });
+    } catch (error: any) {
+      res.status(500).json({ success: false, error: error.message });
+    }
+  };
 }
+

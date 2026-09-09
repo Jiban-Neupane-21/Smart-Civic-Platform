@@ -3,6 +3,7 @@ import type {
   AccountStatus,
   UserRole,
 } from "../../../types/database.type";
+import { AuditService } from "../../../service/audit.service";
 
 export class SuperadminService {
   constructor(private repo: SuperadminRepository) {}
@@ -17,9 +18,22 @@ export class SuperadminService {
     }
   }
 
-  async registerNewMunicipality(payload: Record<string, any>) {
+  async registerNewMunicipality(payload: Record<string, any>, actorId?: string) {
     try {
-      return await this.repo.createMunicipality(payload);
+      const created = await this.repo.createMunicipality(payload);
+      if (created?.id) {
+        AuditService.logAction({
+          actionBy: actorId || null,
+          actionRole: "superadmin",
+          municipalityId: created.id,
+          tableName: "municipalities",
+          recordId: created.id,
+          action: "INSERT",
+          newValue: payload,
+          severity: "info",
+        }).catch((err) => console.error("[Audit registerNewMunicipality]", err));
+      }
+      return created;
     } catch (error: any) {
       throw new Error(`Municipality deployment failed: ${error.message}`);
     }
@@ -37,26 +51,60 @@ export class SuperadminService {
     return await this.repo.updateMunicipalityHead(id, profile_id);
   }
 
-  async adjustUserAuthorization(targetUserId: string, targetRole: UserRole) {
+  async adjustUserAuthorization(targetUserId: string, targetRole: UserRole, actorId?: string) {
     try {
-      return await this.repo.updateUserRole(targetUserId, targetRole);
+      const updated = await this.repo.updateUserRole(targetUserId, targetRole);
+      AuditService.logAction({
+        actionBy: actorId || null,
+        actionRole: "superadmin",
+        targetUserId,
+        tableName: "profiles",
+        recordId: targetUserId,
+        action: "ROLE_CHANGE",
+        newValue: { role: targetRole },
+        severity: "info",
+      }).catch((err) => console.error("[Audit adjustUserAuthorization]", err));
+      return updated;
     } catch (error: any) {
       throw new Error(`Role elevation aborted: ${error.message}`);
     }
   }
 
-  async modifyUserAccess(targetUserId: string, action: AccountStatus) {
+  async modifyUserAccess(targetUserId: string, action: AccountStatus, actorId?: string) {
     try {
-      return await this.repo.updateAccountStatus(targetUserId, action);
+      const updated = await this.repo.updateAccountStatus(targetUserId, action);
+      AuditService.logAction({
+        actionBy: actorId || null,
+        actionRole: "superadmin",
+        targetUserId,
+        tableName: "profiles",
+        recordId: targetUserId,
+        action: "STATUS_CHANGE",
+        newValue: { account_status: action },
+        severity: action === "suspended" ? "warning" : "info",
+      }).catch((err) => console.error("[Audit modifyUserAccess]", err));
+      return updated;
     } catch (error: any) {
       throw new Error(`Account status modification failed: ${error.message}`);
     }
   }
 
-  async fetchSystemAuditTrail(page: number = 1, limit: number = 20) {
+  async fetchSystemAuditTrail(
+    page: number = 1,
+    limit: number = 20,
+    filters?: {
+      action?: string;
+      role?: string;
+      severity?: string;
+      search?: string;
+      actorId?: string;
+      targetUserId?: string;
+      municipalityId?: string;
+    }
+  ) {
     try {
       const offset = (page - 1) * limit;
-      return await this.repo.getAuditLogs(limit, offset);
+      return await this.repo.getAuditLogs(limit, offset, filters);
     } catch (error: any) {
       throw new Error(`Audit log retrieval rejected: ${error.message}`);
     }
@@ -70,9 +118,20 @@ export class SuperadminService {
     }
   }
 
-  async modifyMunicipality(id: string, data: Record<string, any>) {
+  async modifyMunicipality(id: string, data: Record<string, any>, actorId?: string) {
     try {
-      return await this.repo.updateMunicipality(id, data);
+      const updated = await this.repo.updateMunicipality(id, data);
+      AuditService.logAction({
+        actionBy: actorId || null,
+        actionRole: "superadmin",
+        municipalityId: id,
+        tableName: "municipalities",
+        recordId: id,
+        action: "UPDATE",
+        newValue: data,
+        severity: "info",
+      }).catch((err) => console.error("[Audit modifyMunicipality]", err));
+      return updated;
     } catch (error: any) {
       throw new Error(`Failed to update municipality: ${error.message}`);
     }
@@ -85,7 +144,18 @@ export class SuperadminService {
     rejectionReason?: string
   ) {
     try {
-      return await this.repo.reviewMunicipalityKyc(id, status, verifiedBy, rejectionReason);
+      const updated = await this.repo.reviewMunicipalityKyc(id, status, verifiedBy, rejectionReason);
+      AuditService.logAction({
+        actionBy: verifiedBy || null,
+        actionRole: "superadmin",
+        municipalityId: id,
+        tableName: "municipalities",
+        recordId: id,
+        action: "STATUS_CHANGE",
+        newValue: { kyc_status: status, rejection_reason: rejectionReason || null },
+        severity: status === "rejected" ? "warning" : "info",
+      }).catch((err) => console.error("[Audit reviewMunicipalityKyc]", err));
+      return updated;
     } catch (error: any) {
       throw new Error(`Failed to update KYC status: ${error.message}`);
     }
@@ -158,6 +228,17 @@ export class SuperadminService {
         }
       }
 
+      AuditService.logAction({
+        actionBy: deletedBy || null,
+        actionRole: "superadmin",
+        municipalityId: id,
+        tableName: "municipalities",
+        recordId: id,
+        action: "DELETE",
+        newValue: { deleted_at: new Date().toISOString(), affected_profiles_count: targetIds.length },
+        severity: "critical",
+      }).catch((err) => console.error("[Audit removeMunicipality]", err));
+
       return {
         ...result,
         deletedAuthUserIds,
@@ -214,10 +295,23 @@ export class SuperadminService {
     id: string,
     headProfileId: string,
     headName: string,
-    headEmail: string
+    headEmail: string,
+    actorId?: string
   ) {
     try {
-      return await this.repo.activateMunicipality(id, headProfileId, headName, headEmail);
+      const activated = await this.repo.activateMunicipality(id, headProfileId, headName, headEmail);
+      AuditService.logAction({
+        actionBy: actorId || null,
+        actionRole: "superadmin",
+        municipalityId: id,
+        targetUserId: headProfileId,
+        tableName: "municipalities",
+        recordId: id,
+        action: "INSERT",
+        newValue: { head_name: headName, head_email: headEmail, activated: true },
+        severity: "info",
+      }).catch((err) => console.error("[Audit activateMunicipality]", err));
+      return activated;
     } catch (error: any) {
       throw new Error(`Failed to activate municipality: ${error.message}`);
     }

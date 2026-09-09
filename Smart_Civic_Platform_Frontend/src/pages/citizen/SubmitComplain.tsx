@@ -17,6 +17,7 @@ import { useAuth } from "../../hooks/useAuth";
 import type { Province, District, Municipality, Ward, ComplaintCategory, SubmitComplaintPayload } from "../../api/types";
 import type { DuplicateMatch } from "../../api/modules/citizen.api";
 import { DuplicateDetectionCard } from "../../components/complaint/DuplicateDetectionCard";
+import { LocationPickerMap } from "../../components/LocationPickerMap";
 import { detectSeverity, type SeverityAnalysisResult } from "../../utils/severityDetector";
 
 const STEPS = ["Location", "Category", "Details", "Review"];
@@ -50,8 +51,11 @@ export const SubmitComplaint: React.FC = () => {
   const [submitError, setSubmitError] = useState<string | null>(null);
 
   // --- Location State ---
-  const [locationSource, setLocationSource] = useState<'registered_address' | 'manual' | 'gps'>('manual');
-  
+  const [locationSource, setLocationSource] = useState<'registered_address' | 'map'>('map');
+  const [mapCoords, setMapCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const [mapAddress, setMapAddress] = useState<string>("");
+  const [isGpsPinned, setIsGpsPinned] = useState<boolean>(false);
+
   const [provinces, setProvinces] = useState<Province[]>([]);
   const [districts, setDistricts] = useState<District[]>([]);
   const [municipalities, setMunicipalities] = useState<Municipality[]>([]);
@@ -61,9 +65,6 @@ export const SubmitComplaint: React.FC = () => {
   const [distId, setDistId] = useState("");
   const [muniId, setMuniId] = useState("");
   const [wardId, setWardId] = useState("");
-
-  const [gpsLocation, setGpsLocation] = useState<{lat: number, lng: number} | null>(null);
-  const [isGettingGps, setIsGettingGps] = useState(false);
 
   // --- Category State ---
   const [categories, setCategories] = useState<ComplaintCategory[]>([]);
@@ -273,7 +274,7 @@ export const SubmitComplaint: React.FC = () => {
     }
 
     const timer = setTimeout(async () => {
-      const targetMuniId = locationSource === 'manual' ? muniId : registeredMunicipalityId;
+      const targetMuniId = locationSource === 'map' ? (muniId || registeredMunicipalityId) : registeredMunicipalityId;
       if (!targetMuniId) return;
 
       try {
@@ -283,9 +284,9 @@ export const SubmitComplaint: React.FC = () => {
           description,
           category_id: primaryCategoryId || undefined,
           municipality_id: targetMuniId,
-          ward_number: locationSource === 'manual' ? (wardId ? Number(wardId) : null) : null,
-          latitude: locationSource === 'gps' ? gpsLocation?.lat : null,
-          longitude: locationSource === 'gps' ? gpsLocation?.lng : null,
+          ward_number: locationSource === 'map' ? (wardId ? Number(wardId) : null) : null,
+          latitude: locationSource === 'map' ? mapCoords?.lat : null,
+          longitude: locationSource === 'map' ? mapCoords?.lng : null,
         });
 
         if (res.success && res.data?.duplicates) {
@@ -299,7 +300,7 @@ export const SubmitComplaint: React.FC = () => {
     }, 650);
 
     return () => clearTimeout(timer);
-  }, [title, description, primaryCategoryId, locationSource, muniId, registeredMunicipalityId, wardId, gpsLocation, hasDismissedDuplicates]);
+  }, [title, description, primaryCategoryId, locationSource, muniId, registeredMunicipalityId, wardId, mapCoords, hasDismissedDuplicates]);
 
   const handleUpvote = async (complaintId: string, trackingId: string) => {
     try {
@@ -332,11 +333,16 @@ export const SubmitComplaint: React.FC = () => {
 
   useEffect(() => {
     fetchProvinces();
+    fetchInitialMunicipalities();
     fetchCategories("default"); // Backend returns all categories regardless of ID
     if (registeredMunicipalityId) {
       setLocationSource('registered_address');
+      setMuniId(registeredMunicipalityId);
     }
-  }, [registeredMunicipalityId]);
+    if (registeredWardId) {
+      setWardId(registeredWardId);
+    }
+  }, [registeredMunicipalityId, registeredWardId]);
 
   useEffect(() => {
     if (provId) {
@@ -351,9 +357,8 @@ export const SubmitComplaint: React.FC = () => {
     if (distId) {
       publicApi.getMunicipalities(distId).then(res => setMunicipalities(res.data)).catch(console.error);
     } else {
-      setMunicipalities([]);
+      fetchInitialMunicipalities();
     }
-    setMuniId("");
   }, [distId]);
 
   useEffect(() => {
@@ -365,12 +370,19 @@ export const SubmitComplaint: React.FC = () => {
     setWardId("");
   }, [muniId]);
 
-
-
   const fetchProvinces = async () => {
     try {
       const res = await publicApi.getProvinces();
       setProvinces(res.data);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const fetchInitialMunicipalities = async () => {
+    try {
+      const res = await publicApi.getMunicipalities();
+      if (res.data) setMunicipalities(res.data);
     } catch (err) {
       console.error(err);
     }
@@ -388,33 +400,37 @@ export const SubmitComplaint: React.FC = () => {
     }
   };
 
-  const handleGetGps = () => {
-    if (!navigator.geolocation) {
-      alert("Geolocation is not supported by your browser");
-      return;
-    }
-    setIsGettingGps(true);
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        setGpsLocation({ lat: position.coords.latitude, lng: position.coords.longitude });
-        setIsGettingGps(false);
-      },
-      (error) => {
-        alert("Unable to retrieve your location");
-        setIsGettingGps(false);
-      }
-    );
-  };
-
   const handleNext = async () => {
     if (activeStep === 0) {
-      if (locationSource === 'manual' && (!wardId || !muniId)) {
-        alert("Please select at least a municipality and ward.");
-        return;
-      }
-      if (locationSource === 'gps' && !gpsLocation) {
-        alert("Please get your GPS location.");
-        return;
+      if (locationSource === 'registered_address') {
+        if (!registeredMunicipalityId) {
+          Swal.fire({
+            icon: "error",
+            title: "No Registered Address",
+            text: "No registered municipality was found on your citizen profile. Please select 'Pin on Interactive Map'.",
+            confirmButtonColor: "#0284c7",
+          });
+          return;
+        }
+      } else if (locationSource === 'map') {
+        if (!mapCoords) {
+          Swal.fire({
+            icon: "warning",
+            title: "Location Pin Required",
+            text: "Please pin the complaint location on the map or click 'Pin Current Location'.",
+            confirmButtonColor: "#0284c7",
+          });
+          return;
+        }
+        if (!muniId) {
+          Swal.fire({
+            icon: "warning",
+            title: "Municipality Selection Required",
+            text: "Please select the municipality responsible for this location to ensure proper routing.",
+            confirmButtonColor: "#0284c7",
+          });
+          return;
+        }
       }
     }
     if (activeStep === 1) {
@@ -464,12 +480,24 @@ export const SubmitComplaint: React.FC = () => {
     setIsSubmitting(true);
     setSubmitError(null);
 
+    const isRegistered = locationSource === 'registered_address';
+    const effectiveMuniId = isRegistered ? registeredMunicipalityId : muniId;
+    const effectiveWardId = isRegistered ? registeredWardId : (wardId || undefined);
+    const effectiveSource: 'registered_address' | 'gps' | 'manual' = isRegistered
+      ? 'registered_address'
+      : isGpsPinned
+      ? 'gps'
+      : 'manual';
+
     const payload: SubmitComplaintPayload = {
       location: {
-        source: locationSource,
-        ...(locationSource === 'manual' ? { municipality_id: muniId, ward_id: wardId } : {}),
-        ...(locationSource === 'gps' ? { latitude: gpsLocation?.lat, longitude: gpsLocation?.lng } : {}),
-        ...(locationSource === 'registered_address' ? { municipality_id: registeredMunicipalityId, ward_id: registeredWardId } : {})
+        source: effectiveSource,
+        municipality_id: effectiveMuniId,
+        ward_id: effectiveWardId,
+        ...(locationSource === 'map' && mapCoords ? {
+          latitude: mapCoords.lat,
+          longitude: mapCoords.lng,
+        } : {}),
       },
       category: {
         primary_category_id: primaryCategoryId,
@@ -477,7 +505,7 @@ export const SubmitComplaint: React.FC = () => {
       },
       details: {
         title,
-        description,
+        description: mapAddress ? `${description}\n\n[Location / Landmark: ${mapAddress}]` : description,
         severity_level: severity
       },
       ...(mediaFiles.length > 0 ? {
@@ -536,26 +564,54 @@ export const SubmitComplaint: React.FC = () => {
         {/* STEP 1: LOCATION */}
         {activeStep === 0 && (
           <Box>
-            <Typography variant="h6" gutterBottom>Where is the issue located?</Typography>
+            <Box sx={{ mb: 2.5 }}>
+              <Typography variant="h6" fontWeight={700} gutterBottom>
+                Where is the issue located?
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Choose whether this occurred at your registered residence or pinpoint the exact spot on the interactive map.
+              </Typography>
+            </Box>
+
             <FormControl component="fieldset" sx={{ mb: 3, width: '100%' }}>
               <RadioGroup
                 value={locationSource}
                 onChange={(e) => setLocationSource(e.target.value as any)}
               >
-                <Paper variant="outlined" sx={{ p: 2, mb: 2, borderRadius: 2 }}>
+                {/* Option 1: Registered Profile Address */}
+                <Paper
+                  variant="outlined"
+                  sx={{
+                    p: 2.5,
+                    mb: 2,
+                    borderRadius: 2.5,
+                    borderWidth: locationSource === 'registered_address' ? 2 : 1,
+                    borderColor: locationSource === 'registered_address' ? 'primary.main' : 'divider',
+                    bgcolor: locationSource === 'registered_address' ? 'rgba(14, 165, 233, 0.03)' : 'background.paper',
+                    cursor: registeredMunicipalityId ? 'pointer' : 'not-allowed',
+                    transition: 'all 0.2s ease',
+                  }}
+                  onClick={() => registeredMunicipalityId && setLocationSource('registered_address')}
+                >
                   <FormControlLabel
                     value="registered_address"
                     control={<Radio />}
                     label={
-                      <Box>
-                        <Typography variant="subtitle1" fontWeight={600}>Use Registered Address</Typography>
+                      <Box sx={{ ml: 0.5 }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          <Typography variant="subtitle1" fontWeight={700}>
+                            Use Registered Profile Address
+                          </Typography>
+                          <Chip label="Home / Profile" size="small" color="default" variant="outlined" sx={{ fontSize: '0.7rem' }} />
+                        </Box>
                         {registeredMunicipalityId ? (
-                          <Typography variant="body2" color="text.secondary">
-                            {registeredAddressStr ? registeredAddressStr : "Your profile address"} {registeredWardId ? `(Ward ID: ${registeredWardId.slice(0, 4)}...)` : ""}
+                          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                            {registeredAddressStr ? registeredAddressStr : "Citizen profile address"}
+                            {registeredWardId ? ` • Ward ID: ${registeredWardId.slice(0, 6)}...` : ""}
                           </Typography>
                         ) : (
-                          <Typography variant="body2" color="error">
-                            No registered address found in your profile.
+                          <Typography variant="body2" color="error" sx={{ mt: 0.5 }}>
+                            No registered address found on your citizen profile.
                           </Typography>
                         )}
                       </Box>
@@ -564,76 +620,125 @@ export const SubmitComplaint: React.FC = () => {
                   />
                 </Paper>
 
-                <Paper variant="outlined" sx={{ p: 2, mb: 2, borderRadius: 2 }}>
+                {/* Option 2: Interactive Map Location Picker */}
+                <Paper
+                  variant="outlined"
+                  sx={{
+                    p: 2.5,
+                    borderRadius: 2.5,
+                    borderWidth: locationSource === 'map' ? 2 : 1,
+                    borderColor: locationSource === 'map' ? 'primary.main' : 'divider',
+                    bgcolor: locationSource === 'map' ? 'rgba(14, 165, 233, 0.02)' : 'background.paper',
+                    transition: 'all 0.2s ease',
+                  }}
+                >
                   <FormControlLabel
-                    value="manual"
+                    value="map"
                     control={<Radio />}
                     label={
-                      <Box>
-                        <Typography variant="subtitle1" fontWeight={600}>Select Manually</Typography>
-                        <Typography variant="body2" color="text.secondary">Choose Province, District, Municipality, and Ward</Typography>
-                      </Box>
-                    }
-                  />
-                  {locationSource === 'manual' && (
-                    <Grid container spacing={2} sx={{ mt: 1, ml: 2, width: 'calc(100% - 16px)' }}>
-                      <Grid size={{ xs: 12, sm: 6 }}>
-                        <FormControl fullWidth size="small">
-                          <InputLabel>Province</InputLabel>
-                          <Select value={provId} label="Province" onChange={(e) => setProvId(e.target.value)}>
-                            {provinces.map(p => <MenuItem key={p.id} value={p.id}>{p.name}</MenuItem>)}
-                          </Select>
-                        </FormControl>
-                      </Grid>
-                      <Grid size={{ xs: 12, sm: 6 }}>
-                        <FormControl fullWidth size="small" disabled={!provId}>
-                          <InputLabel>District</InputLabel>
-                          <Select value={distId} label="District" onChange={(e) => setDistId(e.target.value)}>
-                            {districts.map(d => <MenuItem key={d.id} value={d.id}>{d.name}</MenuItem>)}
-                          </Select>
-                        </FormControl>
-                      </Grid>
-                      <Grid size={{ xs: 12, sm: 6 }}>
-                        <FormControl fullWidth size="small" disabled={!distId}>
-                          <InputLabel>Municipality</InputLabel>
-                          <Select value={muniId} label="Municipality" onChange={(e) => setMuniId(e.target.value)}>
-                            {municipalities.map(m => <MenuItem key={m.id} value={m.id}>{m.official_name || (m as any).name}</MenuItem>)}
-                          </Select>
-                        </FormControl>
-                      </Grid>
-                      <Grid size={{ xs: 12, sm: 6 }}>
-                        <FormControl fullWidth size="small" disabled={!muniId}>
-                          <InputLabel>Ward</InputLabel>
-                          <Select value={wardId} label="Ward" onChange={(e) => setWardId(e.target.value)}>
-                            {wards.map(w => <MenuItem key={w.id} value={w.id}>Ward {w.ward_no}</MenuItem>)}
-                          </Select>
-                        </FormControl>
-                      </Grid>
-                    </Grid>
-                  )}
-                </Paper>
-
-                <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
-                  <FormControlLabel
-                    value="gps"
-                    control={<Radio />}
-                    label={
-                      <Box>
-                        <Typography variant="subtitle1" fontWeight={600}>Use Current Location</Typography>
-                        <Typography variant="body2" color="text.secondary">Use your device's GPS to pinpoint the issue</Typography>
-                      </Box>
-                    }
-                  />
-                  {locationSource === 'gps' && (
-                    <Box sx={{ mt: 2, ml: 4 }}>
-                      <Button variant="outlined" onClick={handleGetGps} disabled={isGettingGps}>
-                        {isGettingGps ? <CircularProgress size={24} /> : "Get Coordinates"}
-                      </Button>
-                      {gpsLocation && (
-                        <Typography variant="body2" sx={{ mt: 1, color: 'success.main' }}>
-                          Location acquired: {gpsLocation.lat.toFixed(4)}, {gpsLocation.lng.toFixed(4)}
+                      <Box sx={{ ml: 0.5 }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          <Typography variant="subtitle1" fontWeight={700}>
+                            Pin on Interactive Map
+                          </Typography>
+                          <Chip label="GPS / Manual Pin" size="small" color="primary" sx={{ fontSize: '0.7rem', fontWeight: 600 }} />
+                        </Box>
+                        <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                          Pinpoint exact issue location using device GPS or click & drag anywhere on the map
                         </Typography>
-                      )}
+                      </Box>
+                    }
+                  />
+
+                  {locationSource === 'map' && (
+                    <Box sx={{ mt: 2 }}>
+                      <LocationPickerMap
+                        selectedCoords={mapCoords}
+                        selectedAddress={mapAddress}
+                        onLocationSelect={(address, coords, isGps) => {
+                          setMapCoords(coords);
+                          setMapAddress(address);
+                          setIsGpsPinned(!!isGps);
+                        }}
+                        onAddressChange={(addr) => setMapAddress(addr)}
+                      />
+
+                      {/* Administrative Jurisdiction Selection */}
+                      <Box sx={{ mt: 3, pt: 2.5, borderTop: '1px dashed', borderColor: 'divider' }}>
+                        <Typography variant="subtitle2" fontWeight={700} gutterBottom>
+                          Administrative Routing (Municipality & Ward) *
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 2 }}>
+                          Select the local government unit responsible for this location to ensure the grievance reaches the correct municipal department.
+                        </Typography>
+
+                        <Grid container spacing={2}>
+                          <Grid size={{ xs: 12, sm: 6 }}>
+                            <FormControl fullWidth size="small">
+                              <InputLabel>Province</InputLabel>
+                              <Select
+                                value={provId}
+                                label="Province"
+                                onChange={(e) => setProvId(e.target.value)}
+                              >
+                                {provinces.map((p) => (
+                                  <MenuItem key={p.id} value={p.id}>
+                                    {p.name}
+                                  </MenuItem>
+                                ))}
+                              </Select>
+                            </FormControl>
+                          </Grid>
+                          <Grid size={{ xs: 12, sm: 6 }}>
+                            <FormControl fullWidth size="small" disabled={!provId}>
+                              <InputLabel>District</InputLabel>
+                              <Select
+                                value={distId}
+                                label="District"
+                                onChange={(e) => setDistId(e.target.value)}
+                              >
+                                {districts.map((d) => (
+                                  <MenuItem key={d.id} value={d.id}>
+                                    {d.name}
+                                  </MenuItem>
+                                ))}
+                              </Select>
+                            </FormControl>
+                          </Grid>
+                          <Grid size={{ xs: 12, sm: 6 }}>
+                            <FormControl fullWidth size="small">
+                              <InputLabel>Municipality *</InputLabel>
+                              <Select
+                                value={muniId}
+                                label="Municipality *"
+                                onChange={(e) => setMuniId(e.target.value)}
+                              >
+                                {municipalities.map((m) => (
+                                  <MenuItem key={m.id} value={m.id}>
+                                    {m.official_name || (m as any).name}
+                                  </MenuItem>
+                                ))}
+                              </Select>
+                            </FormControl>
+                          </Grid>
+                          <Grid size={{ xs: 12, sm: 6 }}>
+                            <FormControl fullWidth size="small" disabled={!muniId}>
+                              <InputLabel>Ward</InputLabel>
+                              <Select
+                                value={wardId}
+                                label="Ward"
+                                onChange={(e) => setWardId(e.target.value)}
+                              >
+                                {wards.map((w) => (
+                                  <MenuItem key={w.id} value={w.id}>
+                                    Ward {w.ward_no}
+                                  </MenuItem>
+                                ))}
+                              </Select>
+                            </FormControl>
+                          </Grid>
+                        </Grid>
+                      </Box>
                     </Box>
                   )}
                 </Paper>
@@ -1069,11 +1174,24 @@ export const SubmitComplaint: React.FC = () => {
               <Grid container spacing={2}>
                 <Grid size={{ xs: 12 }}>
                   <Typography variant="caption" color="text.secondary">Location</Typography>
-                  <Typography variant="body1" fontWeight={500}>
-                    {locationSource === 'registered_address' && `Registered Address (${registeredAddressStr || 'Unknown'})`}
-                    {locationSource === 'gps' && `GPS Coordinates: ${gpsLocation?.lat}, ${gpsLocation?.lng}`}
-                    {locationSource === 'manual' && `Selected Manually`}
-                  </Typography>
+                  {locationSource === 'registered_address' ? (
+                    <Typography variant="body1" fontWeight={500}>
+                      Registered Profile Address ({registeredAddressStr || 'Profile Address'})
+                    </Typography>
+                  ) : (
+                    <Box sx={{ mt: 0.5 }}>
+                      <Typography variant="body1" fontWeight={600} color="primary.main">
+                        📍 {mapAddress || 'Selected on Map'}
+                      </Typography>
+                      {mapCoords && (
+                        <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.3 }}>
+                          GPS Coordinates: {mapCoords.lat.toFixed(5)}, {mapCoords.lng.toFixed(5)}
+                          {municipalities.find(m => m.id === muniId)?.official_name ? ` • ${municipalities.find(m => m.id === muniId)?.official_name}` : ''}
+                          {wards.find(w => w.id === wardId) ? ` • Ward ${wards.find(w => w.id === wardId)?.ward_no}` : ''}
+                        </Typography>
+                      )}
+                    </Box>
+                  )}
                 </Grid>
                 
                 <Grid size={{ xs: 12 }}>

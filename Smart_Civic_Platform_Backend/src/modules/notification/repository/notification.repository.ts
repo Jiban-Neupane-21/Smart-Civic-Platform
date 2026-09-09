@@ -59,7 +59,7 @@ export class NotificationsRepository {
         .maybeSingle();
 
       if (citizen?.current_municipality_id) {
-        orConditions.push(`and(target_municipality_id.eq.${citizen.current_municipality_id},audience.eq.all_citizens)`);
+        orConditions.push(`and(target_municipality_id.eq.${citizen.current_municipality_id},audience.in.(all_citizens,everyone))`);
       }
       if (citizen?.current_ward_id) {
         orConditions.push(`target_ward_id.eq.${citizen.current_ward_id}`);
@@ -68,12 +68,39 @@ export class NotificationsRepository {
       // Staff, Department Head, Municipality Head
       orConditions.push("audience.eq.all_staff");
 
-      if (profile?.municipality_id) {
-        orConditions.push(`and(target_municipality_id.eq.${profile.municipality_id},audience.eq.all_staff)`);
+      let municId = profile?.municipality_id;
+      if (!municId && profile?.department_id) {
+        const { data: dept } = await this.supabaseAdmin
+          .from("departments")
+          .select("municipality_id")
+          .eq("id", profile.department_id)
+          .maybeSingle();
+        if (dept?.municipality_id) {
+          municId = dept.municipality_id;
+        }
       }
 
-      if (role === "department_head" && profile?.department_id) {
-        orConditions.push(`target_department_id.eq.${profile.department_id}`);
+      if (role === "department_head") {
+        if (profile?.department_id) {
+          orConditions.push(`target_department_id.eq.${profile.department_id}`);
+        }
+        if (!municId) {
+          const { data: dept } = await this.supabaseAdmin
+            .from("departments")
+            .select("id, municipality_id")
+            .eq("head_profile_id", userId)
+            .maybeSingle();
+          if (dept?.municipality_id) {
+            municId = dept.municipality_id;
+          }
+          if (dept?.id && !profile?.department_id) {
+            orConditions.push(`target_department_id.eq.${dept.id}`);
+          }
+        }
+      }
+
+      if (municId) {
+        orConditions.push(`and(target_municipality_id.eq.${municId},audience.in.(all_staff,everyone))`);
       }
 
       if (role === "municipality_head" && profile?.municipality_id) {
@@ -89,6 +116,16 @@ export class NotificationsRepository {
 
         if (staffRec?.primary_department_id) {
           orConditions.push(`target_department_id.eq.${staffRec.primary_department_id}`);
+          if (!municId) {
+            const { data: dept } = await this.supabaseAdmin
+              .from("departments")
+              .select("municipality_id")
+              .eq("id", staffRec.primary_department_id)
+              .maybeSingle();
+            if (dept?.municipality_id) {
+              orConditions.push(`and(target_municipality_id.eq.${dept.municipality_id},audience.in.(all_staff,everyone))`);
+            }
+          }
         }
 
         if (staffRec?.id) {

@@ -48,6 +48,7 @@ export function createDepartmentRouter(
    */
   router.get("/dashboard", controller.getDashboard);
   router.get("/analytics", controller.getAnalytics);
+  router.get("/notices", controller.getNotices);
 
   router.get("/profile", controller.getDepartmentProfile);
   router.patch("/profile", controller.setupDepartmentProfile);

@@ -76,52 +76,128 @@ export class StaffService {
 
   // ===== COMPLAINT ASSIGNMENT LIFECYCLE & HANDOFF METHODS =====
 
-  async acceptAssignment(staffId: string, assignmentId: string) {
-    const updated = await this.repo.updateComplaintAssignmentStatus(assignmentId, "accepted");
-    if (updated?.complaint_id) {
-      const lifecycle = new LifecycleService((this.repo as any).supabaseAdmin);
-      await lifecycle.transition(updated.complaint_id, "assigned", staffId, "staff", "Assignment accepted by staff.");
+  private async resolveComplaintAndAssignment(identifier: string): Promise<{ complaintId: string; assignmentId: string | null }> {
+    const supabase = (this.repo as any).supabaseAdmin;
+
+    // 1. Check if identifier is an assignment id in complaint_assignments
+    const { data: assign } = await supabase
+      .from("complaint_assignments")
+      .select("id, complaint_id")
+      .eq("id", identifier)
+      .maybeSingle();
+
+    if (assign?.complaint_id) {
+      return { complaintId: assign.complaint_id, assignmentId: assign.id };
     }
-    return updated;
+
+    // 2. Check if identifier is a complaint co_uid or tracking_id
+    const { data: comp } = await supabase
+      .from("complaints")
+      .select("co_uid")
+      .or(`co_uid.eq.${identifier},tracking_id.eq.${identifier}`)
+      .maybeSingle();
+
+    const complaintId = comp?.co_uid || identifier;
+
+    // 3. Find active assignment for this complaint if any
+    const { data: activeAssign } = await supabase
+      .from("complaint_assignments")
+      .select("id")
+      .eq("complaint_id", complaintId)
+      .eq("is_current", true)
+      .maybeSingle();
+
+    return { complaintId, assignmentId: activeAssign?.id || null };
   }
 
-  async startAssignment(staffId: string, assignmentId: string) {
-    const updated = await this.repo.updateComplaintAssignmentStatus(assignmentId, "in_progress");
-    if (updated?.complaint_id) {
-      const lifecycle = new LifecycleService((this.repo as any).supabaseAdmin);
-      await lifecycle.transition(updated.complaint_id, "in_progress", staffId, "staff", "Field work started by staff.");
+  async acceptAssignment(staffId: string, identifier: string, userProfileId?: string) {
+    const { complaintId, assignmentId } = await this.resolveComplaintAndAssignment(identifier);
+
+    let updated = null;
+    if (assignmentId) {
+      updated = await this.repo.updateComplaintAssignmentStatus(assignmentId, "accepted");
     }
-    return updated;
+
+    const lifecycle = new LifecycleService((this.repo as any).supabaseAdmin);
+    await lifecycle.transition(complaintId, "assigned", userProfileId || staffId, "staff", "Assignment accepted by staff.");
+    return updated || { success: true, complaint_id: complaintId };
   }
 
-  async completeAssignment(staffId: string, assignmentId: string, resolutionNote?: string) {
-    const updated = await this.repo.updateComplaintAssignmentStatus(assignmentId, "completed");
-    if (updated?.complaint_id) {
-      const lifecycle = new LifecycleService((this.repo as any).supabaseAdmin);
-      await lifecycle.transition(updated.complaint_id, "resolved", staffId, "staff", resolutionNote || "Field work completed by staff.");
+  async startAssignment(staffId: string, identifier: string, userProfileId?: string) {
+    const { complaintId, assignmentId } = await this.resolveComplaintAndAssignment(identifier);
+
+    let updated = null;
+    if (assignmentId) {
+      updated = await this.repo.updateComplaintAssignmentStatus(assignmentId, "in_progress");
     }
-    return updated;
+
+    const lifecycle = new LifecycleService((this.repo as any).supabaseAdmin);
+    await lifecycle.transition(complaintId, "in_progress", userProfileId || staffId, "staff", "Field work started by staff.");
+    return updated || { success: true, complaint_id: complaintId };
+  }
+
+  async completeAssignment(staffId: string, identifier: string, resolutionNote?: string, userProfileId?: string) {
+    const { complaintId, assignmentId } = await this.resolveComplaintAndAssignment(identifier);
+
+    let updated = null;
+    if (assignmentId) {
+      updated = await this.repo.updateComplaintAssignmentStatus(assignmentId, "completed");
+    }
+
+    const lifecycle = new LifecycleService((this.repo as any).supabaseAdmin);
+    await lifecycle.transition(complaintId, "resolved", userProfileId || staffId, "staff", resolutionNote || "Field work completed by staff.");
+    return updated || { success: true, complaint_id: complaintId };
   }
 
   async transferAssignment(
     staffId: string,
-    complaintId: string,
+    identifier: string,
     toStaffId: string,
     reason: string,
-    note?: string
+    note?: string,
+    userProfileId?: string
   ) {
+    const { complaintId } = await this.resolveComplaintAndAssignment(identifier);
     const handoffService = new HandoffService((this.repo as any).supabaseAdmin);
-    return await handoffService.transferToPeer(complaintId, staffId, toStaffId, reason, note);
+    return await handoffService.transferToPeer(complaintId, staffId, toStaffId, reason, note, userProfileId);
   }
 
   async returnAssignmentToDeptHead(
     staffId: string,
-    complaintId: string,
+    identifier: string,
     reason: string,
-    note?: string
+    note?: string,
+    userProfileId?: string
   ) {
-    const handoffService = new HandoffService((this.repo as any).supabaseAdmin);
-    return await handoffService.returnToDepartmentHead(complaintId, staffId, reason, note);
+    const { complaintId, assignmentId } = await this.resolveComplaintAndAssignment(identifier);
+    const supabase = (this.repo as any).supabaseAdmin;
+
+    // 1. If an active assignment exists, update it to reassigned and no longer current
+    if (assignmentId) {
+      await supabase
+        .from("complaint_assignments")
+        .update({
+          status: "reassigned",
+          is_current: false,
+          notes: reason ? `Returned to Dept Head: ${reason}` : undefined,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", assignmentId);
+    }
+
+    // 2. Clear current_staff_id and current_team_id on complaint record
+    await supabase
+      .from("complaints")
+      .update({
+        current_staff_id: null,
+        current_team_id: null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("co_uid", complaintId);
+
+    // 3. Insert into complaint_handoffs and transition status with verified complaint co_uid and user profile id!
+    const handoffService = new HandoffService(supabase);
+    return await handoffService.returnToDepartmentHead(complaintId, staffId, reason, note, userProfileId);
   }
 
   // ===== KYC METHODS =====

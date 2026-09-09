@@ -27,6 +27,7 @@ import {
 } from "@mui/material";
 import { registerSchema } from "../../validation/auth.schema";
 import { getMaxDobFor18 } from "../../validation/kyc.validators";
+import { KycFilePreviewCard } from "../../components/kyc/KycFilePreviewCard";
 import apiClient, { API_BASE_URL } from "../../api/client";
 import { citizenApi, publicApi } from "../../api";
 import { useAuth } from "../../hooks/useAuth";
@@ -256,13 +257,13 @@ const RegisterBase: React.FC = () => {
   const handleRegister = async () => {
     setIsSubmitting(true);
     try {
-      const registerRes = await apiClient.post(`${API_BASE_URL}/auth/register`, {
-        email: formik.values.email,
+      const registerRes = await apiClient.post('/auth/register', {
+        email: formik.values.email?.trim(),
         password: formik.values.password,
-        full_name: formik.values.fullName,
-        phone: formik.values.phone || undefined,
-        date_of_birth: formik.values.dateOfBirth,
-        gender: formik.values.gender,
+        full_name: formik.values.fullName?.trim(),
+        phone: formik.values.phone?.trim() || undefined,
+        date_of_birth: formik.values.dateOfBirth || undefined,
+        gender: formik.values.gender || undefined,
       });
 
       const registerData = registerRes.data;
@@ -334,13 +335,17 @@ const RegisterBase: React.FC = () => {
 
       // Advance to step 3 (success & optional KYC upload)
       setActiveStep(3);
-    } catch (err: unknown) {
+    } catch (err: any) {
       // If registration failed, clean up so the user is not in a broken state
       localStorage.removeItem("access_token");
       localStorage.removeItem("refresh_token");
       localStorage.removeItem("user_profile");
-      const msg = err instanceof Error ? err.message : "Registration failed";
-      setSubmitError(msg);
+      const backendMessage =
+        err?.response?.data?.message ||
+        err?.response?.data?.error ||
+        (err instanceof Error ? err.message : "Registration failed");
+      console.error("[Registration Error]", err?.response?.data || err);
+      setSubmitError(backendMessage);
     } finally {
       setIsSubmitting(false);
     }
@@ -756,16 +761,32 @@ const RegisterBase: React.FC = () => {
               />
             </Grid>
             <Grid size={{ xs: 12, sm: 6 }}>
-              <Button variant="outlined" component="label" fullWidth sx={{ py: 3 }}>
-                {frontImage ? "Front Image Selected" : "Upload Front Image"}
+              <Button variant="outlined" component="label" fullWidth sx={{ py: 1.5, mb: 1 }}>
+                {frontImage ? "Change Front Image" : "Upload Front Image"}
                 <input type="file" hidden accept="image/*,.pdf" onChange={handleFileChange("front")} />
               </Button>
+              {frontImage && (
+                <KycFilePreviewCard
+                  label="Document (Front)"
+                  fileData={frontImage}
+                  height={140}
+                  onRemove={() => setFrontImage(null)}
+                />
+              )}
             </Grid>
             <Grid size={{ xs: 12, sm: 6 }}>
-              <Button variant="outlined" component="label" fullWidth sx={{ py: 3 }}>
-                {backImage ? "Back Image Selected" : "Upload Back Image"}
+              <Button variant="outlined" component="label" fullWidth sx={{ py: 1.5, mb: 1 }}>
+                {backImage ? "Change Back Image" : "Upload Back Image"}
                 <input type="file" hidden accept="image/*,.pdf" onChange={handleFileChange("back")} />
               </Button>
+              {backImage && (
+                <KycFilePreviewCard
+                  label="Document (Back)"
+                  fileData={backImage}
+                  height={140}
+                  onRemove={() => setBackImage(null)}
+                />
+              )}
             </Grid>
             <Grid size={{ xs: 12 }}>
               <Button

@@ -102,6 +102,7 @@ function AppRoute() {
             <Route path="/municipality_head/manage-department-staff" element={<MunicManageDept />} />
             <Route path="/municipality_head/manage-staff" element={<MunicManageStaff />} />
             <Route path="/municipality_head/complaint-detail" element={<MunicComplainDetails />} />
+            <Route path="/municipality_head/complaint-detail/:id" element={<MunicComplainDetails />} />
             <Route path="/municipality_head/report-&-analytics" element={<MunicReportAnalytics />} />
             <Route path="/municipality_head/notices" element={<MunicAdminNoticeCenter />} />
             <Route path="/municipality_head/notification" element={<MunicNotification />} />
@@ -128,6 +129,10 @@ function AppRoute() {
             />
             <Route
               path="/department_head/complaint-queue"
+              element={<DeptComplainDetails />}
+            />
+            <Route
+              path="/department_head/complaint-queue/:id"
               element={<DeptComplainDetails />}
             />
             <Route

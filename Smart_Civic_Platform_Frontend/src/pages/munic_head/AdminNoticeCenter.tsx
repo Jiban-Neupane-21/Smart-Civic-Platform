@@ -38,8 +38,15 @@ interface Notice {
   title: string;
   body: string;
   category: string;
+  audience?: string;
+  target_department_id?: string;
   created_at: string;
   updated_at?: string;
+}
+
+interface DepartmentItem {
+  id: string;
+  department_name: string;
 }
 
 const CATEGORIES = ["general", "emergency", "maintenance", "event", "policy"];
@@ -52,13 +59,20 @@ const CATEGORY_COLOR: Record<string, "default" | "error" | "warning" | "info" | 
   policy: "success",
 };
 
-const emptyForm = { title: "", body: "", category: "general" };
+const emptyForm = {
+  title: "",
+  body: "",
+  category: "general",
+  audience: "everyone",
+  target_department_id: "",
+};
 
 export default function AdminNoticeCenter() {
   const { user } = useAuth();
   const municipalityId = (user as any)?.municipalityId || (user as any)?.municipality_id;
 
   const [notices, setNotices] = useState<Notice[]>([]);
+  const [departments, setDepartments] = useState<DepartmentItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [categoryFilter, setCategoryFilter] = useState("all");
@@ -99,6 +113,19 @@ export default function AdminNoticeCenter() {
   };
 
   useEffect(() => {
+    if (!municipalityId) return;
+    fetchWithAuth(`${BASE_URL}/municipality/${municipalityId}/departments`)
+      .then((res) => res.json())
+      .then((data) => {
+        const list = data?.data?.departments ?? data?.data ?? [];
+        if (Array.isArray(list)) {
+          setDepartments(list.map((d: any) => ({ id: d.id, department_name: d.department_name })));
+        }
+      })
+      .catch((err) => console.error("Could not fetch departments for notices", err));
+  }, [municipalityId]);
+
+  useEffect(() => {
     fetchNotices();
   }, [municipalityId, categoryFilter]);
 
@@ -111,7 +138,13 @@ export default function AdminNoticeCenter() {
 
   const openEdit = (notice: Notice) => {
     setEditTarget(notice);
-    setFormData({ title: notice.title, body: notice.body, category: notice.category });
+    setFormData({
+      title: notice.title,
+      body: notice.body,
+      category: notice.category,
+      audience: notice.audience || "everyone",
+      target_department_id: notice.target_department_id || "",
+    });
     setFormError(null);
     setModalOpen(true);
   };
@@ -121,16 +154,29 @@ export default function AdminNoticeCenter() {
     setSubmitting(true);
     setFormError(null);
     try {
+      if (formData.audience === "department" && !formData.target_department_id) {
+        throw new Error("Please select a target department.");
+      }
+
       const isEdit = !!editTarget;
       const url = isEdit
         ? `${BASE_URL}/municipality/${municipalityId}/notices/${editTarget!.id}`
         : `${BASE_URL}/municipality/${municipalityId}/notices`;
+      
+      const payload = {
+        title: formData.title,
+        body: formData.body,
+        category: formData.category,
+        audience: formData.audience,
+        target_department_id: formData.audience === "department" ? formData.target_department_id : null,
+      };
+
       const res = await fetchWithAuth(url, {
         method: isEdit ? "PATCH" : "POST",
-        body: JSON.stringify(formData),
+        body: JSON.stringify(payload),
       });
       const result = await res.json();
-      if (!res.ok) throw new Error(result.message || "Operation failed");
+      if (!res.ok) throw new Error(result.message || result.error || "Operation failed");
       setModalOpen(false);
       await fetchNotices();
     } catch (err) {
@@ -172,6 +218,23 @@ export default function AdminNoticeCenter() {
   const displayed = notices.filter(
     (n) => categoryFilter === "all" || n.category === categoryFilter
   );
+
+  const getAudienceDisplay = (notice: { audience?: string; target_department_id?: string }) => {
+    if (notice.target_department_id) {
+      const dept = departments.find((d) => d.id === notice.target_department_id);
+      return {
+        label: dept ? `Dept: ${dept.department_name}` : "Specific Dept",
+        color: "secondary" as const,
+      };
+    }
+    if (notice.audience === "all_staff") {
+      return { label: "Departments & Staff", color: "info" as const };
+    }
+    if (notice.audience === "all_citizens") {
+      return { label: "Citizens Only", color: "default" as const };
+    }
+    return { label: "Everyone", color: "primary" as const };
+  };
 
   return (
     <Box sx={{ p: { xs: 2, md: 4 }, maxWidth: 960, mx: "auto" }}>
@@ -270,6 +333,12 @@ export default function AdminNoticeCenter() {
                           size="small"
                           sx={{ textTransform: "capitalize" }}
                         />
+                        <Chip
+                          label={getAudienceDisplay(notice).label}
+                          color={getAudienceDisplay(notice).color}
+                          variant="outlined"
+                          size="small"
+                        />
                       </Box>
                     }
                     secondary={
@@ -312,7 +381,7 @@ export default function AdminNoticeCenter() {
               onChange={(e) => setFormData({ ...formData, body: e.target.value })}
               sx={{ mb: 2 }}
             />
-            <FormControl fullWidth>
+            <FormControl fullWidth sx={{ mb: 2 }}>
               <InputLabel>Category *</InputLabel>
               <Select
                 label="Category *"
@@ -327,6 +396,45 @@ export default function AdminNoticeCenter() {
                 ))}
               </Select>
             </FormControl>
+
+            <FormControl fullWidth sx={{ mb: 2 }}>
+              <InputLabel>Target Audience *</InputLabel>
+              <Select
+                label="Target Audience *"
+                required
+                value={formData.audience}
+                onChange={(e) => setFormData({ ...formData, audience: e.target.value })}
+              >
+                <MenuItem value="everyone">Everyone (All Citizens & Departments)</MenuItem>
+                <MenuItem value="all_staff">Departments & Staff Only</MenuItem>
+                <MenuItem value="all_citizens">Citizens Only</MenuItem>
+                <MenuItem value="department">Specific Department</MenuItem>
+              </Select>
+            </FormControl>
+
+            {formData.audience === "department" && (
+              <FormControl fullWidth sx={{ mb: 1 }}>
+                <InputLabel>Target Department *</InputLabel>
+                <Select
+                  label="Target Department *"
+                  required
+                  value={formData.target_department_id}
+                  onChange={(e) => setFormData({ ...formData, target_department_id: e.target.value })}
+                >
+                  {departments.length === 0 ? (
+                    <MenuItem disabled value="">
+                      No departments found
+                    </MenuItem>
+                  ) : (
+                    departments.map((dept) => (
+                      <MenuItem key={dept.id} value={dept.id}>
+                        {dept.department_name}
+                      </MenuItem>
+                    ))
+                  )}
+                </Select>
+              </FormControl>
+            )}
           </DialogContent>
           <DialogActions sx={{ px: 3, pb: 3 }}>
             <Button onClick={() => setModalOpen(false)} disabled={submitting}>
@@ -343,13 +451,21 @@ export default function AdminNoticeCenter() {
       <Dialog open={!!viewNotice} onClose={() => setViewNotice(null)} maxWidth="sm" fullWidth>
         <DialogTitle fontWeight={700}>{viewNotice?.title}</DialogTitle>
         <DialogContent>
-          <Stack direction="row" spacing={1} sx={{ mb: 2 }}>
+          <Stack direction="row" spacing={1} sx={{ mb: 2, flexWrap: "wrap", gap: 1 }}>
             <Chip
               label={viewNotice?.category}
               color={CATEGORY_COLOR[viewNotice?.category ?? ""] ?? "default"}
               size="small"
               sx={{ textTransform: "capitalize" }}
             />
+            {viewNotice && (
+              <Chip
+                label={`Audience: ${getAudienceDisplay(viewNotice).label}`}
+                color={getAudienceDisplay(viewNotice).color}
+                variant="outlined"
+                size="small"
+              />
+            )}
             <Typography variant="caption" color="text.secondary" sx={{ alignSelf: "center" }}>
               Posted {viewNotice ? new Date(viewNotice.created_at).toLocaleString() : ""}
             </Typography>

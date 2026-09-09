@@ -92,7 +92,7 @@ export class StaffController {
   acceptAssignment = async (req: any, res: Response): Promise<void> => {
     try {
       const { assignmentId } = req.params;
-      const result = await this.service.acceptAssignment(req.staffId, assignmentId);
+      const result = await this.service.acceptAssignment(req.staffId, assignmentId, req.user?.id);
       res.status(200).json({ success: true, message: "Assignment accepted.", data: result });
     } catch (error: any) {
       res.status(400).json({ success: false, error: error.message });
@@ -102,7 +102,7 @@ export class StaffController {
   startAssignment = async (req: any, res: Response): Promise<void> => {
     try {
       const { assignmentId } = req.params;
-      const result = await this.service.startAssignment(req.staffId, assignmentId);
+      const result = await this.service.startAssignment(req.staffId, assignmentId, req.user?.id);
       res.status(200).json({ success: true, message: "Field work started.", data: result });
     } catch (error: any) {
       res.status(400).json({ success: false, error: error.message });
@@ -113,7 +113,12 @@ export class StaffController {
     try {
       const { assignmentId } = req.params;
       const { note, resolution_note } = req.body || {};
-      const result = await this.service.completeAssignment(req.staffId, assignmentId, note || resolution_note);
+      const result = await this.service.completeAssignment(
+        req.staffId,
+        assignmentId,
+        note || resolution_note,
+        req.user?.id
+      );
       res.status(200).json({ success: true, message: "Assignment completed & resolved.", data: result });
     } catch (error: any) {
       res.status(400).json({ success: false, error: error.message });
@@ -135,7 +140,8 @@ export class StaffController {
         complaintId,
         to_staff_id,
         reason,
-        note
+        note,
+        req.user?.id
       );
 
       res.status(201).json({ success: true, message: "Complaint transferred to peer.", data: handoff });
@@ -158,7 +164,8 @@ export class StaffController {
         req.staffId,
         complaintId,
         reason,
-        note
+        note,
+        req.user?.id
       );
 
       res.status(201).json({ success: true, message: "Complaint returned to Department Head.", data: handoff });

@@ -4,6 +4,7 @@ import { supabaseAdmin, createAuthClient, supabase } from "../../../config/supab
 import type { UserRole } from "../../../types/database.type";
 import { TOKEN_CONFIG } from "../../../app";
 import { env } from "../../../config/env";
+import { AuditService } from "../../../service/audit.service";
 
 // Derived millisecond value — computed once at module load
 const REFRESH_TOKEN_TTL_MS =
@@ -72,7 +73,11 @@ export const registerService = async (body: {
   return loginService(body.email, body.password);
 };
 
-export const loginService = async (email: string, password: string) => {
+export const loginService = async (
+  email: string,
+  password: string,
+  clientMeta?: { ip?: string; userAgent?: string }
+) => {
   const authClient = createAuthClient();
 
   const { data, error } = await authClient.auth.signInWithPassword({
@@ -175,6 +180,20 @@ export const loginService = async (email: string, password: string) => {
     expires_at: new Date(Date.now() + REFRESH_TOKEN_TTL_MS).toISOString(), // 7 days
   });
 
+  // Audit successful login
+  AuditService.logLogin({
+    userId: profile.id,
+    role: profile.role,
+    municipalityId: profile.municipality_id,
+    email: profile.email,
+    fullName: profile.full_name,
+    ip: clientMeta?.ip,
+    userAgent: clientMeta?.userAgent,
+    method: "password",
+  }).catch((auditErr) => {
+    console.error("[loginService] Failed to record login audit:", auditErr);
+  });
+
   return {
     access_token: data.session.access_token,
     refresh_token: data.session.refresh_token,
@@ -228,7 +247,11 @@ export const refreshTokenService = async (refreshToken: string) => {
   };
 };
 
-export const logoutService = async (refreshToken?: string, userId?: string) => {
+export const logoutService = async (
+  refreshToken?: string,
+  userId?: string,
+  clientMeta?: { ip?: string; userAgent?: string; role?: any }
+) => {
   try {
     if (refreshToken) {
       const tokenHash = crypto
@@ -250,6 +273,17 @@ export const logoutService = async (refreshToken?: string, userId?: string) => {
         .update({ is_revoked: true, revoked_at: new Date().toISOString() })
         .eq("profile_id", userId)
         .eq("is_revoked", false);
+    }
+
+    if (userId) {
+      AuditService.logLogout({
+        userId,
+        role: clientMeta?.role,
+        ip: clientMeta?.ip,
+        userAgent: clientMeta?.userAgent,
+      }).catch((auditErr) => {
+        console.error("[logoutService] Failed to record logout audit:", auditErr);
+      });
     }
   } catch (err: any) {
     console.warn("[logoutService] Token revocation warning:", err?.message);
@@ -465,7 +499,11 @@ export const changePasswordService = async (
   };
 };
 
-export const loginWithMobileService = async (phone: string, otpCode: string) => {
+export const loginWithMobileService = async (
+  phone: string,
+  otpCode: string,
+  clientMeta?: { ip?: string; userAgent?: string }
+) => {
   const sanitizedPhone = phone.trim().replace(/^\+977/, "");
 
   const { OTPService } = require("../../../service/otp.service");
@@ -521,6 +559,19 @@ export const loginWithMobileService = async (phone: string, otpCode: string) => 
     profile_id: profile.id,
     token_hash: tokenHash,
     expires_at: new Date(Date.now() + REFRESH_TOKEN_TTL_MS).toISOString(),
+  });
+
+  AuditService.logLogin({
+    userId: profile.id,
+    role: profile.role,
+    municipalityId: profile.municipality_id,
+    email: profile.email,
+    fullName: profile.full_name,
+    ip: clientMeta?.ip,
+    userAgent: clientMeta?.userAgent,
+    method: "mobile_otp",
+  }).catch((auditErr) => {
+    console.error("[loginWithMobileService] Failed to record login audit:", auditErr);
   });
 
   return {

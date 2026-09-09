@@ -243,6 +243,14 @@ export const municipalityApi = {
   },
 
   /**
+   * Get full in-depth complaint detail for municipality
+   */
+  getComplaintDetail: async (complaintId: string): Promise<ApiResponse<any>> => {
+    const response = await apiClient.get<ApiResponse<any>>(`/municipality/complaints/${complaintId}`);
+    return response.data;
+  },
+
+  /**
    * Intervene on a complaint (Admin action)
    */
   interveneOnComplaint: async (

@@ -4,6 +4,7 @@ import type {
   DepartmentInsert,
   StaffInsert,
 } from "../../../types/database.type";
+import { LifecycleService } from "../../../service/lifecycle.service";
 
 export class MunicipalityRepository {
   constructor(private supabaseAdmin: SupabaseClient) {}
@@ -447,7 +448,7 @@ export class MunicipalityRepository {
     let query = this.supabaseAdmin
       .from("complaints")
       .select(
-        `co_uid, tracking_id, title, description, status, priority, severity_level, ward_number, citizen_id, municipality_id, assigned_department_id, category_id, submitted_date, updated_at, resolution_date, resolution_note, sla_due_at, sla_breached, department:departments!assigned_department_id(id, department_name), category:complaint_categories!category_id(id, category_name), citizen:citizens(id, current_province_id, current_district_id, current_municipality_id, permanent_province_id, permanent_district_id, permanent_municipality_id)`,
+        `co_uid, tracking_id, title, description, status, priority, severity_level, ward_number, citizen_id, municipality_id, assigned_department_id, category_id, submitted_date, updated_at, resolution_date, resolution_note, sla_due_at, sla_breached, location_source, latitude, longitude, department:departments!assigned_department_id(id, department_name), category:complaint_categories!category_id(id, category_name), citizen:citizens(id, first_name, last_name, contact_number, current_address, permanent_address, current_province_id, current_district_id, current_municipality_id, permanent_province_id, permanent_district_id, permanent_municipality_id)`,
       )
       .eq("municipality_id", municipalityId);
 
@@ -460,6 +461,122 @@ export class MunicipalityRepository {
     });
     if (error) throw error;
     return data;
+  }
+
+  // Fetches full in-depth complaint detail for municipality jurisdiction
+  async getRegionalComplaintDetail(municipalityId: string, complaintId: string) {
+    let query = this.supabaseAdmin
+      .from("complaints")
+      .select(`
+        co_uid, tracking_id, title, description, status, priority, severity_level, ticket_type,
+        cross_dept_status, location_source, latitude, longitude, ward_number,
+        submitted_date, resolution_date, resolution_note, rejection_reason,
+        sla_due_at, sla_breached, current_team_id, municipality_id,
+        current_team:teams!current_team_id ( id, team_name, description, team_type, is_active ),
+        complaint_categories!complaints_category_id_fkey ( id, category_name ),
+        citizens ( id, first_name, middle_name, last_name, contact_number, current_address, permanent_address, current_ward_id, permanent_ward_id, profile_picture, kyc_status, profile:profiles!citizens_id_fkey ( id, full_name, email, phone ) ),
+        municipalities!municipality_id ( id, official_name ),
+        assigned_department:departments!assigned_department_id ( id, department_name ),
+        lead_department:departments!lead_department_id ( id, department_name )
+      `)
+      .eq("co_uid", complaintId);
+
+    if (municipalityId) {
+      query = query.eq("municipality_id", municipalityId);
+    }
+
+    const { data: complaint, error: compErr } = await query.maybeSingle();
+    if (compErr) throw compErr;
+    if (!complaint) return null;
+
+    // Fallback ward resolution
+    let resolvedWardNumber = complaint.ward_number;
+    const citizenData: any = complaint.citizens;
+    if (!resolvedWardNumber && citizenData) {
+      const citizenWardId = citizenData.current_ward_id || citizenData.permanent_ward_id;
+      if (citizenWardId) {
+        const { data: wardRow } = await this.supabaseAdmin
+          .from("wards")
+          .select("ward_no")
+          .eq("id", citizenWardId)
+          .maybeSingle();
+        if (wardRow?.ward_no) {
+          resolvedWardNumber = wardRow.ward_no;
+        }
+      }
+      if (!resolvedWardNumber && citizenData.current_address) {
+        const m = citizenData.current_address.match(/ward\s*(\d+)/i);
+        if (m) resolvedWardNumber = parseInt(m[1], 10);
+      }
+    }
+
+    // Fetch team members if team assigned
+    let teamMembers: any[] = [];
+    const currentTeam: any = complaint.current_team;
+    const teamId = complaint.current_team_id || (Array.isArray(currentTeam) ? currentTeam[0]?.id : currentTeam?.id);
+    if (teamId) {
+      const { data: members, error: memErr } = await this.supabaseAdmin
+        .from("team_members")
+        .select(`
+          id, staff_id, is_leader, joined_at,
+          staff:staff!staff_id (
+            id, employee_id, expertise, designation, contact_number,
+            profile:profiles!profile_id ( id, full_name, email, phone )
+          )
+        `)
+        .eq("team_id", teamId);
+
+      if (!memErr && members) {
+        teamMembers = members.map((m: any) => ({
+          id: m.id,
+          staff_id: m.staff_id,
+          is_leader: m.is_leader,
+          joined_at: m.joined_at,
+          employee_id: m.staff?.employee_id,
+          expertise: m.staff?.expertise,
+          designation: m.staff?.designation,
+          contact_number: m.staff?.contact_number || m.staff?.profile?.phone,
+          full_name: m.staff?.profile?.full_name,
+          email: m.staff?.profile?.email,
+        }));
+      }
+    }
+
+    // Fetch media attachments
+    const { data: mediaList, error: mediaErr } = await this.supabaseAdmin
+      .from("media")
+      .select("id, file_url, media_type, file_name, file_size_bytes, created_at")
+      .eq("context", "complaint")
+      .eq("context_id", complaintId);
+
+    if (mediaErr) {
+      console.warn("Could not load media attachments for complaint:", mediaErr.message);
+    }
+
+    // Fetch complaint timeline history
+    let timeline: any[] = [];
+    try {
+      const lifecycle = new LifecycleService(this.supabaseAdmin);
+      timeline = await lifecycle.getTimeline(complaintId);
+    } catch (tlErr: any) {
+      console.warn("Could not load timeline for complaint:", tlErr.message);
+    }
+
+    return {
+      ...complaint,
+      ward_number: resolvedWardNumber,
+      citizen: complaint.citizens,
+      citizens: complaint.citizens,
+      municipality: complaint.municipalities,
+      municipalities: complaint.municipalities,
+      category: complaint.complaint_categories,
+      complaint_categories: complaint.complaint_categories,
+      department: complaint.assigned_department,
+      assigned_department: complaint.assigned_department,
+      media: mediaList || [],
+      team_members: teamMembers,
+      timeline,
+    };
   }
 
   // ===== KYC VERIFICATION METHODS =====
@@ -815,6 +932,8 @@ export class MunicipalityRepository {
         title: cleanTitle,
         body: n.body,
         category,
+        audience: n.audience,
+        target_department_id: n.target_department_id,
         created_at: n.created_at,
         updated_at: n.created_at,
       };
@@ -834,12 +953,19 @@ export class MunicipalityRepository {
   async createNotice(
     senderId: string,
     municipalityId: string,
-    data: { title: string; body: string; category?: string }
+    data: {
+      title: string;
+      body: string;
+      category?: string;
+      audience?: string;
+      target_department_id?: string;
+    }
   ) {
     const category = (data.category || "general").toLowerCase();
     const isUrgent = category === "emergency";
     const rawTitle = (data.title || "").replace(/^\[[A-Z_]+\]\s*/i, "").trim();
     const formattedTitle = `[${category.toUpperCase()}] ${rawTitle}`;
+    const targetAudience = (data.audience || "everyone") as any;
 
     // 1. Insert broadcast notification
     const { data: notification, error } = await this.supabaseAdmin
@@ -847,8 +973,9 @@ export class MunicipalityRepository {
       .insert({
         sender_id: senderId,
         type: "broadcast",
-        audience: "all_citizens",
+        audience: targetAudience,
         target_municipality_id: municipalityId,
+        target_department_id: data.target_department_id || null,
         title: formattedTitle,
         body: data.body,
         is_urgent: isUrgent,
@@ -859,12 +986,13 @@ export class MunicipalityRepository {
 
     if (error) throw error;
 
-    // 2. Resolve recipients and pre-seed notification_reads so citizens & staff in the municipality receive it
+    // 2. Resolve recipients and pre-seed notification_reads so citizens & staff/departments in the municipality receive it
     try {
       const { NotificationService } = require("../../../service/notification.service");
       const notifService = new NotificationService(this.supabaseAdmin);
-      const recipientIds = await notifService.resolveRecipients("all_citizens", {
+      const recipientIds = await notifService.resolveRecipients(targetAudience, {
         municipality_id: municipalityId,
+        department_id: data.target_department_id || undefined,
       });
 
       if (recipientIds && recipientIds.length > 0) {
@@ -885,6 +1013,8 @@ export class MunicipalityRepository {
       title: rawTitle,
       body: notification.body,
       category,
+      audience: targetAudience,
+      target_department_id: data.target_department_id || null,
       created_at: notification.created_at,
       updated_at: notification.created_at,
     };

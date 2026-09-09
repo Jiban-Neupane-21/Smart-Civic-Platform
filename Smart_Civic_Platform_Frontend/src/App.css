@@ -182,3 +182,8 @@
     border-right-color: var(--border);
   }
 }
+
+/* SweetAlert2 container z-index elevation to float above Material-UI Dialogs (z-index: 1300) */
+.swal2-container {
+  z-index: 99999 !important;
+}

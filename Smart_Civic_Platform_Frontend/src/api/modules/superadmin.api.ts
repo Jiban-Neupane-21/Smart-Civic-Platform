@@ -68,8 +68,15 @@ export const superadminApi = {
     return response.data;
   },
 
-  getAuditLogs: async (params?: { page?: number; limit?: number }): Promise<ApiResponse<AuditLogEntry[]>> => {
-    const response = await apiClient.get<ApiResponse<AuditLogEntry[]>>('/superadmin/audit-logs', { params });
+  getAuditLogs: async (params?: {
+    page?: number;
+    limit?: number;
+    action?: string;
+    role?: string;
+    severity?: string;
+    search?: string;
+  }): Promise<ApiResponse<AuditLogEntry[]> & { total?: number }> => {
+    const response = await apiClient.get<ApiResponse<AuditLogEntry[]> & { total?: number }>('/superadmin/audit-logs', { params });
     return response.data;
   },
 

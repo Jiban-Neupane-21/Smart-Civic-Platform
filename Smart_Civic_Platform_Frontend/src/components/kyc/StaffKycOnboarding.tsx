@@ -22,6 +22,7 @@ import {
   FormControlLabel,
 } from "@mui/material";
 import { Upload, FileText, CheckCircle, Clock, XCircle } from "lucide-react";
+import { KycFilePreviewCard } from "./KycFilePreviewCard";
 import { useAuth } from "../../hooks/useAuth";
 import { staffApi } from "../../api/modules/staff.api";
 import Swal from "sweetalert2";
@@ -769,16 +770,43 @@ export const StaffKycOnboarding: React.FC = () => {
               </Grid>
 
               <Grid item xs={12} mt={1}>
-                <Divider />
-                <Typography variant="subtitle2" color="text.secondary" sx={{ mt: 2, mb: 1 }}>
-                  Attached Documents
+                <Divider sx={{ mb: 2 }} />
+                <Typography variant="subtitle1" fontWeight={700} gutterBottom>
+                  Attached Verification Documents
                 </Typography>
-                <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }}>
-                  {photoBase64 && <Typography variant="body2" color="primary">✓ Profile Photo</Typography>}
-                  {identityFront && <Typography variant="body2" color="primary">✓ Identity Front Document</Typography>}
-                  {identityBack && <Typography variant="body2" color="primary">✓ Identity Back Document</Typography>}
-                  {appointmentLetter && <Typography variant="body2" color="primary">✓ Appointment / ID Badge</Typography>}
-                </Box>
+                <Typography variant="caption" color="text.secondary" display="block" mb={2}>
+                  Click any document card below to inspect full-size image or PDF before final submission.
+                </Typography>
+                <Grid container spacing={2}>
+                  <Grid item xs={12} sm={6} md={3}>
+                    <KycFilePreviewCard
+                      label="Profile Photo (Passport size)"
+                      fileData={photoBase64}
+                      height={150}
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={6} md={3}>
+                    <KycFilePreviewCard
+                      label="Identity Document (Front)"
+                      fileData={identityFront}
+                      height={150}
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={6} md={3}>
+                    <KycFilePreviewCard
+                      label="Identity Document (Back)"
+                      fileData={identityBack}
+                      height={150}
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={6} md={3}>
+                    <KycFilePreviewCard
+                      label="Appointment / Staff ID Badge"
+                      fileData={appointmentLetter}
+                      height={150}
+                    />
+                  </Grid>
+                </Grid>
               </Grid>
 
               <Grid item xs={12} mt={1}>

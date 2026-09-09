@@ -96,6 +96,34 @@ export class NotificationService {
       return (citizens || []).map((c: any) => c.id);
     }
 
+    if (audience === "everyone" && filters.municipality_id) {
+      const recipientSet = new Set<string>();
+
+      // 1. All citizens in the municipality
+      const { data: citizens } = await this.supabaseAdmin
+        .from("citizens")
+        .select("id")
+        .or(`current_municipality_id.eq.${filters.municipality_id},permanent_municipality_id.eq.${filters.municipality_id}`);
+      (citizens || []).forEach((c: any) => c.id && recipientSet.add(c.id));
+
+      // 2. All admin profiles (dept heads, municipality head, staff) in municipality
+      const { data: adminProfiles } = await this.supabaseAdmin
+        .from("profiles")
+        .select("id")
+        .eq("municipality_id", filters.municipality_id);
+      (adminProfiles || []).forEach((p: any) => p.id && recipientSet.add(p.id));
+
+      // 3. All staff records linked to municipality
+      const { data: staffList } = await this.supabaseAdmin
+        .from("staff")
+        .select("profile_id")
+        .eq("municipality_id", filters.municipality_id)
+        .eq("is_deleted", false);
+      (staffList || []).forEach((s: any) => s.profile_id && recipientSet.add(s.profile_id));
+
+      return Array.from(recipientSet);
+    }
+
     if (audience === "ward_citizens" && filters.ward_id) {
       const { data: citizens } = await this.supabaseAdmin
         .from("citizens")

@@ -274,6 +274,17 @@ export class MunicipalityService {
     return await this.repo.getRegionalComplaints(municipalityId, filterStatus);
   }
 
+  async getComplaintDetail(
+    municipalityId: string,
+    complaintId: string,
+  ) {
+    const complaint = await this.repo.getRegionalComplaintDetail(municipalityId, complaintId);
+    if (!complaint) {
+      throw new Error("Complaint not found in this municipality.");
+    }
+    return complaint;
+  }
+
   // ===== KYC VERIFICATION METHODS =====
 
   async getPendingKycList(municipalityId: string, statusFilter?: string) {
@@ -398,7 +409,13 @@ export class MunicipalityService {
   async createNotice(
     senderId: string,
     municipalityId: string,
-    data: { title: string; body: string; category?: string }
+    data: {
+      title: string;
+      body: string;
+      category?: string;
+      audience?: string;
+      target_department_id?: string;
+    }
   ) {
     if (!data.title || !data.title.trim()) {
       throw new Error("Notice title is required.");

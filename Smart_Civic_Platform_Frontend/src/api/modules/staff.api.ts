@@ -142,8 +142,14 @@ export const staffApi = {
   /**
    * Complete field work assignment
    */
-  completeAssignment: async (assignmentId: string): Promise<ApiResponse<any>> => {
-    const response = await apiClient.post<ApiResponse<any>>(`/staff/assignments/${assignmentId}/complete`);
+  completeAssignment: async (
+    assignmentId: string,
+    data?: { note?: string; resolution_note?: string }
+  ): Promise<ApiResponse<any>> => {
+    const response = await apiClient.post<ApiResponse<any>>(
+      `/staff/assignments/${assignmentId}/complete`,
+      data
+    );
     return response.data;
   },
 

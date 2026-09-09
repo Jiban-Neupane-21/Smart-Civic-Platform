@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useMemo } from "react";
+import { useParams } from "react-router-dom";
 import {
   Box, Typography, Paper, Table, TableBody, TableCell, TableContainer,
   TableHead, TableRow, Chip, CircularProgress, Alert, Dialog, DialogTitle,
@@ -28,6 +29,7 @@ import {
   Add as AddIcon,
   AssignmentTurnedIn,
   GroupAdd,
+  Timeline as TimelineIcon,
 } from "@mui/icons-material";
 import { useAuth } from "../../hooks/useAuth";
 import { departmentApi } from "../../api/modules/department.api";
@@ -35,6 +37,7 @@ import { municipalityApi } from "../../api/modules/municipality.api";
 import type { DeptQueueComplaint, DeptComplaintDetail } from "../../api/types/department.types";
 import { QuickAssignSquadDialog } from "../../components/QuickAssignSquadDialog";
 import { QuickCreateTeamDialog } from "../../components/QuickCreateTeamDialog";
+import { IncidentLocationMap } from "../../components/IncidentLocationMap";
 import { formatDistanceToNow, isPast } from "date-fns";
 
 const STATUS_COLOR: Record<string, "default" | "primary" | "warning" | "info" | "success" | "error" | "secondary"> = {
@@ -61,6 +64,7 @@ export type DeptTabValue = "all" | "pending" | "under_review" | "in_progress" | 
 
 export default function DeptComplainDetails() {
   const { user } = useAuth();
+  const { id: routeComplaintId } = useParams<{ id?: string }>();
   
   const [complaints, setComplaints] = useState<DeptQueueComplaint[]>([]);
   const [departments, setDepartments] = useState<any[]>([]);
@@ -92,14 +96,17 @@ export default function DeptComplainDetails() {
   const [partnerDept, setPartnerDept] = useState<string>("");
   const [collabNote, setCollabNote] = useState<string>("");
 
-  const handleOpenDetail = async (c: DeptQueueComplaint) => {
-    setSelected(c);
+  const handleOpenDetail = async (c: DeptQueueComplaint | { co_uid: string }) => {
+    setSelected(c as DeptQueueComplaint);
     setDetailData(null);
     setDetailLoading(true);
     try {
       const res = await departmentApi.getComplaintDetail(c.co_uid);
       if (res.success && res.data) {
         setDetailData(res.data);
+        if (!(c as any).title) {
+          setSelected(res.data as any);
+        }
       }
     } catch (err) {
       console.error("Failed to load full complaint detail:", err);
@@ -119,6 +126,12 @@ export default function DeptComplainDetails() {
     fetchData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (routeComplaintId) {
+      handleOpenDetail({ co_uid: routeComplaintId });
+    }
+  }, [routeComplaintId]);
 
   const fetchData = async () => {
     setLoading(true);
@@ -912,6 +925,18 @@ export default function DeptComplainDetails() {
                           </Button>
                         </Box>
                       ) : null}
+
+                      {/* Interactive Incident Pinpoint Map */}
+                      <Box sx={{ mt: 2, borderRadius: 2, overflow: "hidden", border: 1, borderColor: "divider" }}>
+                        <IncidentLocationMap
+                          latitude={Number(selected.latitude || detailData?.latitude || 0) || null}
+                          longitude={Number(selected.longitude || detailData?.longitude || 0) || null}
+                          displayAddress={locationSubAddress || locationHeading}
+                          wardNumber={resolvedWard}
+                          municipalityName={resolvedMuni}
+                          height={220}
+                        />
+                      </Box>
                     </Grid>
 
                     <Grid size={{ xs: 12, sm: 5 }}>
@@ -1224,7 +1249,59 @@ export default function DeptComplainDetails() {
                 </CardContent>
               </Card>
 
-              {/* Section 5: State Transition & Multi-Department Actions */}
+              {/* Section 5: Activity & Progress Timeline */}
+              <Card variant="outlined" sx={{ borderRadius: 2 }}>
+                <CardContent sx={{ p: 2.5 }}>
+                  <Stack direction="row" spacing={1} alignItems="center" mb={2}>
+                    <TimelineIcon color="primary" />
+                    <Typography variant="subtitle1" fontWeight={700}>
+                      Activity & Resolution History ({((detailData as any)?.timeline?.length || 0)})
+                    </Typography>
+                  </Stack>
+
+                  {((detailData as any)?.timeline && (detailData as any).timeline.length > 0) ? (
+                    <Stack spacing={1.5}>
+                      {(detailData as any).timeline.map((item: any, idx: number) => (
+                        <Paper
+                          key={item.id || idx}
+                          variant="outlined"
+                          sx={{ p: 1.5, borderRadius: 1.5, bgcolor: "grey.50" }}
+                        >
+                          <Stack direction="row" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={1}>
+                            <Stack direction="row" spacing={1} alignItems="center">
+                              <Avatar sx={{ width: 24, height: 24, fontSize: "0.75rem", bgcolor: "primary.main" }}>
+                                {item.updated_by_name?.charAt(0) || "U"}
+                              </Avatar>
+                              <Typography variant="body2" fontWeight={600}>
+                                {item.updated_by_name}
+                              </Typography>
+                              <Chip
+                                size="small"
+                                label={item.updated_by_role || "staff"}
+                                sx={{ height: 20, fontSize: "0.68rem", textTransform: "capitalize" }}
+                              />
+                            </Stack>
+                            <Typography variant="caption" color="text.secondary">
+                              {item.created_at ? formatDistanceToNow(new Date(item.created_at), { addSuffix: true }) : ""}
+                            </Typography>
+                          </Stack>
+                          {item.note && (
+                            <Typography variant="body2" color="text.primary" sx={{ mt: 1, pl: 4, whiteSpace: "pre-wrap" }}>
+                              {item.note}
+                            </Typography>
+                          )}
+                        </Paper>
+                      ))}
+                    </Stack>
+                  ) : (
+                    <Typography variant="body2" color="text.secondary">
+                      {detailLoading ? "Loading timeline updates..." : "No status notes or updates recorded yet."}
+                    </Typography>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Section 6: State Transition & Multi-Department Actions */}
               <Box sx={{ pt: 1 }}>
                 <Typography variant="subtitle1" fontWeight={700} mb={2}>
                   Actions & Triage Controls

@@ -12,8 +12,19 @@ export class HandoffService {
     fromStaffId: string,
     toStaffId: string,
     reason: string,
-    note?: string
+    note?: string,
+    profileId?: string
   ) {
+    let initiatorProfileId = profileId;
+    if (!initiatorProfileId && fromStaffId) {
+      const { data: staffRec } = await this.supabaseAdmin
+        .from("staff")
+        .select("profile_id")
+        .eq("id", fromStaffId)
+        .maybeSingle();
+      initiatorProfileId = staffRec?.profile_id || fromStaffId;
+    }
+
     // 1. Create complaint_handoffs record
     const { data: handoff, error } = await this.supabaseAdmin
       .from("complaint_handoffs")
@@ -25,7 +36,7 @@ export class HandoffService {
         handoff_type: "peer_reassign",
         handoff_reason: reason,
         handoff_note: note || null,
-        initiated_by: fromStaffId,
+        initiated_by: initiatorProfileId,
       })
       .select()
       .single();
@@ -55,7 +66,7 @@ export class HandoffService {
     await lifecycle.transition(
       complaintId,
       "assigned",
-      fromStaffId,
+      initiatorProfileId || fromStaffId,
       "staff",
       `Peer Handoff: Transferred to staff ${toStaffId}. Reason: ${reason}`
     );
@@ -70,8 +81,19 @@ export class HandoffService {
     complaintId: string,
     fromStaffId: string,
     reason: string,
-    note?: string
+    note?: string,
+    profileId?: string
   ) {
+    let initiatorProfileId = profileId;
+    if (!initiatorProfileId && fromStaffId) {
+      const { data: staffRec } = await this.supabaseAdmin
+        .from("staff")
+        .select("profile_id")
+        .eq("id", fromStaffId)
+        .maybeSingle();
+      initiatorProfileId = staffRec?.profile_id || fromStaffId;
+    }
+
     const { data: handoff, error } = await this.supabaseAdmin
       .from("complaint_handoffs")
       .insert({
@@ -82,7 +104,7 @@ export class HandoffService {
         handoff_type: "return_to_dept_head",
         handoff_reason: reason,
         handoff_note: note || null,
-        initiated_by: fromStaffId,
+        initiated_by: initiatorProfileId,
       })
       .select()
       .single();
@@ -103,7 +125,7 @@ export class HandoffService {
     await lifecycle.transition(
       complaintId,
       "under_review",
-      fromStaffId,
+      initiatorProfileId || fromStaffId,
       "staff",
       `Returned to Department Head. Reason: ${reason}`
     );

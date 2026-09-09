@@ -1,5 +1,6 @@
 import { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "../../../types/database.type";
+import { LifecycleService } from "../../../service/lifecycle.service";
 
 export class DepartmentRepository {
   constructor(private supabaseAdmin: SupabaseClient) {}
@@ -745,6 +746,15 @@ export class DepartmentRepository {
       console.warn("Could not load media attachments for complaint:", mediaErr.message);
     }
 
+    // 4. Fetch complaint timeline history
+    let timeline: any[] = [];
+    try {
+      const lifecycle = new LifecycleService(this.supabaseAdmin);
+      timeline = await lifecycle.getTimeline(complaintId);
+    } catch (tlErr: any) {
+      console.warn("Could not load timeline for complaint:", tlErr.message);
+    }
+
     return {
       ...complaint,
       ward_number: resolvedWardNumber,
@@ -756,6 +766,7 @@ export class DepartmentRepository {
       complaint_categories: complaint.complaint_categories,
       media: mediaList || [],
       team_members: teamMembers,
+      timeline,
     };
   }
 
@@ -1092,6 +1103,60 @@ export class DepartmentRepository {
       teamWorkload,
       monthlyTrend,
     };
+  }
+
+  async getNotices(municipalityId?: string, departmentId?: string, category?: string) {
+    let targetMunicipalityId = municipalityId;
+
+    if (!targetMunicipalityId && departmentId) {
+      const { data: dept } = await this.supabaseAdmin
+        .from("departments")
+        .select("municipality_id")
+        .eq("id", departmentId)
+        .maybeSingle();
+      if (dept?.municipality_id) {
+        targetMunicipalityId = dept.municipality_id;
+      }
+    }
+
+    let query = this.supabaseAdmin
+      .from("notifications")
+      .select("id, title, body, type, audience, target_department_id, metadata, created_at")
+      .eq("type", "broadcast")
+      .order("created_at", { ascending: false });
+
+    if (targetMunicipalityId) {
+      query = query.eq("target_municipality_id", targetMunicipalityId);
+    }
+
+    if (departmentId) {
+      query = query.or(`target_department_id.eq.${departmentId},and(target_department_id.is.null,audience.in.(everyone,all_staff,all_citizens))`);
+    } else {
+      query = query.or("audience.in.(everyone,all_staff)");
+    }
+
+    const { data, error } = await query;
+    if (error) {
+      console.error("[DEPT-GET-NOTICES-ERROR]", error);
+      throw error;
+    }
+
+    let notices = (data || []).map((item: any) => ({
+      id: item.id,
+      title: item.title,
+      body: item.body,
+      category: item.metadata?.category || "General",
+      audience: item.audience,
+      target_department_id: item.target_department_id,
+      metadata: item.metadata,
+      created_at: item.created_at,
+    }));
+
+    if (category && category !== "All") {
+      notices = notices.filter((n: any) => n.category?.toLowerCase() === category.toLowerCase());
+    }
+
+    return notices;
   }
 }
 

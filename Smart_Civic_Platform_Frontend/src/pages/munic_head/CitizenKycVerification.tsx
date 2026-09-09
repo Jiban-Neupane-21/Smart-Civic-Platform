@@ -51,6 +51,14 @@ import Swal from "sweetalert2";
 import { municipalityApi } from "../../api";
 import type { CitizenKycItem } from "../../api/types/municipality.types";
 
+const swalTop = Swal.mixin({
+  didOpen: (popup) => {
+    if (popup.parentElement) {
+      popup.parentElement.style.zIndex = "99999";
+    }
+  },
+});
+
 type KycTabValue = "all" | "pending" | "verified" | "rejected";
 
 export default function MunicCitizenKycVerification() {
@@ -164,7 +172,7 @@ export default function MunicCitizenKycVerification() {
   const handleApprove = async () => {
     if (!selectedCitizen) return;
 
-    const result = await Swal.fire({
+    const result = await swalTop.fire({
       title: "Approve Identity Verification?",
       html: `You are about to verify <b>${selectedCitizen.first_name} ${selectedCitizen.last_name}</b> (ID: <code>${selectedCitizen.identity_number}</code>).<br/><br/>This citizen will receive immediate civic platform privileges.`,
       icon: "question",
@@ -184,7 +192,7 @@ export default function MunicCitizenKycVerification() {
       });
 
       if (res.success) {
-        Swal.fire({
+        swalTop.fire({
           icon: "success",
           title: "Citizen Verified!",
           text: `${selectedCitizen.first_name} ${selectedCitizen.last_name}'s KYC has been successfully verified.`,
@@ -196,10 +204,10 @@ export default function MunicCitizenKycVerification() {
         await fetchData();
         setActiveTab("verified");
       } else {
-        Swal.fire("Error", (res as any).error || "Failed to approve verification.", "error");
+        swalTop.fire("Error", (res as any).error || "Failed to approve verification.", "error");
       }
     } catch (err: any) {
-      Swal.fire("Error", err.response?.data?.error || err.message, "error");
+      swalTop.fire("Error", err.response?.data?.error || err.message, "error");
     } finally {
       setSubmittingReview(false);
     }
@@ -215,7 +223,7 @@ export default function MunicCitizenKycVerification() {
     if (!selectedCitizen) return;
 
     if (!rejectionReason.trim()) {
-      Swal.fire("Reason Required", "Please state why the verification is being rejected so the citizen can re-upload.", "warning");
+      swalTop.fire("Reason Required", "Please state why the verification is being rejected so the citizen can re-upload.", "warning");
       return;
     }
 
@@ -227,7 +235,7 @@ export default function MunicCitizenKycVerification() {
       });
 
       if (res.success) {
-        Swal.fire({
+        swalTop.fire({
           icon: "info",
           title: "Verification Rejected",
           text: "The citizen has been notified with your reason to re-upload clear documents.",
@@ -240,10 +248,10 @@ export default function MunicCitizenKycVerification() {
         await fetchData();
         setActiveTab("rejected");
       } else {
-        Swal.fire("Error", (res as any).error || "Failed to reject verification.", "error");
+        swalTop.fire("Error", (res as any).error || "Failed to reject verification.", "error");
       }
     } catch (err: any) {
-      Swal.fire("Error", err.response?.data?.error || err.message, "error");
+      swalTop.fire("Error", err.response?.data?.error || err.message, "error");
     } finally {
       setSubmittingReview(false);
     }
@@ -884,6 +892,7 @@ export default function MunicCitizenKycVerification() {
         onClose={() => setRejectDialogOpen(false)}
         maxWidth="sm"
         fullWidth
+        sx={{ zIndex: 1400 }}
         PaperProps={{ sx: { borderRadius: 3 } }}
       >
         <DialogTitle sx={{ fontWeight: 700, color: "error.main" }}>
@@ -943,6 +952,7 @@ export default function MunicCitizenKycVerification() {
         open={Boolean(previewImageUrl)}
         onClose={() => setPreviewImageUrl(null)}
         maxWidth="lg"
+        sx={{ zIndex: 1450 }}
         PaperProps={{ sx: { bgcolor: "black", borderRadius: 2, overflow: "hidden" } }}
       >
         <Box sx={{ position: "relative", p: 1 }}>

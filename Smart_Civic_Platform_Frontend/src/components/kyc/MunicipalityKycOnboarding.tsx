@@ -20,6 +20,7 @@ import {
   Divider,
 } from "@mui/material";
 import { Upload, FileText, CheckCircle } from "lucide-react";
+import { KycFilePreviewCard } from "./KycFilePreviewCard";
 import { useAuth } from "../../hooks/useAuth";
 import { municipalityApi } from "../../api/modules/municipality.api";
 import Swal from "sweetalert2";
@@ -573,15 +574,44 @@ export const MunicipalityKycOnboarding: React.FC = () => {
               <Grid item xs={12} sm={6}><Typography variant="subtitle2" color="text.secondary">Mayor / Chairperson</Typography><Typography fontWeight={600}>{mayorName || "-"}</Typography></Grid>
               <Grid item xs={12} sm={6}><Typography variant="subtitle2" color="text.secondary">Administrative Head</Typography><Typography fontWeight={600}>{headName || "-"}</Typography></Grid>
               <Grid item xs={12} sm={6}><Typography variant="subtitle2" color="text.secondary">Head Contact</Typography><Typography fontWeight={600}>{headContact || "-"}</Typography></Grid>
-              <Grid item xs={12} sm={6}><Typography variant="subtitle2" color="text.secondary">Identity Document</Typography><Typography fontWeight={600}>{headIdentityType} ({headIdentityNumber || "-"})</Typography></Grid>
               <Grid item xs={12} mt={2}>
-                <Typography variant="subtitle2" color="text.secondary" gutterBottom>Uploaded Documents</Typography>
-                <Box display="flex" gap={2} flexWrap="wrap">
-                  {logoBase64 && <Typography variant="body2" color="primary">✓ Logo Attached</Typography>}
-                  {headIdentityFront && <Typography variant="body2" color="primary">✓ Identity Front Attached</Typography>}
-                  {headIdentityBack && <Typography variant="body2" color="primary">✓ Identity Back Attached</Typography>}
-                  {registrationDoc && <Typography variant="body2" color="primary">✓ Registration Document Attached</Typography>}
-                </Box>
+                <Divider sx={{ mb: 2 }} />
+                <Typography variant="subtitle1" fontWeight={700} gutterBottom>
+                  Attached Verification Documents
+                </Typography>
+                <Typography variant="caption" color="text.secondary" display="block" mb={2}>
+                  Click any document card below to inspect full-size image or PDF before final submission.
+                </Typography>
+                <Grid container spacing={2}>
+                  <Grid item xs={12} sm={6} md={3}>
+                    <KycFilePreviewCard
+                      label="Official Municipality Logo"
+                      fileData={logoBase64}
+                      height={150}
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={6} md={3}>
+                    <KycFilePreviewCard
+                      label="Head Identity (Front)"
+                      fileData={headIdentityFront}
+                      height={150}
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={6} md={3}>
+                    <KycFilePreviewCard
+                      label="Head Identity (Back)"
+                      fileData={headIdentityBack}
+                      height={150}
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={6} md={3}>
+                    <KycFilePreviewCard
+                      label="Registration Document"
+                      fileData={registrationDoc}
+                      height={150}
+                    />
+                  </Grid>
+                </Grid>
               </Grid>
             </Grid>
           </Box>

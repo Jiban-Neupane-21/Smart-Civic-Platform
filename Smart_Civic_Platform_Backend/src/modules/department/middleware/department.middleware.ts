@@ -57,7 +57,7 @@ export const verifyDepartmentHeadContext = (supabase: SupabaseClient) => {
       // Find the specific department managed by this user
       const { data: department, error: deptError } = await supabase
         .from("departments")
-        .select("id")
+        .select("id, municipality_id")
         .eq("head_profile_id", userId)
         .single();
 
@@ -71,8 +71,9 @@ export const verifyDepartmentHeadContext = (supabase: SupabaseClient) => {
         return;
       }
 
-      // Append the verified department ID directly to the request object
+      // Append verified department ID and municipality ID to the request object
       req.departmentId = department.id;
+      req.municipalityId = department.municipality_id;
       next();
     } catch (err: any) {
       res

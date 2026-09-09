@@ -18,6 +18,7 @@ import DeleteIcon from "@mui/icons-material/Delete";
 import CloudUploadIcon from "@mui/icons-material/CloudUpload";
 
 import { isValidIdentityNumber } from "../../validation/kyc.validators";
+import { KycFilePreviewCard } from "./KycFilePreviewCard";
 
 export interface KycUploadPayload {
   identity_type: string;
@@ -130,27 +131,31 @@ export const KycUpload: React.FC<KycUploadProps> = ({
     setFileBase64: React.Dispatch<React.SetStateAction<string | null>>,
     inputRef: React.RefObject<HTMLInputElement>,
   ) => (
-    <Card variant="outlined" sx={{ mb: 2, borderStyle: "dashed" }}>
-      <CardContent sx={{ textAlign: "center", py: 4 }}>
+    <Card variant="outlined" sx={{ mb: 2, borderStyle: fileBase64 ? "solid" : "dashed" }}>
+      <CardContent sx={{ textAlign: "center", py: fileBase64 ? 2 : 4 }}>
         {fileBase64 ? (
-          <Box position="relative" display="inline-block">
-            {fileBase64.startsWith("data:application/pdf") ? (
-              <Typography variant="body1">PDF Document Selected</Typography>
-            ) : (
-              <img
-                src={fileBase64}
-                alt={label}
-                style={{ maxWidth: "100%", maxHeight: 200, objectFit: "contain" }}
-              />
-            )}
-            <IconButton
+          <Box>
+            <KycFilePreviewCard
+              label={label}
+              fileData={fileBase64}
+              height={170}
+              onRemove={() => setFileBase64(null)}
+            />
+            <Button
               size="small"
-              color="error"
-              sx={{ position: "absolute", top: -10, right: -10, bgcolor: "background.paper" }}
-              onClick={() => setFileBase64(null)}
+              variant="text"
+              onClick={() => inputRef.current?.click()}
+              sx={{ mt: 1 }}
             >
-              <DeleteIcon />
-            </IconButton>
+              Change / Replace File
+            </Button>
+            <input
+              type="file"
+              hidden
+              ref={inputRef}
+              accept="image/jpeg,image/png,application/pdf"
+              onChange={handleFileChange(setFileBase64)}
+            />
           </Box>
         ) : (
           <Box>

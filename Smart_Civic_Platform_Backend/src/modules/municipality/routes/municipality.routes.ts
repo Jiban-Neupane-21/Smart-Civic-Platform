@@ -363,9 +363,11 @@ export function createMunicipalityRouter(
    *         description: Intervention executed.
    */
   router.post("/complaints/:id/intervene", controller.interveneInComplaint);
+  router.get("/complaints/:id", controller.getComplaintDetail);
 
   router.get("/:municipalityId/complaints", controller.getComplaints);
   router.get("/:municipalityId/complaints/escalated", controller.getEscalatedComplaints);
+  router.get("/:municipalityId/complaints/:id", controller.getComplaintDetail);
   router.post("/:municipalityId/complaints/:id/intervene", controller.interveneInComplaint);
 
   /**

@@ -17,14 +17,22 @@ import {
   Divider,
   Tooltip,
   IconButton,
+  FormControl,
+  InputLabel,
+  Select,
+  FormControlLabel,
+  Checkbox,
   Dialog,
   DialogTitle,
   DialogContent,
   DialogActions,
 } from "@mui/material";
+import type { Province, District, Municipality, Ward } from "../../api/types";
 import {
   Edit as EditIcon,
   Save as SaveIcon,
+  Settings as SettingsIcon,
+  Lock as LockIcon,
   LocationOn,
   Email,
   Phone,
@@ -47,10 +55,11 @@ import {
   DeleteForever,
   WarningAmberOutlined,
 } from "@mui/icons-material";
-import { fetchWithAuth, BASE_URL, citizenApi } from "../../api";
+import { fetchWithAuth, BASE_URL, citizenApi, publicApi } from "../../api";
 import { useAuth } from "../../hooks/useAuth";
 import Swal from "sweetalert2";
-import { KycUpload, type KycUploadPayload } from "../../components/kyc/KycUpload";
+import { CitizenKycOnboarding } from "../../components/kyc/CitizenKycOnboarding";
+import { KycFilePreviewCard } from "../../components/kyc/KycFilePreviewCard";
 import { profileApi } from "../../api/modules/profile.api";
 import { isAtLeast18, isValidNepalPhone } from "../../validation/kyc.validators";
 
@@ -64,6 +73,16 @@ interface CitizenDetails {
   permanent_address: string | null;
   ward_id: string | null;
   notification_pref: string | null;
+  permanent_province_id?: string | null;
+  permanent_district_id?: string | null;
+  permanent_municipality_id?: string | null;
+  permanent_ward_id?: string | null;
+  permanent_tole?: string | null;
+  current_province_id?: string | null;
+  current_district_id?: string | null;
+  current_municipality_id?: string | null;
+  current_ward_id?: string | null;
+  current_tole?: string | null;
   kyc_status?: string | null;
   identity_type?: string | null;
   identity_number?: string | null;
@@ -168,7 +187,7 @@ export const Profile: React.FC = () => {
 
   const [dashboard, setDashboard] = useState<DashboardData | null>(null);
 
-  const [editing, setEditing] = useState(false);
+  const [openSettingsModal, setOpenSettingsModal] = useState(false);
   const [form, setForm] = useState({
     first_name: "",
     middle_name: "",
@@ -181,6 +200,296 @@ export const Profile: React.FC = () => {
     notification_pref: "",
   });
   const [saving, setSaving] = useState(false);
+
+  // Structured Address State
+  const [provinces, setProvinces] = useState<Province[]>([]);
+
+  // Current Address
+  const [currDistricts, setCurrDistricts] = useState<District[]>([]);
+  const [currMunicipalities, setCurrMunicipalities] = useState<Municipality[]>([]);
+  const [currWards, setCurrWards] = useState<Ward[]>([]);
+  const [currProvinceId, setCurrProvinceId] = useState<string>("");
+  const [currDistrictId, setCurrDistrictId] = useState<string>("");
+  const [currMunicipalityId, setCurrMunicipalityId] = useState<string>("");
+  const [currWardId, setCurrWardId] = useState<string>("");
+  const [currTole, setCurrTole] = useState<string>("");
+  const [loadingCurrDistricts, setLoadingCurrDistricts] = useState(false);
+  const [loadingCurrMunicipalities, setLoadingCurrMunicipalities] = useState(false);
+  const [loadingCurrWards, setLoadingCurrWards] = useState(false);
+
+  // Permanent Address
+  const [permDistricts, setPermDistricts] = useState<District[]>([]);
+  const [permMunicipalities, setPermMunicipalities] = useState<Municipality[]>([]);
+  const [permWards, setPermWards] = useState<Ward[]>([]);
+  const [permProvinceId, setPermProvinceId] = useState<string>("");
+  const [permDistrictId, setPermDistrictId] = useState<string>("");
+  const [permMunicipalityId, setPermMunicipalityId] = useState<string>("");
+  const [permWardId, setPermWardId] = useState<string>("");
+  const [permTole, setPermTole] = useState<string>("");
+  const [loadingPermDistricts, setLoadingPermDistricts] = useState(false);
+  const [loadingPermMunicipalities, setLoadingPermMunicipalities] = useState(false);
+  const [loadingPermWards, setLoadingPermWards] = useState(false);
+  const [loadingProvinces, setLoadingProvinces] = useState(false);
+
+  const [sameAsPermanent, setSameAsPermanent] = useState<boolean>(false);
+
+  const loadProvinces = async () => {
+    setLoadingProvinces(true);
+    try {
+      const res = await publicApi.getProvinces();
+      if (res.success && res.data) {
+        setProvinces(res.data);
+        return res.data;
+      }
+    } catch (err) {
+      console.error("Failed to load provinces:", err);
+    } finally {
+      setLoadingProvinces(false);
+    }
+    return [];
+  };
+
+  // Fetch provinces reference once
+  useEffect(() => {
+    loadProvinces();
+  }, []);
+
+  const handleOpenSettings = async () => {
+    if (profile) {
+      const cd = profile.citizen_details;
+      const { first, middle, last } = splitFullName(profile.full_name);
+      setForm({
+        first_name: cd?.first_name || first,
+        middle_name: cd?.middle_name || middle,
+        last_name: cd?.last_name || last,
+        phone: profile.phone || "",
+        gender: cd?.gender || "prefer_not_to_say",
+        date_of_birth: cd?.date_of_birth || "",
+        current_address: cd?.current_address || "",
+        permanent_address: cd?.permanent_address || "",
+        notification_pref: cd?.notification_pref || "both",
+      });
+
+      // Ensure provinces are loaded
+      let currentProvinces = provinces;
+      if (currentProvinces.length === 0) {
+        currentProvinces = await loadProvinces();
+      }
+
+      // Populate Current Address cascading dropdowns
+      const cProv = cd?.current_province_id || "";
+      const cDist = cd?.current_district_id || "";
+      const cMuni = cd?.current_municipality_id || "";
+      const cWard = cd?.current_ward_id || "";
+      const cTole = cd?.current_tole || "";
+
+      setCurrProvinceId(cProv);
+      setCurrDistrictId(cDist);
+      setCurrMunicipalityId(cMuni);
+      setCurrWardId(cWard);
+      setCurrTole(cTole);
+
+      if (cProv) {
+        setLoadingCurrDistricts(true);
+        publicApi.getDistricts(cProv).then((r) => {
+          if (r.success && r.data) setCurrDistricts(r.data);
+        }).catch(console.error).finally(() => setLoadingCurrDistricts(false));
+      }
+      if (cDist) {
+        setLoadingCurrMunicipalities(true);
+        publicApi.getMunicipalities(cDist).then((r) => {
+          if (r.success && r.data) setCurrMunicipalities(r.data);
+        }).catch(console.error).finally(() => setLoadingCurrMunicipalities(false));
+      }
+      if (cMuni) {
+        setLoadingCurrWards(true);
+        publicApi.getWards(cMuni).then((r) => {
+          if (r.success && r.data) setCurrWards(r.data);
+        }).catch(console.error).finally(() => setLoadingCurrWards(false));
+      }
+
+      // Populate Permanent Address cascading dropdowns
+      const pProv = cd?.permanent_province_id || "";
+      const pDist = cd?.permanent_district_id || "";
+      const pMuni = cd?.permanent_municipality_id || "";
+      const pWard = cd?.permanent_ward_id || "";
+      const pTole = cd?.permanent_tole || "";
+
+      setPermProvinceId(pProv);
+      setPermDistrictId(pDist);
+      setPermMunicipalityId(pMuni);
+      setPermWardId(pWard);
+      setPermTole(pTole);
+
+      if (pProv) {
+        setLoadingPermDistricts(true);
+        publicApi.getDistricts(pProv).then((r) => {
+          if (r.success && r.data) setPermDistricts(r.data);
+        }).catch(console.error).finally(() => setLoadingPermDistricts(false));
+      }
+      if (pDist) {
+        setLoadingPermMunicipalities(true);
+        publicApi.getMunicipalities(pDist).then((r) => {
+          if (r.success && r.data) setPermMunicipalities(r.data);
+        }).catch(console.error).finally(() => setLoadingPermMunicipalities(false));
+      }
+      if (pMuni) {
+        setLoadingPermWards(true);
+        publicApi.getWards(pMuni).then((r) => {
+          if (r.success && r.data) setPermWards(r.data);
+        }).catch(console.error).finally(() => setLoadingPermWards(false));
+      }
+
+      setSameAsPermanent(false);
+    }
+    setOpenSettingsModal(true);
+  };
+
+  const handleCurrProvinceChange = async (provId: string) => {
+    setCurrProvinceId(provId);
+    setCurrDistrictId("");
+    setCurrMunicipalityId("");
+    setCurrWardId("");
+    setCurrDistricts([]);
+    setCurrMunicipalities([]);
+    setCurrWards([]);
+    if (!provId) return;
+    setLoadingCurrDistricts(true);
+    try {
+      const res = await publicApi.getDistricts(provId);
+      if (res.success && res.data) setCurrDistricts(res.data);
+    } catch (err) {
+      console.error("Failed to load districts:", err);
+    } finally {
+      setLoadingCurrDistricts(false);
+    }
+  };
+
+  const handleCurrDistrictChange = async (distId: string) => {
+    setCurrDistrictId(distId);
+    setCurrMunicipalityId("");
+    setCurrWardId("");
+    setCurrMunicipalities([]);
+    setCurrWards([]);
+    if (!distId) return;
+    setLoadingCurrMunicipalities(true);
+    try {
+      const res = await publicApi.getMunicipalities(distId);
+      if (res.success && res.data) setCurrMunicipalities(res.data);
+    } catch (err) {
+      console.error("Failed to load municipalities:", err);
+    } finally {
+      setLoadingCurrMunicipalities(false);
+    }
+  };
+
+  const handleCurrMunicipalityChange = async (muniId: string) => {
+    setCurrMunicipalityId(muniId);
+    setCurrWardId("");
+    setCurrWards([]);
+    if (!muniId) return;
+    setLoadingCurrWards(true);
+    try {
+      const res = await publicApi.getWards(muniId);
+      if (res.success && res.data) setCurrWards(res.data);
+    } catch (err) {
+      console.error("Failed to load wards:", err);
+    } finally {
+      setLoadingCurrWards(false);
+    }
+  };
+
+  const handlePermProvinceChange = async (provId: string) => {
+    setPermProvinceId(provId);
+    setPermDistrictId("");
+    setPermMunicipalityId("");
+    setPermWardId("");
+    setPermDistricts([]);
+    setPermMunicipalities([]);
+    setPermWards([]);
+    if (!provId) return;
+    setLoadingPermDistricts(true);
+    try {
+      const res = await publicApi.getDistricts(provId);
+      if (res.success && res.data) setPermDistricts(res.data);
+    } catch (err) {
+      console.error("Failed to load permanent districts:", err);
+    } finally {
+      setLoadingPermDistricts(false);
+    }
+  };
+
+  const handlePermDistrictChange = async (distId: string) => {
+    setPermDistrictId(distId);
+    setPermMunicipalityId("");
+    setPermWardId("");
+    setPermMunicipalities([]);
+    setPermWards([]);
+    if (!distId) return;
+    setLoadingPermMunicipalities(true);
+    try {
+      const res = await publicApi.getMunicipalities(distId);
+      if (res.success && res.data) setPermMunicipalities(res.data);
+    } catch (err) {
+      console.error("Failed to load permanent municipalities:", err);
+    } finally {
+      setLoadingPermMunicipalities(false);
+    }
+  };
+
+  const handlePermMunicipalityChange = async (muniId: string) => {
+    setPermMunicipalityId(muniId);
+    setPermWardId("");
+    setPermWards([]);
+    if (!muniId) return;
+    setLoadingPermWards(true);
+    try {
+      const res = await publicApi.getWards(muniId);
+      if (res.success && res.data) setPermWards(res.data);
+    } catch (err) {
+      console.error("Failed to load permanent wards:", err);
+    } finally {
+      setLoadingPermWards(false);
+    }
+  };
+
+  const handleSameAsPermanentToggle = (checked: boolean) => {
+    setSameAsPermanent(checked);
+    if (checked) {
+      setPermProvinceId(currProvinceId);
+      setPermDistricts(currDistricts);
+      setPermDistrictId(currDistrictId);
+      setPermMunicipalities(currMunicipalities);
+      setPermMunicipalityId(currMunicipalityId);
+      setPermWards(currWards);
+      setPermWardId(currWardId);
+      setPermTole(currTole);
+    }
+  };
+
+  const buildAddressString = (
+    provId: string,
+    distId: string,
+    muniId: string,
+    wardId: string,
+    tole: string,
+    pList: Province[],
+    dList: District[],
+    mList: Municipality[],
+    wList: Ward[]
+  ) => {
+    const prov = pList.find((p) => p.id === provId)?.name || "";
+    const dist = dList.find((d) => d.id === distId)?.name || "";
+    const muni = mList.find((m) => m.id === muniId)?.official_name || "";
+    const ward = wList.find((w) => w.id === wardId)?.ward_no;
+    const parts: string[] = [];
+    if (tole && tole.trim()) parts.push(tole.trim());
+    if (ward !== undefined && ward !== null) parts.push(`Ward ${ward}`);
+    if (muni) parts.push(muni);
+    if (dist) parts.push(dist);
+    if (prov) parts.push(prov);
+    return parts.join(", ");
+  };
 
   const [passwordForm, setPasswordForm] = useState({
     current_password: "",
@@ -247,7 +556,9 @@ export const Profile: React.FC = () => {
 
   const handleSaveProfile = async () => {
     try {
-      if (form.date_of_birth && !isAtLeast18(form.date_of_birth)) {
+      const kycVerified = profile?.citizen_details?.kyc_status === "verified";
+
+      if (!kycVerified && form.date_of_birth && !isAtLeast18(form.date_of_birth)) {
         Swal.fire({
           icon: "warning",
           title: "Invalid Date of Birth",
@@ -266,53 +577,136 @@ export const Profile: React.FC = () => {
       }
 
       setSaving(true);
-      const payload: Record<string, string> = {};
-      if (form.first_name !== (profile?.citizen_details?.first_name || "")) payload.first_name = form.first_name;
-      if (form.middle_name !== (profile?.citizen_details?.middle_name || "")) payload.middle_name = form.middle_name;
-      if (form.last_name !== (profile?.citizen_details?.last_name || "")) payload.last_name = form.last_name;
-      if (form.phone !== (profile?.phone || "")) payload.phone = form.phone;
-      if (form.gender !== (profile?.citizen_details?.gender || "")) payload.gender = form.gender;
-      if (form.date_of_birth !== (profile?.citizen_details?.date_of_birth || "")) payload.date_of_birth = form.date_of_birth;
-      if (form.current_address !== (profile?.citizen_details?.current_address || "")) payload.current_address = form.current_address;
-      if (form.permanent_address !== (profile?.citizen_details?.permanent_address || "")) payload.permanent_address = form.permanent_address;
-      if (form.notification_pref !== (profile?.citizen_details?.notification_pref || "")) payload.notification_pref = form.notification_pref;
 
-      if (Object.keys(payload).length === 0) {
-        setEditing(false);
-        return;
+      // 1. Prepare and Save Structured Addresses
+      let newCurrentAddress = form.current_address;
+      let newPermanentAddress = form.permanent_address;
+
+      const hasCurrentStructured = Boolean(currProvinceId && currDistrictId && currMunicipalityId && currWardId);
+      const hasPermStructured = !kycVerified && Boolean(permProvinceId && permDistrictId && permMunicipalityId && permWardId);
+
+      const addressPayload: any = {};
+
+      if (hasCurrentStructured) {
+        newCurrentAddress = buildAddressString(
+          currProvinceId,
+          currDistrictId,
+          currMunicipalityId,
+          currWardId,
+          currTole,
+          provinces,
+          currDistricts,
+          currMunicipalities,
+          currWards
+        ) || form.current_address;
+
+        addressPayload.current = {
+          province_id: currProvinceId,
+          district_id: currDistrictId,
+          municipality_id: currMunicipalityId,
+          ward_id: currWardId,
+          tole: currTole.trim() || undefined,
+          full_address: newCurrentAddress,
+        };
       }
 
-      const res = await fetchWithAuth(`${BASE_URL}/citizen/profile`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      const result = await res.json();
-      if (!res.ok) throw new Error(result.message || "Failed to update profile");
+      if (hasPermStructured) {
+        newPermanentAddress = buildAddressString(
+          permProvinceId,
+          permDistrictId,
+          permMunicipalityId,
+          permWardId,
+          permTole,
+          provinces,
+          permDistricts,
+          permMunicipalities,
+          permWards
+        ) || form.permanent_address;
 
-      const fullName = `${form.first_name}${form.middle_name ? " " + form.middle_name : ""} ${form.last_name}`.trim();
+        addressPayload.permanent = {
+          province_id: permProvinceId,
+          district_id: permDistrictId,
+          municipality_id: permMunicipalityId,
+          ward_id: permWardId,
+          tole: permTole.trim() || undefined,
+          full_address: newPermanentAddress,
+        };
+      }
+
+      if (addressPayload.current || addressPayload.permanent) {
+        await citizenApi.updateAddress(addressPayload);
+      }
+
+      // 2. Save General Profile Details (phone, gender, preferences, name if unverified)
+      const payload: Record<string, string> = {};
+      if (!kycVerified) {
+        if (form.first_name !== (profile?.citizen_details?.first_name || "")) payload.first_name = form.first_name;
+        if (form.middle_name !== (profile?.citizen_details?.middle_name || "")) payload.middle_name = form.middle_name;
+        if (form.last_name !== (profile?.citizen_details?.last_name || "")) payload.last_name = form.last_name;
+        if (form.date_of_birth !== (profile?.citizen_details?.date_of_birth || "")) payload.date_of_birth = form.date_of_birth;
+      }
+      if (form.phone !== (profile?.phone || "")) payload.phone = form.phone;
+      if (form.gender !== (profile?.citizen_details?.gender || "")) payload.gender = form.gender;
+      if (form.notification_pref !== (profile?.citizen_details?.notification_pref || "")) payload.notification_pref = form.notification_pref;
+
+      if (Object.keys(payload).length > 0) {
+        const res = await fetchWithAuth(`${BASE_URL}/citizen/profile`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        const result = await res.json();
+        if (!res.ok) throw new Error(result.message || "Failed to update profile");
+      }
+
+      const newFirstName = !kycVerified ? form.first_name : (profile?.citizen_details?.first_name || "");
+      const newMiddleName = !kycVerified ? form.middle_name : (profile?.citizen_details?.middle_name || "");
+      const newLastName = !kycVerified ? form.last_name : (profile?.citizen_details?.last_name || "");
+      const fullName = !kycVerified
+        ? `${form.first_name}${form.middle_name ? " " + form.middle_name : ""} ${form.last_name}`.trim()
+        : profile!.full_name;
+
       setProfile((prev) =>
         prev
           ? {
               ...prev,
               full_name: fullName,
               phone: form.phone,
+              municipality_id: currMunicipalityId || prev.municipality_id,
               citizen_details: {
                 ...prev.citizen_details!,
-                first_name: form.first_name,
-                middle_name: form.middle_name,
-                last_name: form.last_name,
+                first_name: newFirstName,
+                middle_name: newMiddleName,
+                last_name: newLastName,
                 gender: form.gender,
-                date_of_birth: form.date_of_birth,
-                current_address: form.current_address,
-                permanent_address: form.permanent_address,
+                date_of_birth: !kycVerified ? form.date_of_birth : prev.citizen_details?.date_of_birth || "",
+                current_address: newCurrentAddress,
+                permanent_address: newPermanentAddress,
+                current_province_id: currProvinceId || prev.citizen_details?.current_province_id,
+                current_district_id: currDistrictId || prev.citizen_details?.current_district_id,
+                current_municipality_id: currMunicipalityId || prev.citizen_details?.current_municipality_id,
+                current_ward_id: currWardId || prev.citizen_details?.current_ward_id,
+                current_tole: currTole || prev.citizen_details?.current_tole,
+                permanent_province_id: hasPermStructured ? permProvinceId : prev.citizen_details?.permanent_province_id,
+                permanent_district_id: hasPermStructured ? permDistrictId : prev.citizen_details?.permanent_district_id,
+                permanent_municipality_id: hasPermStructured ? permMunicipalityId : prev.citizen_details?.permanent_municipality_id,
+                permanent_ward_id: hasPermStructured ? permWardId : prev.citizen_details?.permanent_ward_id,
+                permanent_tole: hasPermStructured ? permTole : prev.citizen_details?.permanent_tole,
+                ward_id: currWardId || prev.citizen_details?.ward_id,
                 notification_pref: form.notification_pref,
               },
             }
           : prev,
       );
-      setEditing(false);
-      Swal.fire({ icon: "success", title: "Profile Updated", timer: 1500, showConfirmButton: false });
+
+      setForm((prev) => ({
+        ...prev,
+        current_address: newCurrentAddress,
+        permanent_address: newPermanentAddress,
+      }));
+
+      setOpenSettingsModal(false);
+      Swal.fire({ icon: "success", title: "Profile Settings Updated", timer: 1500, showConfirmButton: false });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Failed to update profile";
       Swal.fire({ icon: "error", title: "Error", text: msg });
@@ -672,14 +1066,23 @@ export const Profile: React.FC = () => {
             </Box>
           </Box>
           <Button
-            variant={editing ? "contained" : "outlined"}
+            variant="contained"
             size="small"
-            startIcon={editing ? <SaveIcon /> : <EditIcon />}
-            onClick={() => (editing ? handleSaveProfile() : setEditing(true))}
-            disabled={saving}
-            sx={{ mt: { xs: 1, sm: 0 } }}
+            startIcon={<SettingsIcon />}
+            onClick={handleOpenSettings}
+            sx={{
+              mt: { xs: 1, sm: 0 },
+              bgcolor: "#2563EB",
+              "&:hover": { bgcolor: "#1d4ed8" },
+              textTransform: "none",
+              fontWeight: 600,
+              borderRadius: 2,
+              px: 2.5,
+              py: 0.8,
+              boxShadow: "0 2px 8px rgba(37, 99, 235, 0.25)",
+            }}
           >
-            {saving ? "Saving..." : editing ? "Save Profile" : "Edit Profile"}
+            Settings
           </Button>
         </Box>
       </Card>
@@ -721,7 +1124,22 @@ export const Profile: React.FC = () => {
         <Box sx={{ p: 3 }}>
           {/* ═══ About Tab ═══ */}
           {tabIndex === 0 && (
-            <Grid container spacing={3}>
+            <Box>
+              <Box display="flex" justifyContent="space-between" alignItems="center" mb={2.5}>
+                <Typography variant="h6" fontWeight="bold">
+                  Personal Details
+                </Typography>
+                <Button
+                  size="small"
+                  variant="outlined"
+                  startIcon={<SettingsIcon />}
+                  onClick={handleOpenSettings}
+                  sx={{ textTransform: "none", fontWeight: 600, borderRadius: 2 }}
+                >
+                  Edit Details
+                </Button>
+              </Box>
+              <Grid container spacing={3}>
               {[
                 { label: "First Name", value: form.first_name, icon: <BadgeOutlined fontSize="small" /> },
                 { label: "Middle Name", value: form.middle_name || "—", icon: <BadgeOutlined fontSize="small" /> },
@@ -761,11 +1179,27 @@ export const Profile: React.FC = () => {
                 </Box>
               </Grid>
             </Grid>
-          )}
+          </Box>
+        )}
 
           {/* ═══ Address Tab ═══ */}
           {tabIndex === 1 && (
-            <Grid container spacing={3}>
+            <Box>
+              <Box display="flex" justifyContent="space-between" alignItems="center" mb={2.5}>
+                <Typography variant="h6" fontWeight="bold">
+                  Residential Addresses
+                </Typography>
+                <Button
+                  size="small"
+                  variant="outlined"
+                  startIcon={<EditIcon />}
+                  onClick={handleOpenSettings}
+                  sx={{ textTransform: "none", fontWeight: 600, borderRadius: 2 }}
+                >
+                  Edit Address
+                </Button>
+              </Box>
+              <Grid container spacing={3}>
               <Grid item xs={12} md={6}>
                 <Card variant="outlined" sx={{ p: 2.5, borderRadius: 2, height: "100%" }}>
                   <Box display="flex" alignItems="center" gap={1} mb={1.5}>
@@ -806,6 +1240,7 @@ export const Profile: React.FC = () => {
                 </Card>
               </Grid>
             </Grid>
+            </Box>
           )}
 
           {/* ═══ KYC Tab ═══ */}
@@ -1029,83 +1464,238 @@ export const Profile: React.FC = () => {
                     </Grid>
                   </Grid>
                 </Box>
+              ) : isKycPending && !showReupload ? (
+                <Box>
+                  <Alert
+                    severity="warning"
+                    icon={<HourglassEmpty fontSize="inherit" />}
+                    sx={{ mb: 3, borderRadius: 2 }}
+                    action={
+                      <Button
+                        color="inherit"
+                        size="small"
+                        onClick={() => setShowReupload(true)}
+                        sx={{ fontWeight: 600, textTransform: "none" }}
+                      >
+                        Update / Re-submit
+                      </Button>
+                    }
+                  >
+                    <Typography variant="subtitle2" fontWeight={700}>
+                      Identity Verification In Progress
+                    </Typography>
+                    Your citizen KYC verification request has been submitted and is currently under review by municipal verification officers.
+                  </Alert>
+
+                  {/* Verification Timeline Stepper */}
+                  <Card variant="outlined" sx={{ p: 3, borderRadius: 3, mb: 3 }}>
+                    <Typography variant="subtitle1" fontWeight={700} gutterBottom>
+                      Application Status Timeline
+                    </Typography>
+                    <Box sx={{ mt: 2, mb: 1 }}>
+                      <Grid container spacing={2}>
+                        <Grid item xs={12} sm={4}>
+                          <Box sx={{ p: 2, bgcolor: "rgba(34,197,94,0.08)", borderRadius: 2, border: "1px solid #86EFAC" }}>
+                            <Box display="flex" alignItems="center" gap={1} mb={0.5}>
+                              <CheckCircle sx={{ color: "#16A34A", fontSize: 20 }} />
+                              <Typography variant="subtitle2" fontWeight={700} color="#15803D">
+                                1. Application Submitted
+                              </Typography>
+                            </Box>
+                            <Typography variant="caption" color="text.secondary">
+                              Credentials & document proofs recorded securely
+                            </Typography>
+                          </Box>
+                        </Grid>
+                        <Grid item xs={12} sm={4}>
+                          <Box sx={{ p: 2, bgcolor: "rgba(245,158,11,0.08)", borderRadius: 2, border: "1px solid #FCD34D" }}>
+                            <Box display="flex" alignItems="center" gap={1} mb={0.5}>
+                              <HourglassEmpty sx={{ color: "#D97706", fontSize: 20 }} />
+                              <Typography variant="subtitle2" fontWeight={700} color="#B45309">
+                                2. Municipal Verification
+                              </Typography>
+                            </Box>
+                            <Typography variant="caption" color="text.secondary">
+                              Ward officer reviewing records (24–48 hours)
+                            </Typography>
+                          </Box>
+                        </Grid>
+                        <Grid item xs={12} sm={4}>
+                          <Box sx={{ p: 2, bgcolor: "grey.50", borderRadius: 2, border: "1px solid #E2E8F0" }}>
+                            <Box display="flex" alignItems="center" gap={1} mb={0.5}>
+                              <VerifiedIcon sx={{ color: "#94A3B8", fontSize: 20 }} />
+                              <Typography variant="subtitle2" fontWeight={700} color="text.secondary">
+                                3. Official Verified ID
+                              </Typography>
+                            </Box>
+                            <Typography variant="caption" color="text.disabled">
+                              Citizen badge active upon officer approval
+                            </Typography>
+                          </Box>
+                        </Grid>
+                      </Grid>
+                    </Box>
+                  </Card>
+
+                  {/* Submitted Documents Details */}
+                  <Card variant="outlined" sx={{ p: 3, borderRadius: 3 }}>
+                    <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+                      <Typography variant="subtitle1" fontWeight={700}>
+                        Submitted Document Records
+                      </Typography>
+                      <Chip
+                        icon={<HourglassEmpty sx={{ fontSize: "14px !important" }} />}
+                        label="Pending Approval"
+                        color="warning"
+                        size="small"
+                        sx={{ fontWeight: 600 }}
+                      />
+                    </Box>
+
+                    <Grid container spacing={2} mb={3}>
+                      <Grid item xs={12} sm={6}>
+                        <Box sx={{ p: 1.5, bgcolor: "grey.50", borderRadius: 2 }}>
+                          <Typography variant="caption" color="text.secondary" fontWeight={600}>
+                            DOCUMENT TYPE
+                          </Typography>
+                          <Typography variant="body1" fontWeight={600} textTransform="capitalize">
+                            {cd?.identity_type ? cd.identity_type.replace(/_/g, " ") : "Citizenship Card"}
+                          </Typography>
+                        </Box>
+                      </Grid>
+                      <Grid item xs={12} sm={6}>
+                        <Box sx={{ p: 1.5, bgcolor: "grey.50", borderRadius: 2 }}>
+                          <Typography variant="caption" color="text.secondary" fontWeight={600}>
+                            DOCUMENT NUMBER
+                          </Typography>
+                          <Typography variant="body1" fontWeight={700} color="primary.main">
+                            {cd?.identity_number || "—"}
+                          </Typography>
+                        </Box>
+                      </Grid>
+                    </Grid>
+
+                    <Typography variant="subtitle2" fontWeight={700} gutterBottom>
+                      Attached Document Files:
+                    </Typography>
+                    <Grid container spacing={2}>
+                      {cd?.identity_front_image_url && (
+                        <Grid item xs={12} sm={6}>
+                          <KycFilePreviewCard
+                            label="Document Front"
+                            fileData={cd.identity_front_image_url}
+                            height={160}
+                          />
+                        </Grid>
+                      )}
+                      {cd?.identity_back_image_url && (
+                        <Grid item xs={12} sm={6}>
+                          <KycFilePreviewCard
+                            label="Document Back"
+                            fileData={cd.identity_back_image_url}
+                            height={160}
+                          />
+                        </Grid>
+                      )}
+                    </Grid>
+                  </Card>
+                </Box>
+              ) : cd?.kyc_status === "rejected" && !showReupload ? (
+                <Box>
+                  <Alert
+                    severity="error"
+                    icon={<ErrorOutlined fontSize="inherit" />}
+                    sx={{ mb: 3, borderRadius: 2 }}
+                    action={
+                      <Button
+                        color="inherit"
+                        size="small"
+                        onClick={() => setShowReupload(true)}
+                        sx={{ fontWeight: 700, textTransform: "none" }}
+                      >
+                        Re-apply KYC Now
+                      </Button>
+                    }
+                  >
+                    <Typography variant="subtitle2" fontWeight={700}>
+                      Identity Verification Rejected
+                    </Typography>
+                    {cd.kyc_rejection_reason || "Your document verification was rejected by municipal officers. Please re-upload clear photos of your valid identity document."}
+                  </Alert>
+
+                  <Card variant="outlined" sx={{ p: 3, borderRadius: 3, textAlign: "center", bgcolor: "#FFF5F5", borderColor: "#FCA5A5" }}>
+                    <Typography variant="h6" fontWeight={700} color="error.main" gutterBottom>
+                      Action Required: Submit Corrected Verification Documents
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 600, mx: "auto", mb: 3 }}>
+                      Common reasons for rejection include blurry or cut-off photographs, mismatched name or birth date, or expired identity credentials.
+                    </Typography>
+                    <Button
+                      variant="contained"
+                      color="error"
+                      onClick={() => setShowReupload(true)}
+                      sx={{ textTransform: "none", fontWeight: 700, borderRadius: 2, px: 3, py: 1 }}
+                    >
+                      Start KYC Re-application Wizard
+                    </Button>
+                  </Card>
+                </Box>
               ) : (
                 <Box>
-                  {isKycPending ? (
-                    <Alert severity="warning" icon={<HourglassEmpty fontSize="inherit" />} sx={{ mb: 3, borderRadius: 2 }}>
-                      <Typography variant="subtitle2" fontWeight={700}>
-                        Verification Pending
-                      </Typography>
-                      Your identity documents have been submitted and are awaiting municipal approval.
-                    </Alert>
-                  ) : cd?.kyc_status === "rejected" ? (
-                    <Alert severity="error" icon={<ErrorOutlined fontSize="inherit" />} sx={{ mb: 3, borderRadius: 2 }}>
-                      <Typography variant="subtitle2" fontWeight={700}>
-                        Identity Verification Rejected
-                      </Typography>
-                      {cd.kyc_rejection_reason || "Document verification was rejected. Please re-upload clear photos of your valid identity document."}
-                    </Alert>
-                  ) : (
-                    <Alert severity="info" sx={{ mb: 3, borderRadius: 2 }}>
-                      Please submit your identity documents for citizen KYC verification.
-                    </Alert>
-                  )}
-
                   {showReupload && (
-                    <Box mb={2} display="flex" justifyContent="flex-end">
+                    <Box mb={2.5} display="flex" justifyContent="space-between" alignItems="center">
+                      <Typography variant="subtitle2" color="text.secondary">
+                        Re-submitting identity verification details
+                      </Typography>
                       <Button
                         size="small"
+                        variant="outlined"
                         onClick={() => setShowReupload(false)}
-                        sx={{ textTransform: "none" }}
+                        sx={{ textTransform: "none", borderRadius: 2 }}
                       >
-                        Cancel & View Current Verified Credentials
+                        Cancel & Return
                       </Button>
                     </Box>
                   )}
 
-                  <KycUpload
-                    mode="front-back"
-                    initialValues={{
-                      identity_type: cd?.identity_type || "",
+                  <CitizenKycOnboarding
+                    initialData={{
+                      identity_type: cd?.identity_type || "citizenship",
                       identity_number: cd?.identity_number || "",
+                      identity_front_image_url: cd?.identity_front_image_url || null,
+                      identity_back_image_url: cd?.identity_back_image_url || null,
+                      profile_picture: currentAvatarUrl || null,
                     }}
-                    onSubmit={async (payload) => {
-                      try {
-                        await citizenApi.uploadIdentity({
-                          identity_type: payload.identity_type as any,
-                          identity_number: payload.identity_number,
-                          front_image: payload.front_image || payload.identity_document || "",
-                          back_image: payload.back_image || "",
-                        });
-                        Swal.fire(
-                          "Success",
-                          "Your identity documents have been submitted successfully for verification.",
-                          "success"
-                        );
-                        setProfile((prev) =>
-                          prev
-                            ? {
-                                ...prev,
-                                citizen_details: {
-                                  ...prev.citizen_details!,
-                                  kyc_status: "pending",
-                                  identity_type: payload.identity_type,
-                                  identity_number: payload.identity_number,
-                                  identity_front_image_url: payload.front_image || payload.identity_document || null,
-                                  identity_back_image_url: payload.back_image || null,
-                                },
-                              }
-                            : prev
-                        );
-                        setShowReupload(false);
-                      } catch (err: any) {
-                        Swal.fire(
-                          "Error",
-                          err.response?.data?.message || err.message || "Failed to submit KYC",
-                          "error"
-                        );
-                      }
+                    profileDetails={{
+                      full_name: displayName,
+                      email: profile.email,
+                      phone: form.phone || profile.phone || "",
+                      gender: form.gender || cd?.gender || "",
+                      date_of_birth: form.date_of_birth || cd?.date_of_birth || "",
+                      permanent_address: form.permanent_address || cd?.permanent_address || "",
+                      current_address: form.current_address || cd?.current_address || "",
                     }}
+                    onSuccess={(updated) => {
+                      setProfile((prev) =>
+                        prev
+                          ? {
+                              ...prev,
+                              profile_picture: updated.profile_picture || prev.profile_picture,
+                              citizen_details: {
+                                ...prev.citizen_details!,
+                                kyc_status: "pending",
+                                identity_type: updated.identity_type,
+                                identity_number: updated.identity_number,
+                                identity_front_image_url: updated.front_image || prev.citizen_details?.identity_front_image_url || null,
+                                identity_back_image_url: updated.back_image || prev.citizen_details?.identity_back_image_url || null,
+                                profile_picture: updated.profile_picture || prev.citizen_details?.profile_picture || null,
+                              },
+                            }
+                          : prev
+                      );
+                      setShowReupload(false);
+                    }}
+                    onCancel={showReupload ? () => setShowReupload(false) : undefined}
                   />
                 </Box>
               )}
@@ -1307,6 +1897,690 @@ export const Profile: React.FC = () => {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setPreviewDocUrl(null)}>Close</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* ─── Profile Settings Dialog ─── */}
+      <Dialog
+        open={openSettingsModal}
+        onClose={() => !saving && setOpenSettingsModal(false)}
+        maxWidth="md"
+        fullWidth
+        PaperProps={{
+          sx: { borderRadius: 3, overflow: "hidden" },
+        }}
+      >
+        <DialogTitle
+          sx={{
+            m: 0,
+            p: 2.5,
+            background: "linear-gradient(135deg, #1e293b 0%, #0f172a 100%)",
+            color: "white",
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+          }}
+        >
+          <Box display="flex" alignItems="center" gap={1.5}>
+            <Box
+              sx={{
+                bgcolor: "rgba(255,255,255,0.15)",
+                borderRadius: 2,
+                p: 1,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <SettingsIcon sx={{ color: "white" }} />
+            </Box>
+            <Box>
+              <Typography variant="h6" fontWeight={700} color="white">
+                Profile Settings
+              </Typography>
+              <Typography variant="caption" sx={{ color: "rgba(255,255,255,0.7)" }}>
+                Update your contact details, residential address, and preferences
+              </Typography>
+            </Box>
+          </Box>
+          <IconButton
+            onClick={() => !saving && setOpenSettingsModal(false)}
+            size="small"
+            sx={{ color: "rgba(255,255,255,0.8)", "&:hover": { color: "white" } }}
+          >
+            <CloseIcon />
+          </IconButton>
+        </DialogTitle>
+
+        <DialogContent dividers sx={{ p: { xs: 2, sm: 3 }, bgcolor: "#f8fafc" }}>
+          {/* Identity & KYC Verification Status Notice */}
+          {isKycVerified ? (
+            <Alert
+              severity="info"
+              icon={<VerifiedIcon sx={{ color: "#2563EB" }} />}
+              sx={{
+                mb: 3,
+                borderRadius: 2,
+                border: "1px solid #bfdbfe",
+                bgcolor: "#eff6ff",
+                "& .MuiAlert-message": { width: "100%" },
+              }}
+            >
+              <Typography variant="subtitle2" fontWeight={700} color="#1e40af">
+                Identity Verified via Official KYC
+              </Typography>
+              <Typography variant="body2" color="#1e3a8a">
+                Your citizen identity is officially verified. Legal name and birth date are locked and cannot be edited. You can update your contact number, current & permanent address, and notifications below.
+              </Typography>
+            </Alert>
+          ) : (
+            <Alert
+              severity="warning"
+              icon={<HourglassEmpty />}
+              sx={{ mb: 3, borderRadius: 2 }}
+            >
+              <Typography variant="subtitle2" fontWeight={700}>
+                KYC Not Yet Verified
+              </Typography>
+              <Typography variant="body2">
+                Your identity has not been verified yet. You can update your name before submitting your KYC verification.
+              </Typography>
+            </Alert>
+          )}
+
+          {/* Section 1: Account Information (Email Permanent Lock + Legal Name) */}
+          <Typography
+            variant="subtitle2"
+            fontWeight={700}
+            color="text.secondary"
+            textTransform="uppercase"
+            letterSpacing={0.5}
+            mb={1.5}
+          >
+            1. Account & Legal Identity
+          </Typography>
+          <Card variant="outlined" sx={{ p: 2.5, mb: 3, borderRadius: 2, bgcolor: "white" }}>
+            <Grid container spacing={2}>
+              {/* Email Address - Strictly Non-Editable */}
+              <Grid item xs={12}>
+                <TextField
+                  fullWidth
+                  label="Email Address"
+                  value={profile.email}
+                  disabled
+                  InputProps={{
+                    startAdornment: <Email sx={{ color: "text.disabled", mr: 1 }} fontSize="small" />,
+                    endAdornment: (
+                      <Chip
+                        icon={<LockIcon sx={{ fontSize: "14px !important" }} />}
+                        label="Permanent (Non-editable)"
+                        size="small"
+                        variant="outlined"
+                        sx={{ bgcolor: "#f1f5f9", borderColor: "#cbd5e1", color: "#64748b", fontWeight: 600 }}
+                      />
+                    ),
+                  }}
+                  helperText="The registered email address is permanently tied to your account and cannot be modified."
+                />
+              </Grid>
+
+              {/* First Name */}
+              <Grid item xs={12} sm={4}>
+                <TextField
+                  fullWidth
+                  label="First Name"
+                  name="first_name"
+                  value={form.first_name}
+                  onChange={handleFormChange}
+                  disabled={isKycVerified}
+                  InputProps={{
+                    endAdornment: isKycVerified ? (
+                      <Tooltip title="Locked: Verified via official KYC" arrow>
+                        <VerifiedIcon sx={{ color: "#2563EB", fontSize: 18 }} />
+                      </Tooltip>
+                    ) : undefined,
+                  }}
+                  helperText={isKycVerified ? "Verified via KYC (Locked)" : "Legal first name"}
+                />
+              </Grid>
+
+              {/* Middle Name */}
+              <Grid item xs={12} sm={4}>
+                <TextField
+                  fullWidth
+                  label="Middle Name (Optional)"
+                  name="middle_name"
+                  value={form.middle_name}
+                  onChange={handleFormChange}
+                  disabled={isKycVerified}
+                  InputProps={{
+                    endAdornment: isKycVerified ? (
+                      <Tooltip title="Locked: Verified via official KYC" arrow>
+                        <VerifiedIcon sx={{ color: "#2563EB", fontSize: 18 }} />
+                      </Tooltip>
+                    ) : undefined,
+                  }}
+                  helperText={isKycVerified ? "Verified via KYC (Locked)" : "Optional"}
+                />
+              </Grid>
+
+              {/* Last Name */}
+              <Grid item xs={12} sm={4}>
+                <TextField
+                  fullWidth
+                  label="Last Name"
+                  name="last_name"
+                  value={form.last_name}
+                  onChange={handleFormChange}
+                  disabled={isKycVerified}
+                  InputProps={{
+                    endAdornment: isKycVerified ? (
+                      <Tooltip title="Locked: Verified via official KYC" arrow>
+                        <VerifiedIcon sx={{ color: "#2563EB", fontSize: 18 }} />
+                      </Tooltip>
+                    ) : undefined,
+                  }}
+                  helperText={isKycVerified ? "Verified via KYC (Locked)" : "Legal family/last name"}
+                />
+              </Grid>
+            </Grid>
+          </Card>
+
+          {/* Section 2: Contact & Structured Residential Address */}
+          <Typography
+            variant="subtitle2"
+            fontWeight={700}
+            color="text.secondary"
+            textTransform="uppercase"
+            letterSpacing={0.5}
+            mb={1.5}
+          >
+            2. Contact & Structured Address
+          </Typography>
+          <Card variant="outlined" sx={{ p: 2.5, mb: 3, borderRadius: 2, bgcolor: "white" }}>
+            <Grid container spacing={2}>
+              {/* Contact No / Phone */}
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  fullWidth
+                  label="Contact Number (Mobile)"
+                  name="phone"
+                  value={form.phone}
+                  onChange={handleFormChange}
+                  placeholder="e.g. 98XXXXXXXX"
+                  InputProps={{
+                    startAdornment: <Phone sx={{ color: "primary.main", mr: 1 }} fontSize="small" />,
+                  }}
+                  helperText="10-digit Nepal mobile number (e.g. 98XXXXXXXX or 97XXXXXXXX)"
+                  error={Boolean(form.phone && !isValidNepalPhone(form.phone))}
+                />
+              </Grid>
+
+              {/* Gender */}
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  select
+                  fullWidth
+                  label="Gender"
+                  name="gender"
+                  value={form.gender || "prefer_not_to_say"}
+                  onChange={handleFormChange}
+                  InputProps={{
+                    startAdornment: <Wc sx={{ color: "primary.main", mr: 1 }} fontSize="small" />,
+                  }}
+                >
+                  <MenuItem value="male">Male</MenuItem>
+                  <MenuItem value="female">Female</MenuItem>
+                  <MenuItem value="other">Other</MenuItem>
+                  <MenuItem value="prefer_not_to_say">Prefer not to say</MenuItem>
+                </TextField>
+              </Grid>
+
+              <Grid item xs={12}>
+                <Divider sx={{ my: 1 }} />
+              </Grid>
+
+              {/* ─── Current Address (Dropdowns) ─── */}
+              <Grid item xs={12}>
+                <Box display="flex" alignItems="center" gap={1} mb={0.5}>
+                  <LocationOn color="secondary" fontSize="small" />
+                  <Typography variant="subtitle1" fontWeight={700} color="secondary.main">
+                    Current Address (अस्थायी / बसोबास ठेगाना)
+                  </Typography>
+                </Box>
+                <Typography variant="caption" color="text.secondary" display="block" mb={2}>
+                  Select your current residence from official administrative units. Your civic grievances will automatically route to this municipality and ward.
+                </Typography>
+              </Grid>
+
+              {/* Current Province */}
+              <Grid item xs={12} sm={6}>
+                <FormControl fullWidth size="small">
+                  <InputLabel id="curr-province-label">Province</InputLabel>
+                  <Select
+                    labelId="curr-province-label"
+                    value={currProvinceId}
+                    label="Province"
+                    onChange={(e) => handleCurrProvinceChange(e.target.value)}
+                  >
+                    <MenuItem value=""><em>-- Select Province --</em></MenuItem>
+                    {loadingProvinces && <MenuItem disabled value="_loading">Loading Provinces...</MenuItem>}
+                    {provinces.map((prov) => (
+                      <MenuItem key={prov.id} value={prov.id}>
+                        {prov.name}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+
+              {/* Current District */}
+              <Grid item xs={12} sm={6}>
+                <FormControl fullWidth size="small" disabled={!currProvinceId || loadingCurrDistricts}>
+                  <InputLabel id="curr-district-label">
+                    {loadingCurrDistricts ? "Loading Districts..." : "District"}
+                  </InputLabel>
+                  <Select
+                    labelId="curr-district-label"
+                    value={currDistrictId}
+                    label={loadingCurrDistricts ? "Loading Districts..." : "District"}
+                    onChange={(e) => handleCurrDistrictChange(e.target.value)}
+                  >
+                    <MenuItem value=""><em>-- Select District --</em></MenuItem>
+                    {currDistricts.map((dist) => (
+                      <MenuItem key={dist.id} value={dist.id}>
+                        {dist.name}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+
+              {/* Current Municipality */}
+              <Grid item xs={12} sm={6}>
+                <FormControl fullWidth size="small" disabled={!currDistrictId || loadingCurrMunicipalities}>
+                  <InputLabel id="curr-municipality-label">
+                    {loadingCurrMunicipalities ? "Loading Municipalities..." : "Municipality / Local Body"}
+                  </InputLabel>
+                  <Select
+                    labelId="curr-municipality-label"
+                    value={currMunicipalityId}
+                    label={loadingCurrMunicipalities ? "Loading Municipalities..." : "Municipality / Local Body"}
+                    onChange={(e) => handleCurrMunicipalityChange(e.target.value)}
+                  >
+                    <MenuItem value=""><em>-- Select Municipality --</em></MenuItem>
+                    {currMunicipalities.map((muni) => (
+                      <MenuItem key={muni.id} value={muni.id}>
+                        {muni.official_name} ({muni.local_level_type ? muni.local_level_type.replace(/_/g, " ") : "Municipality"})
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+
+              {/* Current Ward */}
+              <Grid item xs={12} sm={6}>
+                <FormControl fullWidth size="small" disabled={!currMunicipalityId || loadingCurrWards}>
+                  <InputLabel id="curr-ward-label">
+                    {loadingCurrWards ? "Loading Wards..." : "Ward Number"}
+                  </InputLabel>
+                  <Select
+                    labelId="curr-ward-label"
+                    value={currWardId}
+                    label={loadingCurrWards ? "Loading Wards..." : "Ward Number"}
+                    onChange={(e) => setCurrWardId(e.target.value)}
+                  >
+                    <MenuItem value=""><em>-- Select Ward --</em></MenuItem>
+                    {currWards.map((w) => (
+                      <MenuItem key={w.id} value={w.id}>
+                        Ward {w.ward_no} {w.ward_office_name ? `(${w.ward_office_name})` : ""}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+
+              {/* Current Tole / Locality */}
+              <Grid item xs={12}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Current Tole / Locality / Street"
+                  value={currTole}
+                  onChange={(e) => setCurrTole(e.target.value)}
+                  placeholder="e.g. Maitighar, New Baneshwor"
+                  helperText="Street, tole, or neighborhood name"
+                />
+              </Grid>
+
+              {/* Current Address Preview */}
+              <Grid item xs={12}>
+                <Box
+                  sx={{
+                    p: 1.5,
+                    bgcolor: "#f1f5f9",
+                    borderRadius: 1.5,
+                    border: "1px dashed #cbd5e1",
+                  }}
+                >
+                  <Typography variant="caption" fontWeight={600} color="text.secondary">
+                    Current Address Preview:
+                  </Typography>
+                  <Typography variant="body2" fontWeight={600} color="#0f172a" sx={{ mt: 0.5 }}>
+                    {buildAddressString(
+                      currProvinceId,
+                      currDistrictId,
+                      currMunicipalityId,
+                      currWardId,
+                      currTole,
+                      provinces,
+                      currDistricts,
+                      currMunicipalities,
+                      currWards
+                    ) || form.current_address || "None specified"}
+                  </Typography>
+                </Box>
+              </Grid>
+
+              <Grid item xs={12}>
+                <Divider sx={{ my: 1.5 }} />
+              </Grid>
+
+              {/* ─── Permanent Address (Dropdowns or Locked KYC) ─── */}
+              <Grid item xs={12}>
+                <Box display="flex" alignItems="center" justifyContent="space-between" flexWrap="wrap" gap={1} mb={0.5}>
+                  <Box display="flex" alignItems="center" gap={1}>
+                    <Home color="primary" fontSize="small" />
+                    <Typography variant="subtitle1" fontWeight={700} color="primary.main">
+                      Permanent Address (स्थायी ठेगाना)
+                    </Typography>
+                  </Box>
+                  {isKycVerified ? (
+                    <Chip
+                      icon={<VerifiedIcon sx={{ fontSize: "14px !important", color: "#2563EB !important" }} />}
+                      label="Verified via KYC (Locked)"
+                      size="small"
+                      sx={{ bgcolor: "#eff6ff", borderColor: "#93c5fd", color: "#1e40af", fontWeight: 700 }}
+                      variant="outlined"
+                    />
+                  ) : (
+                    <FormControlLabel
+                      control={
+                        <Checkbox
+                          size="small"
+                          checked={sameAsPermanent}
+                          onChange={(e) => handleSameAsPermanentToggle(e.target.checked)}
+                        />
+                      }
+                      label={<Typography variant="caption" fontWeight={600}>Same as Current Address</Typography>}
+                    />
+                  )}
+                </Box>
+                <Typography variant="caption" color="text.secondary" display="block" mb={2}>
+                  {isKycVerified
+                    ? "Permanent address matches your official citizenship/KYC document and is permanently locked."
+                    : "Official permanent address as recorded in your citizenship certificate or land ownership record."}
+                </Typography>
+              </Grid>
+
+              {isKycVerified ? (
+                <Grid item xs={12}>
+                  <Box
+                    sx={{
+                      p: 2,
+                      bgcolor: "#eff6ff",
+                      borderRadius: 2,
+                      border: "1px solid #bfdbfe",
+                    }}
+                  >
+                    <Box display="flex" alignItems="center" gap={1} mb={0.5}>
+                      <VerifiedIcon sx={{ color: "#2563EB", fontSize: 18 }} />
+                      <Typography variant="subtitle2" fontWeight={700} color="#1e40af">
+                        Official Permanent Residence
+                      </Typography>
+                    </Box>
+                    <Typography variant="body2" color="#1e3a8a" fontWeight={500}>
+                      {form.permanent_address || "Verified Government Record"}
+                    </Typography>
+                  </Box>
+                </Grid>
+              ) : (
+                <>
+                  {/* Permanent Province */}
+                  <Grid item xs={12} sm={6}>
+                    <FormControl fullWidth size="small">
+                      <InputLabel id="perm-province-label">Province</InputLabel>
+                      <Select
+                        labelId="perm-province-label"
+                        value={permProvinceId}
+                        label="Province"
+                        onChange={(e) => handlePermProvinceChange(e.target.value)}
+                      >
+                        <MenuItem value=""><em>-- Select Province --</em></MenuItem>
+                        {loadingProvinces && <MenuItem disabled value="_loading">Loading Provinces...</MenuItem>}
+                        {provinces.map((prov) => (
+                          <MenuItem key={prov.id} value={prov.id}>
+                            {prov.name}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  </Grid>
+
+                  {/* Permanent District */}
+                  <Grid item xs={12} sm={6}>
+                    <FormControl fullWidth size="small" disabled={!permProvinceId || loadingPermDistricts}>
+                      <InputLabel id="perm-district-label">
+                        {loadingPermDistricts ? "Loading Districts..." : "District"}
+                      </InputLabel>
+                      <Select
+                        labelId="perm-district-label"
+                        value={permDistrictId}
+                        label={loadingPermDistricts ? "Loading Districts..." : "District"}
+                        onChange={(e) => handlePermDistrictChange(e.target.value)}
+                      >
+                        <MenuItem value=""><em>-- Select District --</em></MenuItem>
+                        {permDistricts.map((dist) => (
+                          <MenuItem key={dist.id} value={dist.id}>
+                            {dist.name}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  </Grid>
+
+                  {/* Permanent Municipality */}
+                  <Grid item xs={12} sm={6}>
+                    <FormControl fullWidth size="small" disabled={!permDistrictId || loadingPermMunicipalities}>
+                      <InputLabel id="perm-municipality-label">
+                        {loadingPermMunicipalities ? "Loading Municipalities..." : "Municipality / Local Body"}
+                      </InputLabel>
+                      <Select
+                        labelId="perm-municipality-label"
+                        value={permMunicipalityId}
+                        label={loadingPermMunicipalities ? "Loading Municipalities..." : "Municipality / Local Body"}
+                        onChange={(e) => handlePermMunicipalityChange(e.target.value)}
+                      >
+                        <MenuItem value=""><em>-- Select Municipality --</em></MenuItem>
+                        {permMunicipalities.map((muni) => (
+                          <MenuItem key={muni.id} value={muni.id}>
+                            {muni.official_name} ({muni.local_level_type ? muni.local_level_type.replace(/_/g, " ") : "Municipality"})
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  </Grid>
+
+                  {/* Permanent Ward */}
+                  <Grid item xs={12} sm={6}>
+                    <FormControl fullWidth size="small" disabled={!permMunicipalityId || loadingPermWards}>
+                      <InputLabel id="perm-ward-label">
+                        {loadingPermWards ? "Loading Wards..." : "Ward Number"}
+                      </InputLabel>
+                      <Select
+                        labelId="perm-ward-label"
+                        value={permWardId}
+                        label={loadingPermWards ? "Loading Wards..." : "Ward Number"}
+                        onChange={(e) => setPermWardId(e.target.value)}
+                      >
+                        <MenuItem value=""><em>-- Select Ward --</em></MenuItem>
+                        {permWards.map((w) => (
+                          <MenuItem key={w.id} value={w.id}>
+                            Ward {w.ward_no} {w.ward_office_name ? `(${w.ward_office_name})` : ""}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  </Grid>
+
+                  {/* Permanent Tole / Locality */}
+                  <Grid item xs={12}>
+                    <TextField
+                      fullWidth
+                      size="small"
+                      label="Permanent Tole / Locality / Street"
+                      value={permTole}
+                      onChange={(e) => setPermTole(e.target.value)}
+                      placeholder="e.g. Ward No. 2, Pokhara"
+                      helperText="Permanent street or tole name"
+                    />
+                  </Grid>
+
+                  {/* Permanent Address Preview */}
+                  <Grid item xs={12}>
+                    <Box
+                      sx={{
+                        p: 1.5,
+                        bgcolor: "#f1f5f9",
+                        borderRadius: 1.5,
+                        border: "1px dashed #cbd5e1",
+                      }}
+                    >
+                      <Typography variant="caption" fontWeight={600} color="text.secondary">
+                        Permanent Address Preview:
+                      </Typography>
+                      <Typography variant="body2" fontWeight={600} color="#0f172a" sx={{ mt: 0.5 }}>
+                        {buildAddressString(
+                          permProvinceId,
+                          permDistrictId,
+                          permMunicipalityId,
+                          permWardId,
+                          permTole,
+                          provinces,
+                          permDistricts,
+                          permMunicipalities,
+                          permWards
+                        ) || form.permanent_address || "None specified"}
+                      </Typography>
+                    </Box>
+                  </Grid>
+                </>
+              )}
+            </Grid>
+          </Card>
+
+          {/* Section 3: Preferences & Personal Details */}
+          <Typography
+            variant="subtitle2"
+            fontWeight={700}
+            color="text.secondary"
+            textTransform="uppercase"
+            letterSpacing={0.5}
+            mb={1.5}
+          >
+            3. Preferences & Personal Details
+          </Typography>
+          <Card variant="outlined" sx={{ p: 2.5, borderRadius: 2, bgcolor: "white" }}>
+            <Grid container spacing={2}>
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  select
+                  fullWidth
+                  label="Notification Preference"
+                  name="notification_pref"
+                  value={form.notification_pref || "both"}
+                  onChange={handleFormChange}
+                  InputProps={{
+                    startAdornment: <NotificationsOutlined sx={{ color: "primary.main", mr: 1 }} fontSize="small" />,
+                  }}
+                  helperText="Select how you wish to receive updates regarding your complaints"
+                >
+                  <MenuItem value="both">Email & SMS</MenuItem>
+                  <MenuItem value="email">Email Only</MenuItem>
+                  <MenuItem value="sms">SMS Only</MenuItem>
+                  <MenuItem value="none">None</MenuItem>
+                </TextField>
+              </Grid>
+
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  fullWidth
+                  type="date"
+                  label="Date of Birth"
+                  name="date_of_birth"
+                  value={form.date_of_birth || ""}
+                  onChange={handleFormChange}
+                  disabled={isKycVerified}
+                  InputLabelProps={{ shrink: true }}
+                  InputProps={{
+                    startAdornment: (
+                      <Cake sx={{ color: isKycVerified ? "text.disabled" : "primary.main", mr: 1 }} fontSize="small" />
+                    ),
+                    endAdornment: isKycVerified ? (
+                      <Tooltip title="Locked: Verified via official KYC" arrow>
+                        <VerifiedIcon sx={{ color: "#2563EB", fontSize: 18 }} />
+                      </Tooltip>
+                    ) : undefined,
+                  }}
+                  helperText={isKycVerified ? "Verified via KYC (Locked)" : "Must be at least 18 years old"}
+                />
+              </Grid>
+            </Grid>
+          </Card>
+        </DialogContent>
+
+        <DialogActions sx={{ px: 3, py: 2, bgcolor: "#f1f5f9", justifyContent: "space-between" }}>
+          <Button
+            variant="outlined"
+            color="inherit"
+            onClick={() => {
+              if (profile) {
+                const cd = profile.citizen_details;
+                const { first, middle, last } = splitFullName(profile.full_name);
+                setForm({
+                  first_name: cd?.first_name || first,
+                  middle_name: cd?.middle_name || middle,
+                  last_name: cd?.last_name || last,
+                  phone: profile.phone || "",
+                  gender: cd?.gender || "prefer_not_to_say",
+                  date_of_birth: cd?.date_of_birth || "",
+                  current_address: cd?.current_address || "",
+                  permanent_address: cd?.permanent_address || "",
+                  notification_pref: cd?.notification_pref || "both",
+                });
+              }
+              setOpenSettingsModal(false);
+            }}
+            disabled={saving}
+            sx={{ textTransform: "none", fontWeight: 600 }}
+          >
+            Cancel
+          </Button>
+          <Button
+            variant="contained"
+            onClick={handleSaveProfile}
+            disabled={saving}
+            startIcon={saving ? <CircularProgress size={16} color="inherit" /> : <SaveIcon />}
+            sx={{
+              textTransform: "none",
+              fontWeight: 600,
+              px: 3,
+              bgcolor: "#2563EB",
+              "&:hover": { bgcolor: "#1d4ed8" },
+            }}
+          >
+            {saving ? "Saving Changes..." : "Save Changes"}
+          </Button>
         </DialogActions>
       </Dialog>
     </Box>

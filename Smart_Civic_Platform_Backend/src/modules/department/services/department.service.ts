@@ -517,4 +517,9 @@ export class DepartmentService {
       rejectionReason
     );
   }
+
+  async getNotices(municipalityId?: string, departmentId?: string, category?: string) {
+    return await this.repo.getNotices(municipalityId, departmentId, category);
+  }
 }
+

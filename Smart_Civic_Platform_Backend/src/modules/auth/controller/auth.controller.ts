@@ -16,7 +16,11 @@ export const register = async (req: Request, res: Response) => {
 
 export const login = async (req: Request, res: Response) => {
   try {
-    const data = await AuthService.loginService(req.body.email, req.body.password);
+    const clientMeta = {
+      ip: req.ip || req.socket.remoteAddress,
+      userAgent: req.headers["user-agent"],
+    };
+    const data = await AuthService.loginService(req.body.email, req.body.password, clientMeta);
     return sendSuccess(res, data, "Login successful");
   } catch (e: any) {
     return sendError(res, e.message, 401);
@@ -52,7 +56,11 @@ export const loginMobile = async (req: Request, res: Response) => {
   try {
     const { phone, otp_code } = req.body;
     if (!phone || !otp_code) return sendError(res, "Phone and OTP code are required.", 400);
-    const data = await AuthService.loginWithMobileService(phone, otp_code);
+    const clientMeta = {
+      ip: req.ip || req.socket.remoteAddress,
+      userAgent: req.headers["user-agent"],
+    };
+    const data = await AuthService.loginWithMobileService(phone, otp_code, clientMeta);
     return sendSuccess(res, data, "Mobile login successful.");
   } catch (e: any) {
     return sendError(res, e.message, 401);
@@ -72,7 +80,12 @@ export const logout = async (req: Request, res: Response) => {
   try {
     const refreshToken = req.body?.refresh_token;
     const userId = req.user?.id;
-    await AuthService.logoutService(refreshToken, userId);
+    const clientMeta = {
+      ip: req.ip || req.socket.remoteAddress,
+      userAgent: req.headers["user-agent"],
+      role: req.user?.role,
+    };
+    await AuthService.logoutService(refreshToken, userId, clientMeta);
     return sendSuccess(res, null, "Logged out successfully");
   } catch (e: any) {
     return sendSuccess(res, null, "Logged out successfully");

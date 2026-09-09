@@ -170,6 +170,13 @@ export const departmentApi = {
     });
     return response.data;
   },
+
+  getNotices: async (category?: string): Promise<ApiResponse<any[]>> => {
+    const response = await apiClient.get<ApiResponse<any[]>>('/department/notices', {
+      params: category ? { category } : undefined,
+    });
+    return response.data;
+  },
 };
 
 export default departmentApi;
