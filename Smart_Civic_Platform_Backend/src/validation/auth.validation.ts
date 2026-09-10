@@ -1,6 +1,20 @@
 import { z } from "zod";
 import { calculateAge, NEPAL_PHONE_REGEX } from "./common.validation";
 
+const optionalUuid = z.preprocess(
+  (val) => (typeof val === "string" && val.trim() === "" ? undefined : val === null ? undefined : val),
+  z.string().uuid().optional()
+);
+
+const registrationAddressSchema = z.object({
+  province_id: optionalUuid,
+  district_id: optionalUuid,
+  municipality_id: optionalUuid,
+  ward_id: optionalUuid,
+  tole: z.string().optional().nullable(),
+  full_address: z.string().optional().nullable(),
+});
+
 export const registerSchema = z.object({
   full_name:        z.string().min(1, "Full name is required"),
   email:            z.string().email("Invalid email address"),
@@ -18,12 +32,15 @@ export const registerSchema = z.object({
                         message: "You must be at least 18 years old to register.",
                       }
                     ),
+  municipality_id:  optionalUuid,
   full_address:     z.string().optional().transform(val => val?.trim() || undefined),
   current_address:  z.string().optional().transform(val => val?.trim() || undefined),
   gender:           z.preprocess(
                       (val) => (typeof val === "string" && val.trim() === "" ? undefined : val),
                       z.enum(['male', 'female', 'other', 'prefer_not_to_say']).optional()
                     ),
+  permanent:        registrationAddressSchema.optional(),
+  current:          registrationAddressSchema.optional(),
   // Staff/admin accounts are created directly via role-specific API endpoints.
 });
 

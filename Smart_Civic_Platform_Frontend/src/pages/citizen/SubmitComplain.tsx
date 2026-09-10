@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Box, Typography, Card, TextField, Button, MenuItem, Grid,
@@ -14,7 +14,7 @@ import AttachFile from "@mui/icons-material/AttachFile";
 import Swal from "sweetalert2";
 import { publicApi, complaintsApi, citizenApi, apiClient } from "../../api";
 import { useAuth } from "../../hooks/useAuth";
-import type { Province, District, Municipality, Ward, ComplaintCategory, SubmitComplaintPayload } from "../../api/types";
+import type { Province, District, Municipality, Ward, ComplaintCategory, SubmitComplaintPayload, ActiveMunicipality } from "../../api/types";
 import type { DuplicateMatch } from "../../api/modules/citizen.api";
 import { DuplicateDetectionCard } from "../../components/complaint/DuplicateDetectionCard";
 import { LocationPickerMap } from "../../components/LocationPickerMap";
@@ -42,9 +42,9 @@ export const SubmitComplaint: React.FC = () => {
       .catch(console.error);
   }, []);
 
-  const registeredWardId = profile?.citizen_details?.current_ward_id || profile?.citizen_details?.permanent_ward_id;
+  const registeredWardId = profile?.citizen_details?.current_ward_id || profile?.citizen_details?.permanent_ward_id || profile?.citizen_details?.ward_id;
   const registeredMunicipalityId = profile?.citizen_details?.current_municipality_id || profile?.citizen_details?.permanent_municipality_id || profile?.municipality_id || userMunicipalityId;
-  const registeredAddressStr = profile?.citizen_details?.current_address || profile?.citizen_details?.permanent_address;
+  const registeredAddressStr = profile?.citizen_details?.current_address || profile?.citizen_details?.permanent_address || profile?.current_address || profile?.full_address;
 
   const [activeStep, setActiveStep] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -56,15 +56,71 @@ export const SubmitComplaint: React.FC = () => {
   const [mapAddress, setMapAddress] = useState<string>("");
   const [isGpsPinned, setIsGpsPinned] = useState<boolean>(false);
 
-  const [provinces, setProvinces] = useState<Province[]>([]);
-  const [districts, setDistricts] = useState<District[]>([]);
-  const [municipalities, setMunicipalities] = useState<Municipality[]>([]);
+  const [activeMunicipalities, setActiveMunicipalities] = useState<ActiveMunicipality[]>([]);
   const [wards, setWards] = useState<Ward[]>([]);
+
+  // Resolve municipality ID from profile or text fallback if UUID was unlinked
+  const resolvedRegisteredMunicipalityId = useMemo(() => {
+    if (registeredMunicipalityId) return registeredMunicipalityId;
+    if (!registeredAddressStr || activeMunicipalities.length === 0) return null;
+    const lower = registeredAddressStr.toLowerCase();
+    const matched = activeMunicipalities.find(
+      (m) =>
+        lower.includes(m.official_name.toLowerCase()) ||
+        (m.name && lower.includes(m.name.toLowerCase()))
+    );
+    return matched?.id || null;
+  }, [registeredMunicipalityId, registeredAddressStr, activeMunicipalities]);
+
+  const hasRegisteredAddress = Boolean(resolvedRegisteredMunicipalityId || registeredAddressStr);
 
   const [provId, setProvId] = useState("");
   const [distId, setDistId] = useState("");
   const [muniId, setMuniId] = useState("");
   const [wardId, setWardId] = useState("");
+
+  // Derived filtered active administrative dropdowns
+  const activeProvinces = useMemo(() => {
+    const map = new Map<string, Province>();
+    activeMunicipalities.forEach((m) => {
+      if (m.province_id && !map.has(m.province_id)) {
+        map.set(m.province_id, {
+          id: m.province_id,
+          name: m.province_name,
+        });
+      }
+    });
+    return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
+  }, [activeMunicipalities]);
+
+  const activeDistricts = useMemo(() => {
+    const map = new Map<string, District>();
+    activeMunicipalities.forEach((m) => {
+      if ((!provId || m.province_id === provId) && m.district_id && !map.has(m.district_id)) {
+        map.set(m.district_id, {
+          id: m.district_id,
+          name: m.district_name,
+          province_id: m.province_id,
+        });
+      }
+    });
+    return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
+  }, [activeMunicipalities, provId]);
+
+  const activeMunicipalitiesList = useMemo(() => {
+    return activeMunicipalities
+      .filter((m) => {
+        if (distId) return m.district_id === distId;
+        if (provId) return m.province_id === provId;
+        return true;
+      })
+      .map((m) => ({
+        id: m.id,
+        official_name: m.official_name,
+        district_id: m.district_id,
+        local_level_type: m.local_level_type,
+      }));
+  }, [activeMunicipalities, provId, distId]);
 
   // --- Category State ---
   const [categories, setCategories] = useState<ComplaintCategory[]>([]);
@@ -332,34 +388,24 @@ export const SubmitComplaint: React.FC = () => {
   };
 
   useEffect(() => {
-    fetchProvinces();
-    fetchInitialMunicipalities();
+    publicApi.getActiveMunicipalities()
+      .then((res) => {
+        if (res.success && res.data) {
+          setActiveMunicipalities(res.data);
+        }
+      })
+      .catch(console.error);
+
     fetchCategories("default"); // Backend returns all categories regardless of ID
-    if (registeredMunicipalityId) {
+    const effectiveMuni = resolvedRegisteredMunicipalityId || registeredMunicipalityId;
+    if (effectiveMuni) {
       setLocationSource('registered_address');
-      setMuniId(registeredMunicipalityId);
+      setMuniId(effectiveMuni);
     }
     if (registeredWardId) {
       setWardId(registeredWardId);
     }
-  }, [registeredMunicipalityId, registeredWardId]);
-
-  useEffect(() => {
-    if (provId) {
-      publicApi.getDistricts(provId).then(res => setDistricts(res.data)).catch(console.error);
-    } else {
-      setDistricts([]);
-    }
-    setDistId("");
-  }, [provId]);
-
-  useEffect(() => {
-    if (distId) {
-      publicApi.getMunicipalities(distId).then(res => setMunicipalities(res.data)).catch(console.error);
-    } else {
-      fetchInitialMunicipalities();
-    }
-  }, [distId]);
+  }, [resolvedRegisteredMunicipalityId, registeredMunicipalityId, registeredWardId]);
 
   useEffect(() => {
     if (muniId) {
@@ -369,24 +415,6 @@ export const SubmitComplaint: React.FC = () => {
     }
     setWardId("");
   }, [muniId]);
-
-  const fetchProvinces = async () => {
-    try {
-      const res = await publicApi.getProvinces();
-      setProvinces(res.data);
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  const fetchInitialMunicipalities = async () => {
-    try {
-      const res = await publicApi.getMunicipalities();
-      if (res.data) setMunicipalities(res.data);
-    } catch (err) {
-      console.error(err);
-    }
-  };
 
   const fetchCategories = async (mId: string) => {
     try {
@@ -403,7 +431,8 @@ export const SubmitComplaint: React.FC = () => {
   const handleNext = async () => {
     if (activeStep === 0) {
       if (locationSource === 'registered_address') {
-        if (!registeredMunicipalityId) {
+        const effectiveMuni = resolvedRegisteredMunicipalityId || registeredMunicipalityId || muniId;
+        if (!effectiveMuni) {
           Swal.fire({
             icon: "error",
             title: "No Registered Address",
@@ -417,7 +446,7 @@ export const SubmitComplaint: React.FC = () => {
           Swal.fire({
             icon: "warning",
             title: "Location Pin Required",
-            text: "Please pin the complaint location on the map or click 'Pin Current Location'.",
+            text: "Please pin the complaint location on the map inside an active municipal boundary (Tokha, Bharatpur, Paiyun).",
             confirmButtonColor: "#0284c7",
           });
           return;
@@ -425,8 +454,8 @@ export const SubmitComplaint: React.FC = () => {
         if (!muniId) {
           Swal.fire({
             icon: "warning",
-            title: "Municipality Selection Required",
-            text: "Please select the municipality responsible for this location to ensure proper routing.",
+            title: "Active Municipality Required",
+            text: "Please select or verify the active partner municipality responsible for this location to ensure proper routing.",
             confirmButtonColor: "#0284c7",
           });
           return;
@@ -604,7 +633,7 @@ export const SubmitComplaint: React.FC = () => {
                           </Typography>
                           <Chip label="Home / Profile" size="small" color="default" variant="outlined" sx={{ fontSize: '0.7rem' }} />
                         </Box>
-                        {registeredMunicipalityId ? (
+                        {hasRegisteredAddress ? (
                           <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
                             {registeredAddressStr ? registeredAddressStr : "Citizen profile address"}
                             {registeredWardId ? ` • Ward ID: ${registeredWardId.slice(0, 6)}...` : ""}
@@ -616,7 +645,7 @@ export const SubmitComplaint: React.FC = () => {
                         )}
                       </Box>
                     }
-                    disabled={!registeredMunicipalityId}
+                    disabled={!hasRegisteredAddress}
                   />
                 </Paper>
 
@@ -655,10 +684,17 @@ export const SubmitComplaint: React.FC = () => {
                       <LocationPickerMap
                         selectedCoords={mapCoords}
                         selectedAddress={mapAddress}
+                        activeMunicipalities={activeMunicipalities}
+                        targetMunicipalityId={muniId}
                         onLocationSelect={(address, coords, isGps) => {
                           setMapCoords(coords);
                           setMapAddress(address);
                           setIsGpsPinned(!!isGps);
+                        }}
+                        onMunicipalityDetect={(detectedMuni) => {
+                          setProvId(detectedMuni.province_id);
+                          setDistId(detectedMuni.district_id);
+                          setMuniId(detectedMuni.id);
                         }}
                         onAddressChange={(addr) => setMapAddress(addr)}
                       />
@@ -666,7 +702,7 @@ export const SubmitComplaint: React.FC = () => {
                       {/* Administrative Jurisdiction Selection */}
                       <Box sx={{ mt: 3, pt: 2.5, borderTop: '1px dashed', borderColor: 'divider' }}>
                         <Typography variant="subtitle2" fontWeight={700} gutterBottom>
-                          Administrative Routing (Municipality & Ward) *
+                          Administrative Routing (Active Partner Municipality & Ward) *
                         </Typography>
                         <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 2 }}>
                           Select the local government unit responsible for this location to ensure the grievance reaches the correct municipal department.
@@ -679,9 +715,14 @@ export const SubmitComplaint: React.FC = () => {
                               <Select
                                 value={provId}
                                 label="Province"
-                                onChange={(e) => setProvId(e.target.value)}
+                                onChange={(e) => {
+                                  setProvId(e.target.value);
+                                  setDistId("");
+                                  setMuniId("");
+                                  setWardId("");
+                                }}
                               >
-                                {provinces.map((p) => (
+                                {activeProvinces.map((p) => (
                                   <MenuItem key={p.id} value={p.id}>
                                     {p.name}
                                   </MenuItem>
@@ -695,9 +736,13 @@ export const SubmitComplaint: React.FC = () => {
                               <Select
                                 value={distId}
                                 label="District"
-                                onChange={(e) => setDistId(e.target.value)}
+                                onChange={(e) => {
+                                  setDistId(e.target.value);
+                                  setMuniId("");
+                                  setWardId("");
+                                }}
                               >
-                                {districts.map((d) => (
+                                {activeDistricts.map((d) => (
                                   <MenuItem key={d.id} value={d.id}>
                                     {d.name}
                                   </MenuItem>
@@ -707,15 +752,23 @@ export const SubmitComplaint: React.FC = () => {
                           </Grid>
                           <Grid size={{ xs: 12, sm: 6 }}>
                             <FormControl fullWidth size="small">
-                              <InputLabel>Municipality *</InputLabel>
+                              <InputLabel>Active Municipality *</InputLabel>
                               <Select
                                 value={muniId}
-                                label="Municipality *"
-                                onChange={(e) => setMuniId(e.target.value)}
+                                label="Active Municipality *"
+                                onChange={(e) => {
+                                  const selected = activeMunicipalities.find((m) => m.id === e.target.value);
+                                  if (selected) {
+                                    setProvId(selected.province_id);
+                                    setDistId(selected.district_id);
+                                    setMuniId(selected.id);
+                                    setWardId("");
+                                  }
+                                }}
                               >
-                                {municipalities.map((m) => (
+                                {activeMunicipalitiesList.map((m) => (
                                   <MenuItem key={m.id} value={m.id}>
-                                    {m.official_name || (m as any).name}
+                                    {m.official_name}
                                   </MenuItem>
                                 ))}
                               </Select>

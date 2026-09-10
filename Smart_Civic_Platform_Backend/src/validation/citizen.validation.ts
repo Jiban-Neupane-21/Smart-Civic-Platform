@@ -30,13 +30,18 @@ export const updateProfileSchema = z.object({
   notification_pref: z.enum(["email", "sms", "both", "none"]).optional(),
 });
 
+const optionalUuid = z.preprocess(
+  (val) => (typeof val === "string" && val.trim() === "" ? undefined : val === null ? undefined : val),
+  z.string().uuid().optional()
+);
+
 const addressSectionSchema = z.object({
-  province_id: z.string().uuid().optional(),
-  district_id: z.string().uuid().optional(),
-  municipality_id: z.string().uuid().optional(),
-  ward_id: z.string().uuid().optional(),
-  tole: z.string().optional(),
-  full_address: z.string().optional(),
+  province_id: optionalUuid,
+  district_id: optionalUuid,
+  municipality_id: optionalUuid,
+  ward_id: optionalUuid,
+  tole: z.string().optional().nullable(),
+  full_address: z.string().optional().nullable(),
 });
 
 export const addressSchema = z.object({

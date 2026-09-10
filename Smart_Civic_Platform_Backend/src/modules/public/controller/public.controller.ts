@@ -31,6 +31,16 @@ export const getMunicipalities = async (req: Request, res: Response) => {
   }
 };
 
+export const getActiveMunicipalities = async (_req: Request, res: Response) => {
+  try {
+    const data = await PublicService.getPublicActiveMunicipalities();
+    return sendSuccess(res, data);
+  } catch (e: any) {
+    return sendError(res, e.message);
+  }
+};
+
+
 export const getWards = async (req: Request, res: Response) => {
   try {
     const municipalityId = req.query.municipality_id as string;

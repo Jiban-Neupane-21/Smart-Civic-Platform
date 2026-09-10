@@ -1,6 +1,6 @@
 import apiClient from '../client';
 import type { ApiResponse } from '../types';
-import type { PublicStats, PublicAnnouncement, Province, District, Municipality, Ward } from '../types';
+import type { PublicStats, PublicAnnouncement, Province, District, Municipality, Ward, ActiveMunicipality } from '../types';
 
 export const publicApi = {
   /**
@@ -18,6 +18,14 @@ export const publicApi = {
     const response = await apiClient.get<ApiResponse<PublicAnnouncement[]>>('/public/announcements', {
       params: municipalityId ? { municipalityId } : undefined,
     });
+    return response.data;
+  },
+
+  /**
+   * Get all active onboarded municipalities
+   */
+  getActiveMunicipalities: async (): Promise<ApiResponse<ActiveMunicipality[]>> => {
+    const response = await apiClient.get<ApiResponse<ActiveMunicipality[]>>('/public/active-municipalities');
     return response.data;
   },
 
@@ -48,6 +56,7 @@ export const publicApi = {
     });
     return response.data;
   },
+
 
   /**
    * Get wards by municipality

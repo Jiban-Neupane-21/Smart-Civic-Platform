@@ -115,18 +115,42 @@ export const getMe = async (req: Request, res: Response) => {
     const user = req.user!;
 
     if (user.role === "citizen") {
-      const { data: citizen } = await req.userClient!
-        .from("citizens")
-        .select(`
-          first_name, middle_name, last_name, date_of_birth, gender,
-          current_address, permanent_address, ward_id, notification_pref,
-          permanent_province_id, permanent_district_id, permanent_municipality_id, permanent_ward_id, permanent_tole,
-          current_province_id, current_district_id, current_municipality_id, current_ward_id, current_tole,
-          identity_type, identity_number, identity_front_image_url, identity_back_image_url,
-          kyc_status, kyc_verified_at, kyc_rejection_reason, profile_picture
-        `)
-        .eq("id", user.id)
-        .maybeSingle();
+      let citizen = null;
+      if (req.userClient) {
+        try {
+          const { data } = await req.userClient
+            .from("citizens")
+            .select(`
+              first_name, middle_name, last_name, date_of_birth, gender,
+              current_address, permanent_address, ward_id, notification_pref,
+              permanent_province_id, permanent_district_id, permanent_municipality_id, permanent_ward_id, permanent_tole,
+              current_province_id, current_district_id, current_municipality_id, current_ward_id, current_tole,
+              identity_type, identity_number, identity_front_image_url, identity_back_image_url,
+              kyc_status, kyc_verified_at, kyc_rejection_reason, profile_picture
+            `)
+            .eq("id", user.id)
+            .maybeSingle();
+          citizen = data;
+        } catch {
+          // fallback to supabaseAdmin
+        }
+      }
+
+      if (!citizen) {
+        const { data: adminCitizen } = await supabaseAdmin
+          .from("citizens")
+          .select(`
+            first_name, middle_name, last_name, date_of_birth, gender,
+            current_address, permanent_address, ward_id, notification_pref,
+            permanent_province_id, permanent_district_id, permanent_municipality_id, permanent_ward_id, permanent_tole,
+            current_province_id, current_district_id, current_municipality_id, current_ward_id, current_tole,
+            identity_type, identity_number, identity_front_image_url, identity_back_image_url,
+            kyc_status, kyc_verified_at, kyc_rejection_reason, profile_picture
+          `)
+          .eq("id", user.id)
+          .maybeSingle();
+        citizen = adminCitizen;
+      }
 
       const profilePic = citizen?.profile_picture || user.profile_picture || null;
 

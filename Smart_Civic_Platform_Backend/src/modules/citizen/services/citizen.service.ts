@@ -612,6 +612,13 @@ export const getDashboardData = async (
   };
 };
 
+const sanitizeUuid = (val?: string | null): string | null => {
+  if (!val || typeof val !== "string") return null;
+  const trimmed = val.trim();
+  const uuidRegex = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
+  return uuidRegex.test(trimmed) ? trimmed : null;
+};
+
 export const updateStructuredAddress = async (
   citizenId: string,
   body: {
@@ -631,37 +638,54 @@ export const updateStructuredAddress = async (
 
   // Only allow updating permanent address if KYC is not verified
   if (body.permanent && !isKycVerified) {
-    if (body.permanent.province_id !== undefined) updates.permanent_province_id = body.permanent.province_id;
-    if (body.permanent.district_id !== undefined) updates.permanent_district_id = body.permanent.district_id;
-    if (body.permanent.municipality_id !== undefined) updates.permanent_municipality_id = body.permanent.municipality_id;
-    if (body.permanent.ward_id !== undefined) updates.permanent_ward_id = body.permanent.ward_id;
-    if (body.permanent.tole !== undefined) updates.permanent_tole = body.permanent.tole;
-    if (body.permanent.full_address !== undefined) updates.permanent_address = body.permanent.full_address;
+    if (body.permanent.province_id !== undefined) updates.permanent_province_id = sanitizeUuid(body.permanent.province_id);
+    if (body.permanent.district_id !== undefined) updates.permanent_district_id = sanitizeUuid(body.permanent.district_id);
+    if (body.permanent.municipality_id !== undefined) updates.permanent_municipality_id = sanitizeUuid(body.permanent.municipality_id);
+    if (body.permanent.ward_id !== undefined) {
+      const sanitizedWard = sanitizeUuid(body.permanent.ward_id);
+      updates.permanent_ward_id = sanitizedWard;
+      if (!updates.ward_id) updates.ward_id = sanitizedWard;
+    }
+    if (body.permanent.tole !== undefined) updates.permanent_tole = body.permanent.tole?.trim() || null;
+    if (body.permanent.full_address !== undefined) updates.permanent_address = body.permanent.full_address?.trim() || null;
   }
 
   if (body.current) {
-    if (body.current.province_id !== undefined) updates.current_province_id = body.current.province_id;
-    if (body.current.district_id !== undefined) updates.current_district_id = body.current.district_id;
-    if (body.current.municipality_id !== undefined) updates.current_municipality_id = body.current.municipality_id;
+    if (body.current.province_id !== undefined) updates.current_province_id = sanitizeUuid(body.current.province_id);
+    if (body.current.district_id !== undefined) updates.current_district_id = sanitizeUuid(body.current.district_id);
+    if (body.current.municipality_id !== undefined) updates.current_municipality_id = sanitizeUuid(body.current.municipality_id);
     if (body.current.ward_id !== undefined) {
-      updates.current_ward_id = body.current.ward_id;
-      updates.ward_id = body.current.ward_id; // Sync legacy ward_id
+      const sanitizedWard = sanitizeUuid(body.current.ward_id);
+      updates.current_ward_id = sanitizedWard;
+      updates.ward_id = sanitizedWard; // Sync legacy ward_id
     }
-    if (body.current.tole !== undefined) updates.current_tole = body.current.tole;
-    if (body.current.full_address !== undefined) updates.current_address = body.current.full_address;
+    if (body.current.tole !== undefined) updates.current_tole = body.current.tole?.trim() || null;
+    if (body.current.full_address !== undefined) updates.current_address = body.current.full_address?.trim() || null;
   }
 
-  const { data, error } = await supabaseAdmin
-    .from("citizens")
-    .update(updates)
-    .eq("id", citizenId)
-    .select()
-    .single();
-
-  if (error) throw new Error(error.message);
+  let data: any;
+  if (!cit) {
+    const { data: upserted, error: upsertErr } = await supabaseAdmin
+      .from("citizens")
+      .upsert({ id: citizenId, ...updates })
+      .select()
+      .single();
+    if (upsertErr) throw new Error(upsertErr.message);
+    data = upserted;
+  } else {
+    const { data: updated, error: updateErr } = await supabaseAdmin
+      .from("citizens")
+      .update(updates)
+      .eq("id", citizenId)
+      .select()
+      .single();
+    if (updateErr) throw new Error(updateErr.message);
+    data = updated;
+  }
 
   // Sync profiles.municipality_id if current or permanent municipality changed
-  const newMuniId = body.current?.municipality_id || (!isKycVerified ? body.permanent?.municipality_id : undefined);
+  const rawMuniId = body.current?.municipality_id || (!isKycVerified ? body.permanent?.municipality_id : undefined);
+  const newMuniId = sanitizeUuid(rawMuniId);
   if (newMuniId) {
     await supabaseAdmin
       .from("profiles")

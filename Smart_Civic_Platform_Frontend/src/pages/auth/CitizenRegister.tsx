@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { withRoleRedirect } from "./withRoleRedirect";
 import { useFormik } from "formik";
@@ -23,8 +23,12 @@ import {
   InputLabel,
   FormControl,
   Select,
+  Chip,
   type SelectChangeEvent,
 } from "@mui/material";
+import LocationCityIcon from "@mui/icons-material/LocationCity";
+import CheckCircleIcon from "@mui/icons-material/CheckCircle";
+import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
 import { registerSchema } from "../../validation/auth.schema";
 import { getMaxDobFor18 } from "../../validation/kyc.validators";
 import { KycFilePreviewCard } from "../../components/kyc/KycFilePreviewCard";
@@ -36,6 +40,7 @@ import type {
   District,
   Municipality,
   Ward,
+  ActiveMunicipality,
 } from "../../api/types";
 
 const STEPS = ["Personal Info", "Address", "Credentials", "Complete"];
@@ -51,35 +56,30 @@ const RegisterBase: React.FC = () => {
   const [regRefreshToken, setRegRefreshToken] = useState<string | null>(null);
   const [regProfile, setRegProfile] = useState<any>(null);
 
-  const [provinces, setProvinces] = useState<Province[]>([]);
-  const [districts, setDistricts] = useState<District[]>([]);
-  const [municipalities, setMunicipalities] = useState<Municipality[]>([]);
-  const [wards, setWards] = useState<Ward[]>([]);
+  // Active municipalities fetched from platform
+  const [activeMunicipalities, setActiveMunicipalities] = useState<ActiveMunicipality[]>([]);
+  const [loadingActiveMunicipalities, setLoadingActiveMunicipalities] = useState(true);
+  const [activeMunicipalitiesError, setActiveMunicipalitiesError] = useState<string | null>(null);
 
-  const [loadingProvinces, setLoadingProvinces] = useState(false);
-  const [provincesError, setProvincesError] = useState<string | null>(null);
-  const [loadingDistricts, setLoadingDistricts] = useState(false);
-  const [loadingMunicipalities, setLoadingMunicipalities] = useState(false);
-  const [loadingWards, setLoadingWards] = useState(false);
-
+  // Permanent address states
   const [permProvinceId, setPermProvinceId] = useState("");
   const [permDistrictId, setPermDistrictId] = useState("");
   const [permMunicipalityId, setPermMunicipalityId] = useState("");
   const [permWardId, setPermWardId] = useState("");
+  const [permWardNo, setPermWardNo] = useState("");
   const [permTole, setPermTole] = useState("");
+  const [wards, setWards] = useState<Ward[]>([]);
+  const [loadingWards, setLoadingWards] = useState(false);
 
+  // Current address states
   const [sameAsPermanent, setSameAsPermanent] = useState(true);
   const [currProvinceId, setCurrProvinceId] = useState("");
   const [currDistrictId, setCurrDistrictId] = useState("");
   const [currMunicipalityId, setCurrMunicipalityId] = useState("");
   const [currWardId, setCurrWardId] = useState("");
+  const [currWardNo, setCurrWardNo] = useState("");
   const [currTole, setCurrTole] = useState("");
-
-  const [currDistricts, setCurrDistricts] = useState<District[]>([]);
-  const [currMunicipalities, setCurrMunicipalities] = useState<Municipality[]>([]);
   const [currWards, setCurrWards] = useState<Ward[]>([]);
-  const [loadingCurrDistricts, setLoadingCurrDistricts] = useState(false);
-  const [loadingCurrMunicipalities, setLoadingCurrMunicipalities] = useState(false);
   const [loadingCurrWards, setLoadingCurrWards] = useState(false);
 
   const [identityType, setIdentityType] = useState("");
@@ -90,110 +90,248 @@ const RegisterBase: React.FC = () => {
   const [kycError, setKycError] = useState<string | null>(null);
   const [kycUploading, setKycUploading] = useState(false);
 
+  // Fetch only active registered municipalities
   useEffect(() => {
     let cancelled = false;
-    setLoadingProvinces(true);
-    setProvincesError(null);
-    publicApi.getProvinces()
+    setLoadingActiveMunicipalities(true);
+    setActiveMunicipalitiesError(null);
+    publicApi.getActiveMunicipalities()
       .then((res) => {
         if (!cancelled) {
-          if (res.success) {
-            setProvinces(res.data);
+          if (res.success && res.data) {
+            setActiveMunicipalities(res.data);
           } else {
-            setProvincesError(res.message || "Failed to load provinces");
+            setActiveMunicipalitiesError(res.message || "Failed to load active municipalities");
           }
         }
       })
       .catch((err: unknown) => {
         if (!cancelled) {
-          const msg = err instanceof Error ? err.message : "Network error loading provinces";
-          setProvincesError(msg);
-          console.error("Provinces fetch error:", err);
+          const msg = err instanceof Error ? err.message : "Network error loading active municipalities";
+          setActiveMunicipalitiesError(msg);
+          console.error("Active municipalities fetch error:", err);
         }
       })
       .finally(() => {
-        if (!cancelled) setLoadingProvinces(false);
+        if (!cancelled) setLoadingActiveMunicipalities(false);
       });
     return () => { cancelled = true; };
   }, []);
 
-  const handleProvinceChange = useCallback(async (value: string) => {
+  // Sync ward IDs when ward list loads or ward number changes
+  useEffect(() => {
+    if (permWardNo && wards.length > 0) {
+      const match = wards.find((w) => String(w.ward_no) === String(permWardNo));
+      if (match) setPermWardId(match.id);
+    }
+  }, [wards, permWardNo]);
+
+  useEffect(() => {
+    if (currWardNo && currWards.length > 0) {
+      const match = currWards.find((w) => String(w.ward_no) === String(currWardNo));
+      if (match) setCurrWardId(match.id);
+    }
+  }, [currWards, currWardNo]);
+
+
+  // Filtered Province list: only provinces that have at least one active municipality
+  const activeProvinces: Province[] = useMemo(() => {
+    const map = new Map<string, Province>();
+    for (const m of activeMunicipalities) {
+      if (m.province_id && !map.has(m.province_id)) {
+        map.set(m.province_id, {
+          id: m.province_id,
+          name: m.province_name || `Province ${m.province_id}`,
+        });
+      }
+    }
+    return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
+  }, [activeMunicipalities]);
+
+  // Filtered Districts for Permanent Address
+  const permDistricts: District[] = useMemo(() => {
+    if (!permProvinceId) return [];
+    const map = new Map<string, District>();
+    for (const m of activeMunicipalities) {
+      if (m.province_id === permProvinceId && m.district_id && !map.has(m.district_id)) {
+        map.set(m.district_id, {
+          id: m.district_id,
+          name: m.district_name || `District ${m.district_id}`,
+        });
+      }
+    }
+    return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
+  }, [activeMunicipalities, permProvinceId]);
+
+  // Filtered Municipalities for Permanent Address
+  const permMunicipalitiesList: Municipality[] = useMemo(() => {
+    if (!permDistrictId) return [];
+    return activeMunicipalities
+      .filter((m) => m.district_id === permDistrictId)
+      .map((m) => ({
+        id: m.id,
+        official_name: m.official_name,
+        local_level_type: m.local_level_type || "",
+      }))
+      .sort((a, b) => a.official_name.localeCompare(b.official_name));
+  }, [activeMunicipalities, permDistrictId]);
+
+  // Filtered Districts for Current Address
+  const currDistrictsList: District[] = useMemo(() => {
+    if (!currProvinceId) return [];
+    const map = new Map<string, District>();
+    for (const m of activeMunicipalities) {
+      if (m.province_id === currProvinceId && m.district_id && !map.has(m.district_id)) {
+        map.set(m.district_id, {
+          id: m.district_id,
+          name: m.district_name || `District ${m.district_id}`,
+        });
+      }
+    }
+    return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
+  }, [activeMunicipalities, currProvinceId]);
+
+  // Filtered Municipalities for Current Address
+  const currMunicipalitiesList: Municipality[] = useMemo(() => {
+    if (!currDistrictId) return [];
+    return activeMunicipalities
+      .filter((m) => m.district_id === currDistrictId)
+      .map((m) => ({
+        id: m.id,
+        official_name: m.official_name,
+        local_level_type: m.local_level_type || "",
+      }))
+      .sort((a, b) => a.official_name.localeCompare(b.official_name));
+  }, [activeMunicipalities, currDistrictId]);
+
+  const handleProvinceChange = useCallback((value: string) => {
     setPermProvinceId(value);
     setPermDistrictId("");
     setPermMunicipalityId("");
     setPermWardId("");
-    setDistricts([]);
-    setMunicipalities([]);
+    setPermWardNo("");
     setWards([]);
-    if (!value) return;
-    setLoadingDistricts(true);
-    const res = await publicApi.getDistricts(value);
-    if (res.success) setDistricts(res.data);
-    setLoadingDistricts(false);
   }, []);
 
-  const handleDistrictChange = useCallback(async (value: string) => {
+  const handleDistrictChange = useCallback((value: string) => {
     setPermDistrictId(value);
     setPermMunicipalityId("");
     setPermWardId("");
-    setMunicipalities([]);
+    setPermWardNo("");
     setWards([]);
-    if (!value) return;
-    setLoadingMunicipalities(true);
-    const res = await publicApi.getMunicipalities(value);
-    if (res.success) setMunicipalities(res.data);
-    setLoadingMunicipalities(false);
   }, []);
 
   const handleMunicipalityChange = useCallback(async (value: string) => {
     setPermMunicipalityId(value);
     setPermWardId("");
+    setPermWardNo("");
     setWards([]);
     if (!value) return;
     setLoadingWards(true);
-    const res = await publicApi.getWards(value);
-    if (res.success) setWards(res.data);
-    setLoadingWards(false);
+    try {
+      const res = await publicApi.getWards(value);
+      if (res.success && res.data) setWards(res.data);
+    } catch (err) {
+      console.error("Failed to load wards:", err);
+    } finally {
+      setLoadingWards(false);
+    }
   }, []);
 
-  const handleCurrProvinceChange = useCallback(async (value: string) => {
+  const handleCurrProvinceChange = useCallback((value: string) => {
     setCurrProvinceId(value);
     setCurrDistrictId("");
     setCurrMunicipalityId("");
     setCurrWardId("");
-    setCurrDistricts([]);
-    setCurrMunicipalities([]);
+    setCurrWardNo("");
     setCurrWards([]);
-    if (!value) return;
-    setLoadingCurrDistricts(true);
-    const res = await publicApi.getDistricts(value);
-    if (res.success) setCurrDistricts(res.data);
-    setLoadingCurrDistricts(false);
   }, []);
 
-  const handleCurrDistrictChange = useCallback(async (value: string) => {
+  const handleCurrDistrictChange = useCallback((value: string) => {
     setCurrDistrictId(value);
     setCurrMunicipalityId("");
     setCurrWardId("");
-    setCurrMunicipalities([]);
+    setCurrWardNo("");
     setCurrWards([]);
-    if (!value) return;
-    setLoadingCurrMunicipalities(true);
-    const res = await publicApi.getMunicipalities(value);
-    if (res.success) setCurrMunicipalities(res.data);
-    setLoadingCurrMunicipalities(false);
   }, []);
 
   const handleCurrMunicipalityChange = useCallback(async (value: string) => {
     setCurrMunicipalityId(value);
     setCurrWardId("");
+    setCurrWardNo("");
     setCurrWards([]);
     if (!value) return;
     setLoadingCurrWards(true);
-    const res = await publicApi.getWards(value);
-    if (res.success) setCurrWards(res.data);
-    setLoadingCurrWards(false);
+    try {
+      const res = await publicApi.getWards(value);
+      if (res.success && res.data) setCurrWards(res.data);
+    } catch (err) {
+      console.error("Failed to load current wards:", err);
+    } finally {
+      setLoadingCurrWards(false);
+    }
   }, []);
+
+  const handlePermWardNoChange = useCallback((val: string) => {
+    const clean = val.replace(/\D/g, "");
+    setPermWardNo(clean);
+    if (!clean) {
+      setPermWardId("");
+      return;
+    }
+    const match = wards.find((w) => String(w.ward_no) === clean);
+    if (match) setPermWardId(match.id);
+  }, [wards]);
+
+  const handleCurrWardNoChange = useCallback((val: string) => {
+    const clean = val.replace(/\D/g, "");
+    setCurrWardNo(clean);
+    if (!clean) {
+      setCurrWardId("");
+      return;
+    }
+    const match = currWards.find((w) => String(w.ward_no) === clean);
+    if (match) setCurrWardId(match.id);
+  }, [currWards]);
+
+  // Quick 1-click select active municipality
+  const handleQuickSelectMunicipality = useCallback(async (muni: ActiveMunicipality, target: "perm" | "curr" = "perm") => {
+    if (target === "perm") {
+      setPermProvinceId(muni.province_id);
+      setPermDistrictId(muni.district_id);
+      setPermMunicipalityId(muni.id);
+      setPermWardId("");
+      setPermWardNo("");
+      setWards([]);
+      setLoadingWards(true);
+      try {
+        const res = await publicApi.getWards(muni.id);
+        if (res.success && res.data) setWards(res.data);
+      } catch (err) {
+        console.error("Failed to load wards:", err);
+      } finally {
+        setLoadingWards(false);
+      }
+    } else {
+      setCurrProvinceId(muni.province_id);
+      setCurrDistrictId(muni.district_id);
+      setCurrMunicipalityId(muni.id);
+      setCurrWardId("");
+      setCurrWardNo("");
+      setCurrWards([]);
+      setLoadingCurrWards(true);
+      try {
+        const res = await publicApi.getWards(muni.id);
+        if (res.success && res.data) setCurrWards(res.data);
+      } catch (err) {
+        console.error("Failed to load current wards:", err);
+      } finally {
+        setLoadingCurrWards(false);
+      }
+    }
+  }, []);
+
+
 
   const formik = useFormik({
     initialValues: {
@@ -207,7 +345,7 @@ const RegisterBase: React.FC = () => {
       acceptTerms: false,
     },
     validationSchema: registerSchema,
-    onSubmit: async () => {},
+    onSubmit: async () => { },
   });
 
   const canGoNext = useCallback(() => {
@@ -225,9 +363,9 @@ const RegisterBase: React.FC = () => {
       );
     }
     if (activeStep === 1) {
-      if (!permProvinceId || !permDistrictId || !permMunicipalityId || !permWardId) return false;
+      if (!permProvinceId || !permDistrictId || !permMunicipalityId || !permWardNo) return false;
       if (!sameAsPermanent) {
-        if (!currProvinceId || !currDistrictId || !currMunicipalityId || !currWardId) return false;
+        if (!currProvinceId || !currDistrictId || !currMunicipalityId || !currWardNo) return false;
       }
       return true;
     }
@@ -239,7 +377,7 @@ const RegisterBase: React.FC = () => {
       );
     }
     return false;
-  }, [activeStep, formik.values, formik.errors, permProvinceId, permDistrictId, permMunicipalityId, permWardId, sameAsPermanent, currProvinceId, currDistrictId, currMunicipalityId, currWardId]);
+  }, [activeStep, formik.values, formik.errors, permProvinceId, permDistrictId, permMunicipalityId, permWardNo, sameAsPermanent, currProvinceId, currDistrictId, currMunicipalityId, currWardNo]);
 
   const handleNext = async () => {
     setSubmitError(null);
@@ -257,6 +395,84 @@ const RegisterBase: React.FC = () => {
   const handleRegister = async () => {
     setIsSubmitting(true);
     try {
+      const isValidUuid = (val?: string | null): boolean =>
+        Boolean(val && /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(val));
+
+      const buildAddressString = (
+        provId: string,
+        distId: string,
+        muniId: string,
+        wardNo: string,
+        tole: string
+      ) => {
+        const muni = activeMunicipalities.find((m) => m.id === muniId);
+        const prov = muni?.province_name || activeProvinces.find((p) => p.id === provId)?.name || "";
+        const dist = muni?.district_name || "";
+        const muniName = muni?.official_name || "";
+
+        const parts = [];
+        if (tole) parts.push(tole);
+        if (wardNo) parts.push(`Ward ${wardNo}`);
+        if (muniName) parts.push(muniName);
+        if (dist) parts.push(dist);
+        if (prov) parts.push(prov);
+        return parts.join(", ");
+      };
+
+      // Resolve permanent ward UUID
+      let permWardObj = wards.find((w) => String(w.ward_no) === String(permWardNo));
+      if (!permWardObj && permMunicipalityId && permWardNo) {
+        try {
+          const res = await publicApi.getWards(permMunicipalityId);
+          if (res.success && res.data) {
+            setWards(res.data);
+            permWardObj = res.data.find((w) => String(w.ward_no) === String(permWardNo));
+          }
+        } catch {
+          // fallback to available
+        }
+      }
+      const resolvedPermWardId = permWardObj?.id || (isValidUuid(permWardId) ? permWardId : undefined);
+
+      // Resolve current ward UUID
+      let currWardObj = currWards.find((w) => String(w.ward_no) === String(currWardNo));
+      if (!sameAsPermanent && !currWardObj && currMunicipalityId && currWardNo) {
+        try {
+          const res = await publicApi.getWards(currMunicipalityId);
+          if (res.success && res.data) {
+            setCurrWards(res.data);
+            currWardObj = res.data.find((w) => String(w.ward_no) === String(currWardNo));
+          }
+        } catch {
+          // fallback to available
+        }
+      }
+      const resolvedCurrWardId = sameAsPermanent
+        ? resolvedPermWardId
+        : (currWardObj?.id || (isValidUuid(currWardId) ? currWardId : undefined));
+
+      const permAddress = {
+        province_id: isValidUuid(permProvinceId) ? permProvinceId : undefined,
+        district_id: isValidUuid(permDistrictId) ? permDistrictId : undefined,
+        municipality_id: isValidUuid(permMunicipalityId) ? permMunicipalityId : undefined,
+        ward_id: resolvedPermWardId,
+        tole: permTole?.trim() || undefined,
+        full_address: buildAddressString(permProvinceId, permDistrictId, permMunicipalityId, permWardNo, permTole) || undefined,
+      };
+
+      let currAddress = permAddress;
+      if (!sameAsPermanent) {
+        currAddress = {
+          province_id: isValidUuid(currProvinceId) ? currProvinceId : undefined,
+          district_id: isValidUuid(currDistrictId) ? currDistrictId : undefined,
+          municipality_id: isValidUuid(currMunicipalityId) ? currMunicipalityId : undefined,
+          ward_id: resolvedCurrWardId,
+          tole: currTole?.trim() || undefined,
+          full_address: buildAddressString(currProvinceId, currDistrictId, currMunicipalityId, currWardNo, currTole) || undefined,
+        };
+      }
+
+      // Single atomic registration API call (includes credentials, profile, and structured addresses)
       const registerRes = await apiClient.post('/auth/register', {
         email: formik.values.email?.trim(),
         password: formik.values.password,
@@ -264,6 +480,11 @@ const RegisterBase: React.FC = () => {
         phone: formik.values.phone?.trim() || undefined,
         date_of_birth: formik.values.dateOfBirth || undefined,
         gender: formik.values.gender || undefined,
+        municipality_id: permAddress.municipality_id || currAddress.municipality_id || undefined,
+        full_address: permAddress.full_address || undefined,
+        current_address: currAddress.full_address || undefined,
+        permanent: permAddress,
+        current: currAddress,
       });
 
       const registerData = registerRes.data;
@@ -285,53 +506,12 @@ const RegisterBase: React.FC = () => {
       }
       setRegProfile(profile);
 
-      const buildAddressString = (provId: string, distId: string, muniId: string, wardId: string, tole: string, dList: typeof districts, mList: typeof municipalities, wList: typeof wards) => {
-        const prov = provinces.find(p => p.id === provId)?.name || "";
-        const dist = dList.find(d => d.id === distId)?.name || "";
-        const muni = mList.find(m => m.id === muniId)?.official_name || "";
-        const ward = wList.find(w => w.id === wardId)?.ward_no || "";
-        
-        const parts = [];
-        if (tole) parts.push(tole);
-        if (ward) parts.push(`Ward ${ward}`);
-        if (muni) parts.push(muni);
-        if (dist) parts.push(dist);
-        if (prov) parts.push(prov);
-        return parts.join(", ");
-      };
-
-      const permAddress = {
-        province_id: permProvinceId,
-        district_id: permDistrictId,
-        municipality_id: permMunicipalityId,
-        ward_id: permWardId,
-        tole: permTole || undefined,
-        full_address: buildAddressString(permProvinceId, permDistrictId, permMunicipalityId, permWardId, permTole, districts, municipalities, wards),
-      };
-
-      let currAddress = permAddress;
-      if (!sameAsPermanent) {
-        currAddress = {
-          province_id: currProvinceId,
-          district_id: currDistrictId,
-          municipality_id: currMunicipalityId,
-          ward_id: currWardId,
-          tole: currTole || undefined,
-          full_address: buildAddressString(currProvinceId, currDistrictId, currMunicipalityId, currWardId, currTole, currDistricts, currMunicipalities, currWards),
-        };
-      }
-
-      // Save token to localStorage for authenticated API calls (updateAddress, uploadIdentity)
+      // Save token to localStorage for authenticated KYC upload
       localStorage.setItem("access_token", token);
       if (refreshToken) {
         localStorage.setItem("refresh_token", refreshToken);
       }
       localStorage.setItem("user_profile", JSON.stringify(profile));
-
-      await citizenApi.updateAddress({
-        permanent: permAddress,
-        current: currAddress,
-      });
 
       // Advance to step 3 (success & optional KYC upload)
       setActiveStep(3);
@@ -340,10 +520,23 @@ const RegisterBase: React.FC = () => {
       localStorage.removeItem("access_token");
       localStorage.removeItem("refresh_token");
       localStorage.removeItem("user_profile");
-      const backendMessage =
+      let backendMessage =
         err?.response?.data?.message ||
         err?.response?.data?.error ||
         (err instanceof Error ? err.message : "Registration failed");
+
+      const lowerMsg = backendMessage.toLowerCase();
+      if (lowerMsg.includes("idx_profiles_phone") || lowerMsg.includes("phone")) {
+        backendMessage = "This phone number is already registered to another account. Please use a different phone number or sign in.";
+        formik.setFieldError("phone", backendMessage);
+        formik.setFieldTouched("phone", true, false);
+        setActiveStep(0);
+      } else if (lowerMsg.includes("email")) {
+        formik.setFieldError("email", backendMessage);
+        formik.setFieldTouched("email", true, false);
+        setActiveStep(0);
+      }
+
       console.error("[Registration Error]", err?.response?.data || err);
       setSubmitError(backendMessage);
     } finally {
@@ -401,6 +594,56 @@ const RegisterBase: React.FC = () => {
 
   const renderPersonalInfo = () => (
     <Grid container spacing={2}>
+      <Grid size={{ xs: 12 }}>
+        <Paper
+          variant="outlined"
+          sx={{
+            p: 2,
+            mb: 1,
+            borderRadius: 2,
+            backgroundColor: (theme) =>
+              theme.palette.mode === "dark"
+                ? "rgba(25, 118, 210, 0.08)"
+                : "rgba(25, 118, 210, 0.04)",
+            borderColor: "primary.light",
+          }}
+        >
+          <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 0.75 }}>
+            <LocationCityIcon color="primary" fontSize="small" />
+            <Typography variant="subtitle2" sx={{ fontWeight: 700, color: "primary.main" }}>
+              Currently Active Municipalities
+            </Typography>
+          </Box>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+            Citizen registration is currently open for residents of active partner municipalities:
+          </Typography>
+          {loadingActiveMunicipalities ? (
+            <Box sx={{ display: "flex", alignItems: "center", gap: 1, py: 0.5 }}>
+              <CircularProgress size={18} />
+              <Typography variant="caption" color="text.secondary">
+                Checking active municipalities...
+              </Typography>
+            </Box>
+          ) : activeMunicipalities.length > 0 ? (
+            <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1 }}>
+              {activeMunicipalities.map((m) => (
+                <Chip
+                  key={m.id}
+                  label={`${m.official_name} (${m.district_name || m.province_name})`}
+                  size="small"
+                  color="primary"
+                  sx={{ fontWeight: 600, fontSize: "0.78rem" }}
+                />
+              ))}
+            </Box>
+          ) : (
+            <Alert severity="warning" sx={{ py: 0.5 }}>
+              No municipalities are currently active. Please contact platform administrators.
+            </Alert>
+          )}
+        </Paper>
+      </Grid>
+
       <Grid size={{ xs: 12 }}>
         <TextField
           fullWidth
@@ -491,138 +734,225 @@ const RegisterBase: React.FC = () => {
   const renderAddressCascade = (
     label: string,
     provId: string,
-    setProvId: (v: string) => void,
     distId: string,
-    setDistId: (v: string) => void,
     muniId: string,
-    setMuniId: (v: string) => void,
-    wardId: string,
-    setWardId: (v: string) => void,
+    wardNo: string,
+    onWardNoChange: (v: string) => void,
     tole: string,
     setTole: (v: string) => void,
+    provList: Province[],
     distList: District[],
-    setDistList: (v: District[]) => void,
     muniList: Municipality[],
-    setMuniList: (v: Municipality[]) => void,
     wardList: Ward[],
-    setWardList: (v: Ward[]) => void,
-    loadDist: boolean,
-    loadMuni: boolean,
     loadWard: boolean,
     onProvChange: (v: string) => void,
     onDistChange: (v: string) => void,
     onMuniChange: (v: string) => void,
-  ) => (
-    <Grid container spacing={2}>
-      <Grid size={{ xs: 12 }}>
-        <Typography variant="subtitle2" color="primary" sx={{ fontWeight: "bold" }}>
-          {label}
-        </Typography>
-      </Grid>
+  ) => {
+    const selectedMuni = activeMunicipalities.find((m) => m.id === muniId);
+    const totalWards = selectedMuni?.total_wards || (wardList.length > 0 ? Math.max(...wardList.map(w => w.ward_no)) : undefined);
 
-      <Grid size={{ xs: 12, sm: 3 }}>
-        <FormControl fullWidth error={!!provincesError}>
-          <InputLabel id={`${label}-province-label`}>Province</InputLabel>
-          <Select
-            labelId={`${label}-province-label`}
-            value={provId}
-            label="Province"
-            onChange={(e: SelectChangeEvent) => onProvChange(e.target.value)}
-            disabled={loadingProvinces || !!provincesError}
-            endAdornment={loadingProvinces ? <CircularProgress size={20} sx={{ mr: 2 }} /> : undefined}
-          >
-            <MenuItem value="">-- Select Province --</MenuItem>
-            {provinces.map((p) => (
-              <MenuItem key={p.id} value={p.id}>{p.name}</MenuItem>
-            ))}
-          </Select>
-          {provincesError && (
-            <FormHelperText>{provincesError}</FormHelperText>
-          )}
-        </FormControl>
-      </Grid>
+    return (
+      <Grid container spacing={2}>
+        <Grid size={{ xs: 12 }}>
+          <Typography variant="subtitle2" color="primary" sx={{ fontWeight: "bold" }}>
+            {label}
+          </Typography>
+        </Grid>
 
-      <Grid size={{ xs: 12, sm: 3 }}>
-        <FormControl fullWidth disabled={!provId}>
-          <InputLabel id={`${label}-district-label`}>District</InputLabel>
-          <Select
-            labelId={`${label}-district-label`}
-            value={distId}
-            label="District"
-            onChange={(e: SelectChangeEvent) => onDistChange(e.target.value)}
-            endAdornment={loadDist ? <CircularProgress size={20} sx={{ mr: 2 }} /> : undefined}
-          >
-            <MenuItem value="">-- Select District --</MenuItem>
-            {distList.map((d) => (
-              <MenuItem key={d.id} value={d.id}>{d.name}</MenuItem>
-            ))}
-          </Select>
-        </FormControl>
-      </Grid>
+        <Grid size={{ xs: 12, sm: 3 }}>
+          <FormControl fullWidth error={!!activeMunicipalitiesError}>
+            <InputLabel id={`${label}-province-label`}>Province</InputLabel>
+            <Select
+              labelId={`${label}-province-label`}
+              value={provId}
+              label="Province"
+              onChange={(e: SelectChangeEvent) => onProvChange(e.target.value)}
+              disabled={loadingActiveMunicipalities || !!activeMunicipalitiesError}
+              endAdornment={loadingActiveMunicipalities ? <CircularProgress size={20} sx={{ mr: 2 }} /> : undefined}
+            >
+              <MenuItem value="">-- Select Province --</MenuItem>
+              {provList.map((p) => (
+                <MenuItem key={p.id} value={p.id}>{p.name}</MenuItem>
+              ))}
+            </Select>
+            {activeMunicipalitiesError && (
+              <FormHelperText>{activeMunicipalitiesError}</FormHelperText>
+            )}
+          </FormControl>
+        </Grid>
 
-      <Grid size={{ xs: 12, sm: 3 }}>
-        <FormControl fullWidth disabled={!distId}>
-          <InputLabel id={`${label}-municipality-label`}>Municipality</InputLabel>
-          <Select
-            labelId={`${label}-municipality-label`}
-            value={muniId}
-            label="Municipality"
-            onChange={(e: SelectChangeEvent) => onMuniChange(e.target.value)}
-            endAdornment={loadMuni ? <CircularProgress size={20} sx={{ mr: 2 }} /> : undefined}
-          >
-            <MenuItem value="">-- Select Municipality --</MenuItem>
-            {muniList.map((m) => (
-              <MenuItem key={m.id} value={m.id}>
-                {m.official_name} {m.local_level_type ? `(${m.local_level_type.replace(/_/g, " ")})` : ""}
-              </MenuItem>
-            ))}
-          </Select>
-        </FormControl>
-      </Grid>
+        <Grid size={{ xs: 12, sm: 3 }}>
+          <FormControl fullWidth disabled={!provId || distList.length === 0}>
+            <InputLabel id={`${label}-district-label`}>District</InputLabel>
+            <Select
+              labelId={`${label}-district-label`}
+              value={distId}
+              label="District"
+              onChange={(e: SelectChangeEvent) => onDistChange(e.target.value)}
+            >
+              <MenuItem value="">-- Select District --</MenuItem>
+              {distList.map((d) => (
+                <MenuItem key={d.id} value={d.id}>{d.name}</MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+        </Grid>
 
-      <Grid size={{ xs: 12, sm: 3 }}>
-        <FormControl fullWidth disabled={!muniId}>
-          <InputLabel id={`${label}-ward-label`}>Ward</InputLabel>
-          <Select
-            labelId={`${label}-ward-label`}
-            value={wardId}
-            label="Ward"
-            onChange={(e: SelectChangeEvent) => setWardId(e.target.value)}
-            endAdornment={loadWard ? <CircularProgress size={20} sx={{ mr: 2 }} /> : undefined}
-          >
-            <MenuItem value="">-- Select Ward --</MenuItem>
-            {wardList.map((w) => (
-              <MenuItem key={w.id} value={w.id}>Ward {w.ward_no}</MenuItem>
-            ))}
-          </Select>
-        </FormControl>
-      </Grid>
+        <Grid size={{ xs: 12, sm: 3 }}>
+          <FormControl fullWidth disabled={!distId || muniList.length === 0}>
+            <InputLabel id={`${label}-municipality-label`}>Municipality</InputLabel>
+            <Select
+              labelId={`${label}-municipality-label`}
+              value={muniId}
+              label="Municipality"
+              onChange={(e: SelectChangeEvent) => onMuniChange(e.target.value)}
+            >
+              <MenuItem value="">-- Select Municipality --</MenuItem>
+              {muniList.map((m) => (
+                <MenuItem key={m.id} value={m.id}>
+                  {m.official_name} {m.local_level_type ? `(${m.local_level_type.replace(/_/g, " ")})` : ""}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+        </Grid>
 
-      <Grid size={{ xs: 12 }}>
-        <TextField
-          fullWidth
-          label="Tole (Optional)"
-          placeholder="e.g. Chabahil"
-          value={tole}
-          onChange={(e) => setTole(e.target.value)}
-        />
+        <Grid size={{ xs: 12, sm: 3 }}>
+          <TextField
+            fullWidth
+            label="Ward Number"
+            placeholder="e.g. 4"
+            type="number"
+            disabled={!muniId}
+            value={wardNo}
+            onChange={(e) => onWardNoChange(e.target.value)}
+            slotProps={{
+              htmlInput: {
+                min: 1,
+                max: totalWards || 99,
+                inputMode: "numeric",
+                pattern: "[0-9]*",
+              },
+            }}
+            helperText={
+              totalWards
+                ? `Ward 1 to ${totalWards}`
+                : loadWard
+                ? "Checking wards..."
+                : undefined
+            }
+          />
+        </Grid>
+
+        <Grid size={{ xs: 12 }}>
+          <TextField
+            fullWidth
+            label="Tole (Optional)"
+            placeholder="e.g. Chabahil"
+            value={tole}
+            onChange={(e) => setTole(e.target.value)}
+          />
+        </Grid>
       </Grid>
-    </Grid>
-  );
+    );
+  };
 
   const renderAddress = () => (
     <Grid container spacing={2}>
+      {/* Quick-Pick Section for Active Municipalities */}
+      <Grid size={{ xs: 12 }}>
+        <Paper
+          variant="outlined"
+          sx={{
+            p: 2.5,
+            mb: 1.5,
+            borderRadius: 2,
+            background: (theme) =>
+              theme.palette.mode === "dark"
+                ? "linear-gradient(135deg, rgba(25,118,210,0.12) 0%, rgba(13,71,161,0.06) 100%)"
+                : "linear-gradient(135deg, #f0f7ff 0%, #e3f2fd 100%)",
+            borderColor: "primary.main",
+          }}
+        >
+          <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 1, mb: 1 }}>
+            <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+              <LocationCityIcon color="primary" />
+              <Typography variant="subtitle1" sx={{ fontWeight: 700, color: "primary.dark" }}>
+                Active Municipalities
+              </Typography>
+            </Box>
+            {activeMunicipalities.length > 0 && (
+              <Chip
+                label={`${activeMunicipalities.length} Active Local Government${activeMunicipalities.length === 1 ? "" : "s"}`}
+                size="small"
+                color="primary"
+                sx={{ fontWeight: 600 }}
+              />
+            )}
+          </Box>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Click an active municipality below to automatically set your Province and District, or select from the filtered dropdowns:
+          </Typography>
+
+          {loadingActiveMunicipalities ? (
+            <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, py: 1 }}>
+              <CircularProgress size={20} />
+              <Typography variant="body2" color="text.secondary">
+                Loading active municipalities...
+              </Typography>
+            </Box>
+          ) : activeMunicipalities.length > 0 ? (
+            <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1.5 }}>
+              {activeMunicipalities.map((m) => {
+                const isSelected = permMunicipalityId === m.id;
+                return (
+                  <Chip
+                    key={m.id}
+                    label={`${m.official_name} • ${m.district_name || m.province_name}`}
+                    onClick={() => handleQuickSelectMunicipality(m, "perm")}
+                    color={isSelected ? "primary" : "default"}
+                    variant={isSelected ? "filled" : "outlined"}
+                    icon={isSelected ? <CheckCircleIcon fontSize="small" /> : <LocationCityIcon fontSize="small" />}
+                    sx={{
+                      cursor: "pointer",
+                      py: 2.2,
+                      px: 1,
+                      fontWeight: isSelected ? 700 : 500,
+                      fontSize: "0.85rem",
+                      boxShadow: isSelected ? "0 2px 8px rgba(25,118,210,0.3)" : "none",
+                      transition: "all 0.2s ease",
+                      "&:hover": {
+                        borderColor: "primary.main",
+                        transform: "translateY(-1px)",
+                      },
+                    }}
+                  />
+                );
+              })}
+            </Box>
+          ) : (
+            <Alert severity="info" sx={{ mt: 1 }}>
+              No active municipalities found. Registration is limited to participating councils.
+            </Alert>
+          )}
+        </Paper>
+      </Grid>
+
       {renderAddressCascade(
         "Permanent Address",
-        permProvinceId, setPermProvinceId,
-        permDistrictId, setPermDistrictId,
-        permMunicipalityId, setPermMunicipalityId,
-        permWardId, setPermWardId,
-        permTole, setPermTole,
-        districts, setDistricts,
-        municipalities, setMunicipalities,
-        wards, setWards,
-        loadingDistricts, loadingMunicipalities, loadingWards,
+        permProvinceId,
+        permDistrictId,
+        permMunicipalityId,
+        permWardNo,
+        handlePermWardNoChange,
+        permTole,
+        setPermTole,
+        activeProvinces,
+        permDistricts,
+        permMunicipalitiesList,
+        wards,
+        loadingWards,
         handleProvinceChange,
         handleDistrictChange,
         handleMunicipalityChange,
@@ -641,30 +971,33 @@ const RegisterBase: React.FC = () => {
         />
       </Grid>
 
-      {!sameAsPermanent && renderAddressCascade(
-        "Current Address",
-        currProvinceId, setCurrProvinceId,
-        currDistrictId, setCurrDistrictId,
-        currMunicipalityId, setCurrMunicipalityId,
-        currWardId, setCurrWardId,
-        currTole, setCurrTole,
-        currDistricts, setCurrDistricts,
-        currMunicipalities, setCurrMunicipalities,
-        currWards, setCurrWards,
-        loadingCurrDistricts, loadingCurrMunicipalities, loadingCurrWards,
-        handleCurrProvinceChange,
-        handleCurrDistrictChange,
-        handleCurrMunicipalityChange,
-      )}
+      {!sameAsPermanent &&
+        renderAddressCascade(
+          "Current Address",
+          currProvinceId,
+          currDistrictId,
+          currMunicipalityId,
+          currWardNo,
+          handleCurrWardNoChange,
+          currTole,
+          setCurrTole,
+          activeProvinces,
+          currDistrictsList,
+          currMunicipalitiesList,
+          currWards,
+          loadingCurrWards,
+          handleCurrProvinceChange,
+          handleCurrDistrictChange,
+          handleCurrMunicipalityChange,
+        )}
     </Grid>
   );
+
 
   const renderCredentials = () => (
     <Grid container spacing={2}>
       <Grid size={{ xs: 12, sm: 6 }}>
         <TextField
-          fullWidth
-          id="password"
           name="password"
           label="Password"
           type="password"

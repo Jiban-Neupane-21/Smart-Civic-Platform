@@ -5,10 +5,33 @@ import type { UserRole } from "../../../types/database.type";
 import { TOKEN_CONFIG } from "../../../app";
 import { env } from "../../../config/env";
 import { AuditService } from "../../../service/audit.service";
+import { updateStructuredAddress } from "../../citizen/services/citizen.service";
 
 // Derived millisecond value — computed once at module load
 const REFRESH_TOKEN_TTL_MS =
   TOKEN_CONFIG.REFRESH_TOKEN_EXPIRY_DAYS * 24 * 60 * 60 * 1000;
+
+export const normalizePhoneVariants = (phone?: string): string[] => {
+  if (!phone) return [];
+  const trimmed = phone.trim();
+  if (!trimmed) return [];
+
+  const digitsOnly = trimmed.replace(/\D/g, "");
+  const variants = new Set<string>();
+  variants.add(trimmed);
+  if (digitsOnly) variants.add(digitsOnly);
+
+  if (digitsOnly.length >= 10) {
+    const last10 = digitsOnly.slice(-10);
+    variants.add(last10);
+    variants.add(`+977${last10}`);
+    variants.add(`+977-${last10}`);
+    variants.add(`+977 ${last10}`);
+    variants.add(`977${last10}`);
+  }
+
+  return Array.from(variants);
+};
 
 export const registerService = async (body: {
   email: string;
@@ -22,7 +45,76 @@ export const registerService = async (body: {
   role?: "citizen";
   municipality_id?: string;
   department_id?: string;
+  permanent?: {
+    province_id?: string;
+    district_id?: string;
+    municipality_id?: string;
+    ward_id?: string;
+    tole?: string;
+    full_address?: string;
+  };
+  current?: {
+    province_id?: string;
+    district_id?: string;
+    municipality_id?: string;
+    ward_id?: string;
+    tole?: string;
+    full_address?: string;
+  };
 }) => {
+  const cleanPhone = body.phone?.trim();
+  if (cleanPhone) {
+    const phoneVariants = normalizePhoneVariants(cleanPhone);
+    const { data: existingPhone } = await supabaseAdmin
+      .from("profiles")
+      .select("id, phone")
+      .in("phone", phoneVariants)
+      .limit(1)
+      .maybeSingle();
+
+    if (existingPhone) {
+      throw new Error("This phone number is already registered to another account. Please use a different phone number or sign in.");
+    }
+  }
+
+  // Check if an orphan auth.user exists with this email but without a profile
+  const cleanEmail = body.email.trim().toLowerCase();
+  const { data: profileByEmail } = await supabaseAdmin
+    .from("profiles")
+    .select("id")
+    .eq("email", cleanEmail)
+    .maybeSingle();
+
+  if (!profileByEmail) {
+    try {
+      let page = 1;
+      let foundOrphanId: string | null = null;
+      while (page <= 5) {
+        const { data: userList, error: listErr } = await supabaseAdmin.auth.admin.listUsers({
+          page,
+          perPage: 100,
+        });
+        if (listErr || !userList?.users?.length) break;
+        const match = userList.users.find((u) => u.email?.toLowerCase() === cleanEmail);
+        if (match) {
+          foundOrphanId = match.id;
+          break;
+        }
+        if (userList.users.length < 100) break;
+        page++;
+      }
+
+      if (foundOrphanId) {
+        console.warn(`[registerService] Cleaning up orphan auth user ${foundOrphanId} without profile.`);
+        await supabaseAdmin.auth.admin.deleteUser(foundOrphanId).catch((err) => {
+          console.error("[registerService] Failed to delete orphan user:", err);
+        });
+      }
+    } catch (cleanErr) {
+      console.warn("[registerService] Orphan cleanup check failed:", cleanErr);
+    }
+  }
+
   const nameParts = body.full_name.trim().split(/\s+/);
   const first_name = nameParts[0];
   const last_name = nameParts.length > 1 ? nameParts[nameParts.length - 1] : "";
@@ -33,11 +125,20 @@ export const registerService = async (body: {
     : null;
 
   const uuidRegex = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
-  const municipalityId = body.municipality_id && uuidRegex.test(body.municipality_id) ? body.municipality_id : null;
+  const municipalityId = (body.municipality_id && uuidRegex.test(body.municipality_id))
+    ? body.municipality_id
+    : (body.current?.municipality_id && uuidRegex.test(body.current.municipality_id))
+    ? body.current.municipality_id
+    : (body.permanent?.municipality_id && uuidRegex.test(body.permanent.municipality_id))
+    ? body.permanent.municipality_id
+    : null;
   const departmentId = body.department_id && uuidRegex.test(body.department_id) ? body.department_id : null;
 
+  const fullAddress = body.full_address?.trim() || body.permanent?.full_address?.trim() || null;
+  const currentAddress = body.current_address?.trim() || body.current?.full_address?.trim() || fullAddress;
+
   const { data, error } = await supabaseAdmin.auth.admin.createUser({
-    email: body.email,
+    email: cleanEmail,
     password: body.password,
     email_confirm: true,
     user_metadata: {
@@ -48,30 +149,63 @@ export const registerService = async (body: {
       role: body.role ?? "citizen",
       municipality_id: municipalityId,
       department_id: departmentId,
-      phone: body.phone?.trim() || null,
-      full_address: body.full_address?.trim() || null,
-      current_address: body.current_address?.trim() || null,
-      gender: sanitizedGender
+      phone: cleanPhone || null,
+      full_address: fullAddress,
+      current_address: currentAddress,
+      permanent_address: fullAddress,
+      gender: sanitizedGender,
     },
   });
 
   if (error) {
     console.error('[registerService] Supabase createUser error:', error);
+    const errLower = (error.message || "").toLowerCase();
+    if (errLower.includes("idx_profiles_phone") || errLower.includes("phone")) {
+      throw new Error("This phone number is already registered to another account. Please use a different phone number or sign in.");
+    }
     throw new Error(error.message);
   }
 
-  // Database trigger on_auth_user_created runs synchronously on insert and creates the citizen record.
-  // Update it to set the date_of_birth which is not handled by the trigger.
-  if (body.date_of_birth) {
-    await supabaseAdmin
-      .from("citizens")
-      .update({ date_of_birth: body.date_of_birth })
-      .eq("id", data.user.id);
-  }
+  try {
+    // Sync profiles.municipality_id immediately in case trigger missed it
+    if (municipalityId) {
+      await supabaseAdmin
+        .from("profiles")
+        .update({ municipality_id: municipalityId })
+        .eq("id", data.user.id);
+    }
 
-  // Return the login session payload (access_token, profile, etc.)
-  return loginService(body.email, body.password);
+    // Database trigger on_auth_user_created runs synchronously on insert and creates the citizen record.
+    // Update it to set the date_of_birth which is not handled by the trigger.
+    if (body.date_of_birth) {
+      await supabaseAdmin
+        .from("citizens")
+        .update({ date_of_birth: body.date_of_birth })
+        .eq("id", data.user.id);
+    }
+
+    // Save structured addresses atomically
+    if (body.permanent || body.current) {
+      await updateStructuredAddress(data.user.id, {
+        permanent: body.permanent,
+        current: body.current,
+      });
+    }
+
+    // Return the login session payload (access_token, profile, etc.)
+    return await loginService(cleanEmail, body.password);
+  } catch (postErr: any) {
+    // Roll back auth user creation if post-registration steps fail
+    console.warn(`[registerService] Post-registration step failed, rolling back auth user ${data.user.id}:`, postErr);
+    await supabaseAdmin.auth.admin.deleteUser(data.user.id).catch(() => {});
+    const msg = (postErr?.message || "").toLowerCase();
+    if (msg.includes("idx_profiles_phone") || msg.includes("phone")) {
+      throw new Error("This phone number is already registered to another account. Please use a different phone number or sign in.");
+    }
+    throw postErr;
+  }
 };
+
 
 export const loginService = async (
   email: string,
@@ -120,8 +254,13 @@ export const loginService = async (
 
     if (insertProfileErr) {
       console.error("[loginService] Auto-heal profile creation failed:", insertProfileErr);
+      const combined = `${insertProfileErr.message || ""} ${insertProfileErr.details || ""}`.toLowerCase();
+      if (combined.includes("idx_profiles_phone") || combined.includes("phone")) {
+        throw new Error("This phone number is already registered to another account. Please use a different phone number or sign in.");
+      }
       throw new Error(`User profile not found: ${insertProfileErr.message}`);
     }
+
 
     if (userRole === "citizen") {
       const citizenData: any = {

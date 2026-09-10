@@ -67,6 +67,23 @@ router.get("/municipalities", PublicController.getMunicipalities);
 
 /**
  * @swagger
+ * /api/public/active-municipalities:
+ *   get:
+ *     summary: List onboarded active municipalities with joined province and district info
+ *     tags: [Public API]
+ *     responses:
+ *       200:
+ *         description: Active municipalities list retrieved successfully.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/SuccessResponse'
+ */
+router.get("/active-municipalities", PublicController.getActiveMunicipalities);
+
+
+/**
+ * @swagger
  * /api/public/wards:
  *   get:
  *     summary: List wards for a municipality

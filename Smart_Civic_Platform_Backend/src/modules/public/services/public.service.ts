@@ -34,6 +34,17 @@ export const getPublicMunicipalities = async (districtId?: string) => {
   return data;
 };
 
+export const getPublicActiveMunicipalities = async () => {
+  const { data, error } = await supabaseAdmin
+    .from("v_active_municipalities")
+    .select("id, official_name, official_email, local_level_type, total_wards, district_id, district_name, province_id, province_name, is_active")
+    .order("official_name");
+
+  if (error) throw new Error(error.message);
+  return data;
+};
+
+
 export const getPublicWards = async (municipalityId: string) => {
   const { data, error } = await supabaseAdmin
     .from("wards")

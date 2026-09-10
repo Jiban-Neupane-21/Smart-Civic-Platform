@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useCallback } from "react";
+import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import {
   Box,
   Button,
@@ -14,13 +14,25 @@ import {
   ListItem,
   ListItemText,
   ListItemButton,
+  Tooltip,
 } from "@mui/material";
 import MyLocationIcon from "@mui/icons-material/MyLocation";
 import SearchIcon from "@mui/icons-material/Search";
 import ClearIcon from "@mui/icons-material/Clear";
 import LocationOnIcon from "@mui/icons-material/LocationOn";
+import LocationCityIcon from "@mui/icons-material/LocationCity";
+import VerifiedIcon from "@mui/icons-material/Verified";
+import WarningAmberIcon from "@mui/icons-material/WarningAmber";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
+import { publicApi } from "../api";
+import type { ActiveMunicipality } from "../api/types";
+import {
+  ACTIVE_MUNICIPALITY_BOUNDARIES,
+  resolveActiveJurisdiction,
+  generateSyntheticBoundary,
+  type MunicipalityBoundary,
+} from "../utils/geo/municipalityBoundaries";
 
 // Custom SVG Pin to avoid broken CDN / Vite asset issues
 const createPinIcon = () =>
@@ -48,10 +60,13 @@ const createPinIcon = () =>
   });
 
 export interface LocationPickerMapProps {
-  onLocationSelect: (address: string, coords: { lat: number; lng: number }, isGps?: boolean) => void;
+  onLocationSelect: (address: string, coords: { lat: number; lng: number } | null, isGps?: boolean) => void;
   selectedCoords: { lat: number; lng: number } | null;
   selectedAddress?: string;
   onAddressChange?: (address: string) => void;
+  activeMunicipalities?: ActiveMunicipality[];
+  onMunicipalityDetect?: (municipality: ActiveMunicipality) => void;
+  targetMunicipalityId?: string;
 }
 
 // Default center: Nepal (Kathmandu Valley / Lalitpur Metropolitan)
@@ -70,10 +85,22 @@ export const LocationPickerMap: React.FC<LocationPickerMapProps> = ({
   selectedCoords,
   selectedAddress = "",
   onAddressChange,
+  activeMunicipalities: externalActiveMunis,
+  onMunicipalityDetect,
+  targetMunicipalityId,
 }) => {
+  const [internalActiveMunis, setInternalActiveMunis] = useState<ActiveMunicipality[]>([]);
   const [geoLoading, setGeoLoading] = useState(false);
   const [geoError, setGeoError] = useState<string | null>(null);
   const [reverseLoading, setReverseLoading] = useState(false);
+
+  // Boundary verification state
+  const [boundaryError, setBoundaryError] = useState<{
+    message: string;
+    nearest: MunicipalityBoundary | null;
+    distanceKm: number;
+  } | null>(null);
+  const [verifiedMunicipality, setVerifiedMunicipality] = useState<MunicipalityBoundary | null>(null);
 
   // Search state
   const [searchQuery, setSearchQuery] = useState("");
@@ -84,7 +111,49 @@ export const LocationPickerMap: React.FC<LocationPickerMapProps> = ({
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
   const markerInstanceRef = useRef<L.Marker | null>(null);
+  const polygonsLayerRef = useRef<L.LayerGroup | null>(null);
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Load active municipalities if not passed via props
+  useEffect(() => {
+    if (externalActiveMunis && externalActiveMunis.length > 0) {
+      setInternalActiveMunis(externalActiveMunis);
+      return;
+    }
+    publicApi.getActiveMunicipalities()
+      .then((res) => {
+        if (res.success && res.data) {
+          setInternalActiveMunis(res.data);
+        }
+      })
+      .catch((err) => console.warn("Failed to load active municipalities for map:", err));
+  }, [externalActiveMunis]);
+
+  const activeMunicipalities = useMemo(() => {
+    return (externalActiveMunis && externalActiveMunis.length > 0)
+      ? externalActiveMunis
+      : internalActiveMunis;
+  }, [externalActiveMunis, internalActiveMunis]);
+
+  // Compute boundary objects for all active municipalities
+  const activeBoundaries = useMemo<MunicipalityBoundary[]>(() => {
+    if (activeMunicipalities.length === 0) {
+      return Object.values(ACTIVE_MUNICIPALITY_BOUNDARIES);
+    }
+    return activeMunicipalities.map((m) => {
+      const key = m.official_name.trim().toLowerCase();
+      const existing =
+        ACTIVE_MUNICIPALITY_BOUNDARIES[key] ||
+        Object.values(ACTIVE_MUNICIPALITY_BOUNDARIES).find((b) =>
+          b.aliases.some((alias) => key.includes(alias) || alias.includes(key))
+        );
+      if (existing) {
+        return existing;
+      }
+      // Fallback synthetic boundary if no predefined polygon exists
+      return generateSyntheticBoundary(m.official_name, 27.7, 85.3);
+    });
+  }, [activeMunicipalities]);
 
   // Reverse geocode using Nominatim OpenStreetMap API
   const fetchAddressFromCoords = useCallback(
@@ -125,10 +194,47 @@ export const LocationPickerMap: React.FC<LocationPickerMapProps> = ({
     [onLocationSelect]
   );
 
-  // Move or create marker
+  // Move or create marker strictly when inside an active municipality
   const updateMarker = useCallback(
     (lat: number, lng: number, shouldPan = true, shouldFetchAddress = true, isGps = false) => {
       if (!mapInstanceRef.current) return;
+
+      // Execute Algorithm 6: Jordan Curve Ray-Casting against active boundaries
+      const check = resolveActiveJurisdiction(lat, lng, activeMunicipalities);
+
+      if (!check.isInside) {
+        const nearestName = check.nearestBoundary?.name || "Active Partner Municipality";
+        const dist = check.distanceToNearestKm;
+        setBoundaryError({
+          message: `Location is outside active partner municipalities. Smart Civic Platform only accepts grievances within active partner boundaries.`,
+          nearest: check.nearestBoundary,
+          distanceKm: dist,
+        });
+        setVerifiedMunicipality(null);
+
+        // Remove marker if outside
+        if (markerInstanceRef.current) {
+          mapInstanceRef.current.removeLayer(markerInstanceRef.current);
+          markerInstanceRef.current = null;
+        }
+        onLocationSelect("", null, false);
+        return;
+      }
+
+      // Inside an active municipality
+      setBoundaryError(null);
+      setVerifiedMunicipality(check.matchedBoundary);
+
+      // Notify parent of detected municipality to auto-select dropdowns
+      if (onMunicipalityDetect && check.matchedBoundary && activeMunicipalities.length > 0) {
+        const matched = activeMunicipalities.find((m) =>
+          m.official_name.toLowerCase().includes(check.matchedBoundary!.name.toLowerCase()) ||
+          check.matchedBoundary!.name.toLowerCase().includes(m.official_name.toLowerCase())
+        );
+        if (matched) {
+          onMunicipalityDetect(matched);
+        }
+      }
 
       const map = mapInstanceRef.current;
       const pinIcon = createPinIcon();
@@ -139,12 +245,12 @@ export const LocationPickerMap: React.FC<LocationPickerMapProps> = ({
         const marker = L.marker([lat, lng], {
           icon: pinIcon,
           draggable: true,
-          title: "Drag to refine location",
+          title: "Drag to refine location within boundary",
         }).addTo(map);
 
         marker.on("dragend", () => {
           const pos = marker.getLatLng();
-          fetchAddressFromCoords(pos.lat, pos.lng, false);
+          updateMarker(pos.lat, pos.lng, false, true, false);
         });
 
         markerInstanceRef.current = marker;
@@ -160,7 +266,7 @@ export const LocationPickerMap: React.FC<LocationPickerMapProps> = ({
         fetchAddressFromCoords(lat, lng, isGps);
       }
     },
-    [fetchAddressFromCoords]
+    [activeMunicipalities, onMunicipalityDetect, onLocationSelect, fetchAddressFromCoords]
   );
 
   // Initialize Map
@@ -184,9 +290,13 @@ export const LocationPickerMap: React.FC<LocationPickerMapProps> = ({
         '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
     }).addTo(map);
 
+    // Layer group for municipal boundary polygons
+    const polygonsLayer = L.layerGroup().addTo(map);
+    polygonsLayerRef.current = polygonsLayer;
+
     mapInstanceRef.current = map;
 
-    // Handle user clicking on the map
+    // Handle user clicking anywhere on the map
     map.on("click", (e: L.LeafletMouseEvent) => {
       const { lat, lng } = e.latlng;
       updateMarker(lat, lng, false, true, false);
@@ -217,8 +327,79 @@ export const LocationPickerMap: React.FC<LocationPickerMapProps> = ({
       map.remove();
       mapInstanceRef.current = null;
       markerInstanceRef.current = null;
+      polygonsLayerRef.current = null;
     };
   }, []); // Run once on mount
+
+  // Render & update active municipality polygon overlays on the map
+  useEffect(() => {
+    if (!mapInstanceRef.current || !polygonsLayerRef.current) return;
+    const layerGroup = polygonsLayerRef.current;
+    layerGroup.clearLayers();
+
+    activeBoundaries.forEach((boundary) => {
+      const polygon = L.polygon(boundary.polygon, {
+        color: "#0284c7",
+        weight: 2,
+        fillColor: "#0ea5e9",
+        fillOpacity: 0.12,
+        dashArray: "4, 6",
+      });
+
+      polygon.bindTooltip(
+        `<b>🏛️ ${boundary.name}</b><br/><span style="font-size:11px;color:#0284c7;">Active Partner Service Area</span>`,
+        {
+          sticky: true,
+          direction: "top",
+        }
+      );
+
+      // Clicking directly on the polygon sets the pin
+      polygon.on("click", (e: L.LeafletMouseEvent) => {
+        L.DomEvent.stopPropagation(e);
+        updateMarker(e.latlng.lat, e.latlng.lng, false, true, false);
+      });
+
+      polygon.addTo(layerGroup);
+    });
+
+    // If no coordinates selected, fit map view to enclose active boundaries
+    if (!selectedCoords && activeBoundaries.length > 0) {
+      const allCoords = activeBoundaries.flatMap((b) => b.polygon);
+      if (allCoords.length > 0) {
+        const bounds = L.latLngBounds(allCoords);
+        mapInstanceRef.current.fitBounds(bounds, { padding: [30, 30], maxZoom: 13 });
+      }
+    }
+  }, [activeBoundaries, updateMarker, selectedCoords]);
+
+  // Fly to target municipality if selected externally (e.g. from dropdown)
+  useEffect(() => {
+    if (!targetMunicipalityId || !mapInstanceRef.current) return;
+    const matchedMuni = activeMunicipalities.find((m) => m.id === targetMunicipalityId);
+    if (!matchedMuni) return;
+
+    const key = matchedMuni.official_name.trim().toLowerCase();
+    const boundary =
+      ACTIVE_MUNICIPALITY_BOUNDARIES[key] ||
+      activeBoundaries.find((b) => b.name.toLowerCase().includes(key) || key.includes(b.name.toLowerCase()));
+
+    if (boundary) {
+      mapInstanceRef.current.flyToBounds(boundary.polygon, {
+        duration: 1.2,
+        padding: [25, 25],
+      });
+    }
+  }, [targetMunicipalityId, activeMunicipalities, activeBoundaries]);
+
+  // Smooth fly-to clicked boundary chip
+  const handleFlyToBoundary = (boundary: MunicipalityBoundary) => {
+    if (!mapInstanceRef.current) return;
+    mapInstanceRef.current.flyToBounds(boundary.polygon, {
+      duration: 1.2,
+      padding: [25, 25],
+    });
+  };
 
   // HTML5 Browser Geolocation (Locate Me)
   const handleGetCurrentLocation = () => {
@@ -241,50 +422,35 @@ export const LocationPickerMap: React.FC<LocationPickerMapProps> = ({
         setGeoLoading(false);
         switch (error.code) {
           case error.PERMISSION_DENIED:
-            setGeoError("Location permission was denied. Please allow location access or click on the map to place your pin.");
+            setGeoError("Location permission was denied. Please allow location access or click within an active municipal boundary.");
             break;
           case error.POSITION_UNAVAILABLE:
             setGeoError("Location information is unavailable.");
             break;
           case error.TIMEOUT:
-            setGeoError("Location request timed out. Please try again or pick on the map.");
+            setGeoError("Location request timed out. Please try again or click inside an active municipality.");
             break;
           default:
-            setGeoError("An error occurred while retrieving your location.");
+            setGeoError("An error occurred while fetching your location.");
         }
       },
-      {
-        enableHighAccuracy: true,
-        timeout: 10000,
-        maximumAge: 0,
-      }
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
     );
   };
 
-  // Search places via Nominatim
+  // Place Search via Nominatim OpenStreetMap
   const handleSearchPlaces = async () => {
     if (!searchQuery.trim()) return;
 
     setIsSearching(true);
     setShowSearchResults(true);
     try {
-      // Prioritize search within Nepal or global fallback
       const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(
         searchQuery.trim()
       )}&countrycodes=np&limit=5`;
 
-      let res = await fetch(url);
-      let data: SearchResult[] = await res.json();
-
-      if (!data || data.length === 0) {
-        // Fallback search without country filter
-        const fallbackUrl = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(
-          searchQuery.trim()
-        )}&limit=5`;
-        res = await fetch(fallbackUrl);
-        data = await res.json();
-      }
-
+      const res = await fetch(url);
+      const data: SearchResult[] = await res.json();
       setSearchResults(data || []);
     } catch (err) {
       console.warn("Search error:", err);
@@ -300,11 +466,32 @@ export const LocationPickerMap: React.FC<LocationPickerMapProps> = ({
     setShowSearchResults(false);
     setSearchQuery(result.display_name.split(",")[0]);
     updateMarker(lat, lng, true, false, false);
-    onLocationSelect(result.display_name, { lat, lng }, false);
   };
 
   return (
     <Box sx={{ mt: 1.5, mb: 1.5, width: "100%" }}>
+      {/* Quick Jump Bar: Active Partner Municipalities */}
+      <Box sx={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 1, mb: 1.5 }}>
+        <Typography variant="caption" sx={{ fontWeight: 700, color: "text.secondary", display: "flex", alignItems: "center", gap: 0.5 }}>
+          <LocationCityIcon fontSize="inherit" color="primary" /> Active Service Areas:
+        </Typography>
+        {activeBoundaries.map((boundary) => {
+          const isSelected = verifiedMunicipality?.name === boundary.name;
+          return (
+            <Chip
+              key={boundary.name}
+              label={`🏛️ ${boundary.name}`}
+              size="small"
+              clickable
+              color={isSelected ? "primary" : "default"}
+              variant={isSelected ? "filled" : "outlined"}
+              onClick={() => handleFlyToBoundary(boundary)}
+              sx={{ fontWeight: 600, fontSize: "0.75rem" }}
+            />
+          );
+        })}
+      </Box>
+
       {/* Top Controls: "Locate Me" button + Search Bar */}
       <Box sx={{ display: "flex", flexDirection: { xs: "column", sm: "row" }, gap: 1.5, mb: 1.5 }}>
         <Button
@@ -336,7 +523,7 @@ export const LocationPickerMap: React.FC<LocationPickerMapProps> = ({
           <TextField
             fullWidth
             size="small"
-            placeholder="Search area, landmark, or street name (e.g. Patan, Baneshwor)..."
+            placeholder="Search within active municipalities (e.g. Tokha, Bharatpur)..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             onKeyDown={(e) => {
@@ -418,18 +605,54 @@ export const LocationPickerMap: React.FC<LocationPickerMapProps> = ({
         </Alert>
       )}
 
+      {/* Out of Service Area Warning Banner */}
+      {boundaryError && (
+        <Alert
+          severity="error"
+          icon={<WarningAmberIcon />}
+          sx={{ mb: 1.5, borderRadius: 2 }}
+          action={
+            boundaryError.nearest ? (
+              <Button
+                color="inherit"
+                size="small"
+                variant="outlined"
+                onClick={() => handleFlyToBoundary(boundaryError.nearest!)}
+                sx={{ textTransform: "none", fontWeight: 600 }}
+              >
+                Go to {boundaryError.nearest.name}
+              </Button>
+            ) : undefined
+          }
+        >
+          <Typography variant="body2" fontWeight={700}>
+            Location Outside Service Area
+          </Typography>
+          <Typography variant="caption" sx={{ display: "block", mt: 0.25 }}>
+            {boundaryError.message}
+            {boundaryError.nearest && (
+              <b> (Nearest active municipality: {boundaryError.nearest.name}, ~{boundaryError.distanceKm} km away)</b>
+            )}
+          </Typography>
+        </Alert>
+      )}
+
       {/* Map Card */}
       <Paper
         variant="outlined"
         sx={{
           borderRadius: 2.5,
           overflow: "hidden",
-          borderColor: selectedCoords ? "primary.main" : "divider",
-          boxShadow: selectedCoords ? "0 0 0 1px rgba(14, 165, 233, 0.2)" : "none",
+          borderColor: verifiedMunicipality ? "success.main" : boundaryError ? "error.main" : "divider",
+          boxShadow: verifiedMunicipality
+            ? "0 0 0 1px rgba(16, 185, 129, 0.25)"
+            : boundaryError
+            ? "0 0 0 1px rgba(239, 68, 68, 0.25)"
+            : "none",
           transition: "all 0.2s ease",
         }}
       >
-        {/* Instruction Banner above map */}
+        {/* Instruction & Status Banner above map */}
         <Box
           sx={{
             py: 0.8,
@@ -445,19 +668,32 @@ export const LocationPickerMap: React.FC<LocationPickerMapProps> = ({
           }}
         >
           <Typography variant="caption" color="text.secondary" fontWeight={500}>
-            📍 <b>Click anywhere</b> on the map or <b>drag the marker pin</b> to set the precise complaint spot.
+            📍 Click inside a <b>highlighted blue boundary</b> or drag the pin to set the grievance location.
           </Typography>
 
-          {selectedCoords && (
-            <Chip
-              size="small"
-              icon={<LocationOnIcon fontSize="small" />}
-              label={`GPS: ${selectedCoords.lat.toFixed(5)}, ${selectedCoords.lng.toFixed(5)}`}
-              color="primary"
-              variant="outlined"
-              sx={{ fontWeight: 600, fontSize: "0.72rem" }}
-            />
-          )}
+          <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+            {verifiedMunicipality && (
+              <Chip
+                size="small"
+                icon={<VerifiedIcon fontSize="small" sx={{ color: "success.main !important" }} />}
+                label={`Verified: ${verifiedMunicipality.name}`}
+                color="success"
+                variant="outlined"
+                sx={{ fontWeight: 700, fontSize: "0.72rem" }}
+              />
+            )}
+
+            {selectedCoords && (
+              <Chip
+                size="small"
+                icon={<LocationOnIcon fontSize="small" />}
+                label={`GPS: ${selectedCoords.lat.toFixed(5)}, ${selectedCoords.lng.toFixed(5)}`}
+                color="primary"
+                variant="outlined"
+                sx={{ fontWeight: 600, fontSize: "0.72rem" }}
+              />
+            )}
+          </Box>
         </Box>
 
         {/* Leaflet Map DOM Element */}
@@ -494,9 +730,9 @@ export const LocationPickerMap: React.FC<LocationPickerMapProps> = ({
             placeholder={
               selectedCoords
                 ? "Address will be resolved or add specific landmark details here..."
-                : "No location selected yet. Click on the map or use 'Pin Current Location'."
+                : "No location selected yet. Click inside an active municipal boundary."
             }
-            helperText="You can fine-tune this address or add landmark directions (e.g. Near red bridge, Shop No. 12)"
+            helperText="You can fine-tune this address or add landmark directions (e.g. Near ward office, Chowk)"
             sx={{ bgcolor: "white", borderRadius: 1 }}
           />
         </Box>
