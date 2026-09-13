@@ -33,6 +33,7 @@ import SearchIcon from "@mui/icons-material/Search";
 import BusinessIcon from "@mui/icons-material/Business";
 import { useAuth } from "../../hooks/useAuth";
 import { municipalityApi } from "../../api";
+import { TableRowsSkeleton } from "../../components/skeletons";
 import type { Department, CreateDepartmentDto } from "../../api/types";
 import VerifiedIcon from "@mui/icons-material/Verified";
 import PendingActionsIcon from "@mui/icons-material/PendingActions";
@@ -304,26 +305,35 @@ export default function ManageDept() {
         }}
       />
 
-      {loading ? (
-        <Box sx={{ display: "flex", justifyContent: "center", py: 8 }}>
-          <CircularProgress />
-        </Box>
-      ) : (
-        <TableContainer component={Paper} elevation={2} sx={{ borderRadius: 3 }}>
-          <Table sx={{ minWidth: 700 }}>
-            <TableHead sx={{ bgcolor: "primary.main" }}>
-              <TableRow>
-                {["Department Name", "Official Email", "Head Name", "Staff Count", "Status", "KYC Status", "Created", "Actions"].map(
-                  (h) => (
-                    <TableCell key={h} sx={{ color: "#fff", fontWeight: 700 }}>
-                      {h}
-                    </TableCell>
-                  )
-                )}
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {filtered.length === 0 ? (
+      <TableContainer component={Paper} elevation={2} sx={{ borderRadius: 3 }}>
+        <Table sx={{ minWidth: 700 }}>
+          <TableHead sx={{ bgcolor: "primary.main" }}>
+            <TableRow>
+              {["Department Name", "Official Email", "Head Name", "Staff Count", "Status", "KYC Status", "Created", "Actions"].map(
+                (h) => (
+                  <TableCell key={h} sx={{ color: "#fff", fontWeight: 700 }}>
+                    {h}
+                  </TableCell>
+                )
+              )}
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {loading ? (
+              <TableRowsSkeleton
+                rows={5}
+                columns={[
+                  { type: "text", width: 140 },
+                  { type: "text", width: 160 },
+                  { type: "text", width: 120 },
+                  { type: "number", width: 40 },
+                  { type: "chip", width: 80 },
+                  { type: "chip", width: 85 },
+                  { type: "date", width: 90 },
+                  { type: "actions", width: 70, align: "center" },
+                ]}
+              />
+            ) : filtered.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={7} align="center" sx={{ py: 5, color: "text.secondary" }}>
                     No departments found.
@@ -397,7 +407,6 @@ export default function ManageDept() {
             </TableBody>
           </Table>
         </TableContainer>
-      )}
 
       {/* Add/Edit Modal */}
       <Dialog open={modalOpen} onClose={() => setModalOpen(false)} maxWidth="sm" fullWidth>

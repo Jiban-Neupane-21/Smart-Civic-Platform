@@ -36,6 +36,7 @@ import {
   FiBell,
 } from "react-icons/fi";
 import { departmentApi } from "../../api/department";
+import { DashboardSkeleton } from "../../components/skeletons";
 import type {
   DepartmentDashboardData,
   DepartmentComplaintStatus,
@@ -159,18 +160,7 @@ export const DeptDashboard: React.FC = () => {
   }, []);
 
   if (isLoading) {
-    return (
-      <Box
-        sx={{
-          display: "flex",
-          justifyContent: "center",
-          alignItems: "center",
-          height: "80vh",
-        }}
-      >
-        <CircularProgress size={60} thickness={4} />
-      </Box>
-    );
+    return <DashboardSkeleton cardCount={3} layout="split" titleWidth={300} />;
   }
 
   if (error) {

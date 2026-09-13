@@ -27,6 +27,17 @@ export class LocationResolverService {
   ): Promise<ResolvedLocation> {
     const source = payloadLocation?.source || "registered_address";
 
+    const { data: citizen } = await this.supabaseAdmin
+      .from("citizens")
+      .select("current_municipality_id, current_ward_id, permanent_municipality_id, permanent_ward_id, ward_id")
+      .eq("id", citizenId)
+      .maybeSingle();
+
+    const citizenRegisteredMuni = citizen?.current_municipality_id || citizen?.permanent_municipality_id;
+    if (citizenRegisteredMuni && payloadLocation?.municipality_id && payloadLocation.municipality_id !== citizenRegisteredMuni) {
+      throw new Error("Grievances can only be filed within your registered municipality.");
+    }
+
     if (source === "manual" && payloadLocation?.municipality_id) {
       let wardNumber: number | null = null;
       if (payloadLocation.ward_id) {
@@ -50,7 +61,7 @@ export class LocationResolverService {
 
     if (source === "gps" && payloadLocation?.latitude && payloadLocation?.longitude) {
       // Use municipality provided in payload, or fallback to citizen registered address
-      const muniId = payloadLocation.municipality_id;
+      const muniId = payloadLocation.municipality_id || citizenRegisteredMuni;
       let wardNumber: number | null = null;
 
       if (payloadLocation.ward_id) {
@@ -75,12 +86,6 @@ export class LocationResolverService {
     }
 
     // Default: Registered address resolution
-    const { data: citizen } = await this.supabaseAdmin
-      .from("citizens")
-      .select("current_municipality_id, current_ward_id, permanent_municipality_id, permanent_ward_id, ward_id")
-      .eq("id", citizenId)
-      .single();
-
     const resolvedMuniId =
       payloadLocation?.municipality_id ||
       citizen?.current_municipality_id ||

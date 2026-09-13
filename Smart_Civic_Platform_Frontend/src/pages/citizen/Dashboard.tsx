@@ -27,6 +27,7 @@ import {
 import type { CitizenDashboardData } from "../../types/dashboard.type";
 import { citizenApi } from "../../api/modules/citizen.api";
 import { Bold } from "lucide-react";
+import { DashboardSkeleton } from "../../components/skeletons";
 
 export const CitizenDashboard: React.FC = () => {
   const [data, setData] = useState<CitizenDashboardData | null>(null);
@@ -75,21 +76,7 @@ export const CitizenDashboard: React.FC = () => {
   };
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen bg-gray-50">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-600"></div>
-        <Box
-          sx={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            minHeight: "80vh",
-          }}
-        >
-          <CircularProgress />
-        </Box>
-      </div>
-    );
+    return <DashboardSkeleton cardCount={4} layout="split" titleWidth={280} />;
   }
 
   if (error || !data) {

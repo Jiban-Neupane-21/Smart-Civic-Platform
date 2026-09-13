@@ -40,6 +40,7 @@ import FactCheckIcon from "@mui/icons-material/FactCheck";
 import VisibilityIcon from "@mui/icons-material/Visibility";
 import { BASE_URL, fetchWithAuth, staffApi } from "../../api";
 import { departmentApi } from "../../api/modules/department.api";
+import { TableRowsSkeleton } from "../../components/skeletons";
 import Swal from "sweetalert2";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -500,24 +501,32 @@ export default function ManageStaff() {
       </Stack>
 
       {/* Table */}
-      {loading ? (
-        <Box sx={{ display: "flex", justifyContent: "center", py: 8 }}>
-          <CircularProgress />
-        </Box>
-      ) : (
-        <TableContainer component={Paper} elevation={2} sx={{ borderRadius: 3 }}>
-          <Table sx={{ minWidth: 800 }}>
-            <TableHead sx={{ bgcolor: "primary.main" }}>
-              <TableRow>
-                {["Staff", "Email", "Employee ID", "Designation / Expertise", "Account", "KYC Verification", "Actions"].map((h) => (
-                  <TableCell key={h} sx={{ color: "#fff", fontWeight: 700 }}>
-                    {h}
-                  </TableCell>
-                ))}
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {filtered.length === 0 ? (
+      <TableContainer component={Paper} elevation={2} sx={{ borderRadius: 3 }}>
+        <Table sx={{ minWidth: 800 }}>
+          <TableHead sx={{ bgcolor: "primary.main" }}>
+            <TableRow>
+              {["Staff", "Email", "Employee ID", "Designation / Expertise", "Account", "KYC Verification", "Actions"].map((h) => (
+                <TableCell key={h} sx={{ color: "#fff", fontWeight: 700 }}>
+                  {h}
+                </TableCell>
+              ))}
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {loading ? (
+              <TableRowsSkeleton
+                rows={6}
+                columns={[
+                  { type: "avatar" },
+                  { type: "text", width: 150 },
+                  { type: "badge", width: 95 },
+                  { type: "text", width: 140 },
+                  { type: "chip", width: 85 },
+                  { type: "chip", width: 85 },
+                  { type: "actions", width: 80, align: "center" },
+                ]}
+              />
+            ) : filtered.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={7} align="center" sx={{ py: 6, color: "text.secondary" }}>
                     No staff members found.
@@ -669,7 +678,6 @@ export default function ManageStaff() {
             </TableBody>
           </Table>
         </TableContainer>
-      )}
 
       {/* ── Create / Edit Dialog ── */}
       <Dialog open={modalOpen} onClose={() => setModalOpen(false)} maxWidth="sm" fullWidth>

@@ -56,6 +56,7 @@ import AssignmentAddIcon from "@mui/icons-material/AssignmentAdd";
 import WarningAmberIcon from "@mui/icons-material/WarningAmber";
 import CalendarTodayIcon from "@mui/icons-material/CalendarToday";
 import { municipalityApi } from "../../api";
+import { TableRowsSkeleton } from "../../components/skeletons";
 import { useAuth } from "../../hooks/useAuth";
 
 interface TeamMemberProfile {
@@ -468,24 +469,31 @@ export default function ManageCrossDeptTeam() {
         </Typography>
       </Stack>
 
-      {loading ? (
-        <Box sx={{ display: "flex", justifyContent: "center", py: 8 }}>
-          <CircularProgress />
-        </Box>
-      ) : (
-        <TableContainer component={Paper} elevation={2} sx={{ borderRadius: 3 }}>
-          <Table sx={{ minWidth: 900 }}>
-            <TableHead sx={{ bgcolor: "primary.main" }}>
-              <TableRow>
-                {["Team Name", "Departments", "Members", "Duration", "Status", "Actions"].map((h) => (
-                  <TableCell key={h} sx={{ color: "#fff", fontWeight: 700 }}>
-                    {h}
-                  </TableCell>
-                ))}
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {filtered.length === 0 ? (
+      <TableContainer component={Paper} elevation={2} sx={{ borderRadius: 3 }}>
+        <Table sx={{ minWidth: 900 }}>
+          <TableHead sx={{ bgcolor: "primary.main" }}>
+            <TableRow>
+              {["Team Name", "Departments", "Members", "Duration", "Status", "Actions"].map((h) => (
+                <TableCell key={h} sx={{ color: "#fff", fontWeight: 700 }}>
+                  {h}
+                </TableCell>
+              ))}
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {loading ? (
+              <TableRowsSkeleton
+                rows={5}
+                columns={[
+                  { type: "text", width: 140 },
+                  { type: "chip", width: 120 },
+                  { type: "avatar" },
+                  { type: "date", width: 110 },
+                  { type: "chip", width: 85 },
+                  { type: "actions", width: 70, align: "center" },
+                ]}
+              />
+            ) : filtered.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={6} align="center" sx={{ py: 6, color: "text.secondary" }}>
                     No cross-department teams found. Create one to handle multi-department complaints.
@@ -568,7 +576,6 @@ export default function ManageCrossDeptTeam() {
             </TableBody>
           </Table>
         </TableContainer>
-      )}
 
       {/* ─── Create Team Dialog ───────────────────────────────── */}
       <Dialog open={createOpen} onClose={() => setCreateOpen(false)} maxWidth="md" fullWidth>

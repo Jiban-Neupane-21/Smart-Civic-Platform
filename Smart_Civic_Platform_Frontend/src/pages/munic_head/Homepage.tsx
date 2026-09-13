@@ -18,6 +18,7 @@ import {
   FiActivity,
 } from "react-icons/fi";
 import { municipalityApi } from "../../api";
+import { DashboardSkeleton } from "../../components/skeletons";
 
 interface DashboardData {
   municipality_id?: string;
@@ -99,11 +100,7 @@ export default function Homepage() {
   }, []);
 
   if (isLoading) {
-    return (
-      <Box sx={{ display: "flex", justifyContent: "center", alignItems: "center", height: "80vh" }}>
-        <CircularProgress size={60} thickness={4} />
-      </Box>
-    );
+    return <DashboardSkeleton cardCount={3} layout="split" titleWidth={320} />;
   }
 
   if (error) {

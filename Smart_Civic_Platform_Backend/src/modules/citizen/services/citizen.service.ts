@@ -30,7 +30,7 @@ export const submitComplaint = async (
   // 1. Check KYC status: unverified citizens are capped at max 3 pending complaints
   const { data: citizen } = await db
     .from("citizens")
-    .select("kyc_status")
+    .select("kyc_status, current_municipality_id, permanent_municipality_id")
     .eq("id", citizenId)
     .maybeSingle();
 
@@ -73,6 +73,13 @@ export const submitComplaint = async (
     ...locationPayload,
     municipality_id: locationPayload.municipality_id || body.municipality_id,
   });
+
+  const citizenRegisteredMuni = citizen?.current_municipality_id || citizen?.permanent_municipality_id;
+  if (citizenRegisteredMuni && location.municipality_id && citizenRegisteredMuni !== location.municipality_id) {
+    throw new Error(
+      "Cross-municipality grievances are not permitted. Grievances must be submitted within your registered municipality."
+    );
+  }
 
   // 3. Routing resolution
   console.log("--> [submitComplaint] Step 3: Routing resolution");

@@ -38,6 +38,7 @@ import {
   Divider,
   ToggleButton,
   ToggleButtonGroup,
+  Skeleton,
 } from "@mui/material";
 import AddIcon from "@mui/icons-material/Add";
 import EditIcon from "@mui/icons-material/Edit";
@@ -54,6 +55,7 @@ import { format, differenceInDays, parseISO } from "date-fns";
 
 import { departmentApi } from "../../api/modules/department.api";
 import { BASE_URL, fetchWithAuth } from "../../api";
+import { TableRowsSkeleton } from "../../components/skeletons";
 import type { Team, CreateTeamDto, TeamComplaintAssignment, DeptQueueComplaint } from "../../api/types";
 import { ComplaintSelector } from "../../components/ComplaintSelector";
 import { QuickCreateTeamDialog } from "../../components/QuickCreateTeamDialog";
@@ -489,20 +491,29 @@ export default function ManageTeam() {
       </Stack>
 
       {/* Table */}
-      {loading ? (
-        <Box sx={{ display: "flex", justifyContent: "center", py: 8 }}><CircularProgress /></Box>
-      ) : (
-        <TableContainer component={Paper} elevation={2} sx={{ borderRadius: 3 }}>
-          <Table sx={{ minWidth: 800 }}>
-            <TableHead sx={{ bgcolor: "primary.main" }}>
-              <TableRow>
-                {["Team Name", "Leader", "Members", "Duration", "Status", "Actions"].map((h) => (
-                  <TableCell key={h} sx={{ color: "#fff", fontWeight: 700 }}>{h}</TableCell>
-                ))}
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {filtered.length === 0 ? (
+      <TableContainer component={Paper} elevation={2} sx={{ borderRadius: 3 }}>
+        <Table sx={{ minWidth: 800 }}>
+          <TableHead sx={{ bgcolor: "primary.main" }}>
+            <TableRow>
+              {["Team Name", "Leader", "Members", "Duration", "Status", "Actions"].map((h) => (
+                <TableCell key={h} sx={{ color: "#fff", fontWeight: 700 }}>{h}</TableCell>
+              ))}
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {loading ? (
+              <TableRowsSkeleton
+                rows={5}
+                columns={[
+                  { type: "text", width: 140 },
+                  { type: "avatar" },
+                  { type: "text", width: 100 },
+                  { type: "date", width: 110 },
+                  { type: "chip", width: 85 },
+                  { type: "actions", width: 70, align: "center" },
+                ]}
+              />
+            ) : filtered.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={6} align="center" sx={{ py: 6, color: "text.secondary" }}>
                     {viewMode === "active" ? "No active teams found." : "No historical teams found."}
@@ -584,7 +595,6 @@ export default function ManageTeam() {
             </TableBody>
           </Table>
         </TableContainer>
-      )}
 
       {/* ─── Detail Modal with Tabs ────────────────────────────────────────── */}
       <Dialog open={detailModalOpen} onClose={() => setDetailModalOpen(false)} maxWidth="md" fullWidth>
@@ -694,7 +704,10 @@ export default function ManageTeam() {
                     <Button variant="outlined" startIcon={<AssignmentIcon />} onClick={() => setComplaintSelectorOpen(true)}>Assign Complaint</Button>
                   </Box>
                   {complaintsLoading ? (
-                    <Box display="flex" justifyContent="center" py={4}><CircularProgress /></Box>
+                    <Box sx={{ py: 2 }}>
+                      <Skeleton variant="rounded" height={52} sx={{ mb: 1.5, borderRadius: 1.5 }} animation="wave" />
+                      <Skeleton variant="rounded" height={52} sx={{ mb: 1.5, borderRadius: 1.5 }} animation="wave" />
+                    </Box>
                   ) : teamComplaints.length === 0 ? (
                     <Typography color="text.secondary" align="center" py={4}>No complaints assigned to this team.</Typography>
                   ) : (

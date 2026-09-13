@@ -50,6 +50,7 @@ import {
 } from "react-icons/fi";
 import { useNavigate } from "react-router-dom";
 import departmentApi from "../../api/modules/department.api";
+import { DashboardSkeleton } from "../../components/skeletons";
 
 // ── Types ────────────────────────────────────────────────────────────
 interface DepartmentAnalyticsData {
@@ -400,23 +401,7 @@ export default function ReportAnalytics() {
   }, [queueComplaints, dateRange, statusFilter, priorityFilter, searchQuery]);
 
   if (loading) {
-    return (
-      <Box
-        sx={{
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-          justifyContent: "center",
-          minHeight: "65vh",
-          gap: 2,
-        }}
-      >
-        <CircularProgress size={48} thickness={4} />
-        <Typography variant="body1" sx={{ color: "text.secondary", fontWeight: 500 }}>
-          Generating department operational reports & analytics...
-        </Typography>
-      </Box>
-    );
+    return <DashboardSkeleton cardCount={4} layout="analytics" titleWidth={320} />;
   }
 
   const summary = analyticsData?.summary || {

@@ -32,6 +32,7 @@ import { format, parseISO } from "date-fns";
 
 import staffApi from "../../api/modules/staff.api";
 import type { StaffAssignedComplaint } from "../../api/types";
+import { TableRowsSkeleton } from "../../components/skeletons";
 
 export const StaffComplaintPage: React.FC = () => {
   const navigate = useNavigate();
@@ -172,56 +173,54 @@ export const StaffComplaintPage: React.FC = () => {
         </Alert>
       )}
 
-      {loading ? (
-        <Box sx={{ display: "flex", justifyContent: "center", py: 8 }}>
-          <CircularProgress />
-        </Box>
-      ) : (
-        <Stack spacing={3}>
-          {filteredComplaints.length === 0 ? (
-            <Paper
-              elevation={0}
-              sx={{
-                p: 6,
-                textAlign: "center",
-                borderRadius: 3,
-                border: "1px dashed",
-                borderColor: "divider",
-              }}
-            >
-              <ReportProblemIcon sx={{ fontSize: 54, color: "text.disabled", mb: 1.5 }} />
-              <Typography variant="h6" fontWeight={600} color="text.secondary">
-                No Assigned Grievances Found
-              </Typography>
-              <Typography variant="body2" color="text.disabled" sx={{ maxWidth: 450, mx: "auto", mt: 0.5 }}>
-                When your Department Head assigns grievances to your squad, they will appear here ready for field action.
-              </Typography>
-            </Paper>
-          ) : (
-            <Paper
-              elevation={0}
-              sx={{
-                borderRadius: 3,
-                border: "1px solid",
-                borderColor: "divider",
-                overflow: "hidden",
-              }}
-            >
-              <TableContainer>
-                <Table>
-                  <TableHead sx={{ bgcolor: "action.hover" }}>
-                    <TableRow>
-                      <TableCell sx={{ fontWeight: 700 }}>Tracking ID / Title</TableCell>
-                      <TableCell sx={{ fontWeight: 700 }}>Assigned Squad</TableCell>
-                      <TableCell sx={{ fontWeight: 700 }}>Your Role</TableCell>
-                      <TableCell sx={{ fontWeight: 700 }}>Category / Severity</TableCell>
-                      <TableCell sx={{ fontWeight: 700 }}>Status</TableCell>
-                      <TableCell sx={{ fontWeight: 700 }}>Assigned Date</TableCell>
-                      <TableCell align="right" sx={{ fontWeight: 700 }}>Action</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {filteredComplaints.map((item) => (
+      <Stack spacing={3}>
+        {!loading && filteredComplaints.length === 0 ? (
+          <Paper
+            elevation={0}
+            sx={{
+              p: 6,
+              textAlign: "center",
+              borderRadius: 3,
+              border: "1px dashed",
+              borderColor: "divider",
+            }}
+          >
+            <ReportProblemIcon sx={{ fontSize: 54, color: "text.disabled", mb: 1.5 }} />
+            <Typography variant="h6" fontWeight={600} color="text.secondary">
+              No Assigned Grievances Found
+            </Typography>
+            <Typography variant="body2" color="text.disabled" sx={{ maxWidth: 450, mx: "auto", mt: 0.5 }}>
+              When your Department Head assigns grievances to your squad, they will appear here ready for field action.
+            </Typography>
+          </Paper>
+        ) : (
+          <Paper
+            elevation={0}
+            sx={{
+              borderRadius: 3,
+              border: "1px solid",
+              borderColor: "divider",
+              overflow: "hidden",
+            }}
+          >
+            <TableContainer>
+              <Table>
+                <TableHead sx={{ bgcolor: "action.hover" }}>
+                  <TableRow>
+                    <TableCell sx={{ fontWeight: 700 }}>Tracking ID / Title</TableCell>
+                    <TableCell sx={{ fontWeight: 700 }}>Assigned Squad</TableCell>
+                    <TableCell sx={{ fontWeight: 700 }}>Your Role</TableCell>
+                    <TableCell sx={{ fontWeight: 700 }}>Category / Severity</TableCell>
+                    <TableCell sx={{ fontWeight: 700 }}>Status</TableCell>
+                    <TableCell sx={{ fontWeight: 700 }}>Assigned Date</TableCell>
+                    <TableCell align="right" sx={{ fontWeight: 700 }}>Action</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {loading ? (
+                    <TableRowsSkeleton columns={7} rows={6} />
+                  ) : (
+                    filteredComplaints.map((item) => (
                       <TableRow
                         key={item.assignment_id || item.complaint_id}
                         hover
@@ -279,14 +278,14 @@ export const StaffComplaintPage: React.FC = () => {
                           </Button>
                         </TableCell>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </TableContainer>
-            </Paper>
-          )}
-        </Stack>
-      )}
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          </Paper>
+        )}
+      </Stack>
     </Box>
   );
 };

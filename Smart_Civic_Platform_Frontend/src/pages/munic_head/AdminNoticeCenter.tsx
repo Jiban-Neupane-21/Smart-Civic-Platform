@@ -24,6 +24,7 @@ import {
   IconButton,
   Tooltip,
   Stack,
+  Skeleton,
 } from "@mui/material";
 import NotificationsIcon from "@mui/icons-material/Notifications";
 import AddIcon from "@mui/icons-material/Add";
@@ -281,9 +282,31 @@ export default function AdminNoticeCenter() {
       </Stack>
 
       {loading ? (
-        <Box sx={{ display: "flex", justifyContent: "center", py: 8 }}>
-          <CircularProgress />
-        </Box>
+        <Paper elevation={2} sx={{ borderRadius: 3, overflow: "hidden" }}>
+          <List disablePadding>
+            {Array.from({ length: 5 }).map((_, i) => (
+              <React.Fragment key={i}>
+                <ListItem sx={{ px: 3, py: 2.5 }}>
+                  <Box sx={{ width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <Box sx={{ width: "70%" }}>
+                      <Stack direction="row" spacing={1.5} alignItems="center" sx={{ mb: 1 }}>
+                        <Skeleton animation="wave" variant="rounded" width={80} height={24} sx={{ borderRadius: "12px" }} />
+                        <Skeleton animation="wave" variant="text" width={90} height={18} />
+                      </Stack>
+                      <Skeleton animation="wave" variant="text" width="80%" height={24} />
+                      <Skeleton animation="wave" variant="text" width="50%" height={18} sx={{ mt: 0.5 }} />
+                    </Box>
+                    <Stack direction="row" spacing={1}>
+                      <Skeleton animation="wave" variant="circular" width={34} height={34} />
+                      <Skeleton animation="wave" variant="circular" width={34} height={34} />
+                    </Stack>
+                  </Box>
+                </ListItem>
+                {i < 4 && <Divider component="li" />}
+              </React.Fragment>
+            ))}
+          </List>
+        </Paper>
       ) : displayed.length === 0 ? (
         <Paper elevation={1} sx={{ p: 6, borderRadius: 3, textAlign: "center" }}>
           <AnnouncementIcon sx={{ fontSize: 56, color: "text.disabled", mb: 2 }} />

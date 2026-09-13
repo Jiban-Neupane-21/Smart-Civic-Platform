@@ -13,7 +13,6 @@ import {
   TableRow,
   IconButton,
   Chip,
-  CircularProgress,
   Alert,
   Dialog,
   DialogTitle,
@@ -33,6 +32,7 @@ import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
 import AddIcon from "@mui/icons-material/Add";
 import SearchIcon from "@mui/icons-material/Search";
+import { TableRowsSkeleton } from "../../components/skeletons";
 import VisibilityIcon from "@mui/icons-material/Visibility";
 import VerifiedIcon from "@mui/icons-material/Verified";
 import PendingActionsIcon from "@mui/icons-material/PendingActions";
@@ -365,23 +365,32 @@ export default function ManageMuniciple() {
 
       {error && <Alert severity="error" sx={{ mb: 3 }} onClose={() => setError(null)}>{error}</Alert>}
 
-      {isLoading ? (
-        <Box sx={{ display: "flex", justifyContent: "center", p: 5 }}><CircularProgress /></Box>
-      ) : (
-        <TableContainer component={Paper} elevation={3}>
-          <Table sx={{ minWidth: 700 }}>
-            <TableHead sx={{ backgroundColor: "#f5f5f5" }}>
-              <TableRow>
-                <TableCell><strong>Municipality</strong></TableCell>
-                <TableCell><strong>Head Name</strong></TableCell>
-                <TableCell><strong>Head Email</strong></TableCell>
-                <TableCell><strong>Created At</strong></TableCell>
-                <TableCell align="center"><strong>KYC Status</strong></TableCell>
-                <TableCell align="center"><strong>Actions</strong></TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {paginatedData.length === 0 ? (
+      <TableContainer component={Paper} elevation={3}>
+        <Table sx={{ minWidth: 700 }}>
+          <TableHead sx={{ backgroundColor: "#f5f5f5" }}>
+            <TableRow>
+              <TableCell><strong>Municipality</strong></TableCell>
+              <TableCell><strong>Head Name</strong></TableCell>
+              <TableCell><strong>Head Email</strong></TableCell>
+              <TableCell><strong>Created At</strong></TableCell>
+              <TableCell align="center"><strong>KYC Status</strong></TableCell>
+              <TableCell align="center"><strong>Actions</strong></TableCell>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {isLoading ? (
+              <TableRowsSkeleton
+                rows={rowsPerPage || 5}
+                columns={[
+                  { type: "text", width: 140 },
+                  { type: "text", width: 120 },
+                  { type: "text", width: 160 },
+                  { type: "date", width: 90 },
+                  { type: "chip", width: 90, align: "center" },
+                  { type: "actions", width: 80, align: "center" },
+                ]}
+              />
+            ) : paginatedData.length === 0 ? (
                 <TableRow><TableCell colSpan={5} align="center">
                   {municipalities.length === 0 ? "No municipalities found." : "No results match your filters."}
                 </TableCell></TableRow>
@@ -432,7 +441,6 @@ export default function ManageMuniciple() {
             rowsPerPageOptions={[5, 10, 25, 50]}
           />
         </TableContainer>
-      )}
 
       {/* Add/Edit Modal */}
       <Dialog open={isModalOpen} onClose={handleCloseModal} maxWidth="sm" fullWidth>

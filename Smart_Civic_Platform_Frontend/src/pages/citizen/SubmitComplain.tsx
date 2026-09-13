@@ -11,6 +11,7 @@ import AddPhotoAlternate from "@mui/icons-material/AddPhotoAlternate";
 import Videocam from "@mui/icons-material/Videocam";
 import DeleteOutline from "@mui/icons-material/DeleteOutlined";
 import AttachFile from "@mui/icons-material/AttachFile";
+import VerifiedIcon from "@mui/icons-material/Verified";
 import Swal from "sweetalert2";
 import { publicApi, complaintsApi, citizenApi, apiClient } from "../../api";
 import { useAuth } from "../../hooks/useAuth";
@@ -72,12 +73,25 @@ export const SubmitComplaint: React.FC = () => {
     return matched?.id || null;
   }, [registeredMunicipalityId, registeredAddressStr, activeMunicipalities]);
 
+  const registeredMuni = useMemo(() => {
+    if (!resolvedRegisteredMunicipalityId || activeMunicipalities.length === 0) return null;
+    return activeMunicipalities.find((m) => m.id === resolvedRegisteredMunicipalityId) || null;
+  }, [resolvedRegisteredMunicipalityId, activeMunicipalities]);
+
   const hasRegisteredAddress = Boolean(resolvedRegisteredMunicipalityId || registeredAddressStr);
 
   const [provId, setProvId] = useState("");
   const [distId, setDistId] = useState("");
   const [muniId, setMuniId] = useState("");
   const [wardId, setWardId] = useState("");
+
+  useEffect(() => {
+    if (registeredMuni) {
+      if (registeredMuni.province_id) setProvId(registeredMuni.province_id);
+      if (registeredMuni.district_id) setDistId(registeredMuni.district_id);
+      setMuniId(registeredMuni.id);
+    }
+  }, [registeredMuni]);
 
   // Derived filtered active administrative dropdowns
   const activeProvinces = useMemo(() => {
@@ -446,7 +460,9 @@ export const SubmitComplaint: React.FC = () => {
           Swal.fire({
             icon: "warning",
             title: "Location Pin Required",
-            text: "Please pin the complaint location on the map inside an active municipal boundary (Tokha, Bharatpur, Paiyun).",
+            text: registeredMuni
+              ? `Please pin the complaint location on the map inside your registered municipal boundary (${registeredMuni.official_name}).`
+              : "Please pin the complaint location on the map inside an active municipal boundary (Tokha, Bharatpur, Paiyun).",
             confirmButtonColor: "#0284c7",
           });
           return;
@@ -456,6 +472,15 @@ export const SubmitComplaint: React.FC = () => {
             icon: "warning",
             title: "Active Municipality Required",
             text: "Please select or verify the active partner municipality responsible for this location to ensure proper routing.",
+            confirmButtonColor: "#0284c7",
+          });
+          return;
+        }
+        if (registeredMuni && muniId !== registeredMuni.id) {
+          Swal.fire({
+            icon: "error",
+            title: "Municipal Jurisdiction Mismatch",
+            text: `As a registered citizen of ${registeredMuni.official_name}, your grievances are restricted to ${registeredMuni.official_name}.`,
             confirmButtonColor: "#0284c7",
           });
           return;
@@ -686,15 +711,18 @@ export const SubmitComplaint: React.FC = () => {
                         selectedAddress={mapAddress}
                         activeMunicipalities={activeMunicipalities}
                         targetMunicipalityId={muniId}
+                        restrictedMunicipalityId={registeredMuni ? registeredMuni.id : resolvedRegisteredMunicipalityId}
                         onLocationSelect={(address, coords, isGps) => {
                           setMapCoords(coords);
                           setMapAddress(address);
                           setIsGpsPinned(!!isGps);
                         }}
                         onMunicipalityDetect={(detectedMuni) => {
-                          setProvId(detectedMuni.province_id);
-                          setDistId(detectedMuni.district_id);
-                          setMuniId(detectedMuni.id);
+                          if (!registeredMuni) {
+                            setProvId(detectedMuni.province_id);
+                            setDistId(detectedMuni.district_id);
+                            setMuniId(detectedMuni.id);
+                          }
                         }}
                         onAddressChange={(addr) => setMapAddress(addr)}
                       />
@@ -708,14 +736,30 @@ export const SubmitComplaint: React.FC = () => {
                           Select the local government unit responsible for this location to ensure the grievance reaches the correct municipal department.
                         </Typography>
 
+                        {registeredMuni && (
+                          <Alert
+                            severity="info"
+                            icon={<VerifiedIcon color="primary" />}
+                            sx={{ mb: 2, borderRadius: 2, bgcolor: "rgba(2, 132, 199, 0.06)", border: "1px solid", borderColor: "rgba(2, 132, 199, 0.2)" }}
+                          >
+                            <Typography variant="subtitle2" fontWeight={700}>
+                              Registered Municipal Jurisdiction: {registeredMuni.official_name}
+                            </Typography>
+                            <Typography variant="caption" color="text.secondary">
+                              You are registered under <b>{registeredMuni.official_name}</b>. In accordance with municipal jurisdiction policies, grievances from your account are strictly routed to {registeredMuni.official_name}.
+                            </Typography>
+                          </Alert>
+                        )}
+
                         <Grid container spacing={2}>
                           <Grid size={{ xs: 12, sm: 6 }}>
-                            <FormControl fullWidth size="small">
+                            <FormControl fullWidth size="small" disabled={Boolean(registeredMuni)}>
                               <InputLabel>Province</InputLabel>
                               <Select
                                 value={provId}
                                 label="Province"
                                 onChange={(e) => {
+                                  if (registeredMuni) return;
                                   setProvId(e.target.value);
                                   setDistId("");
                                   setMuniId("");
@@ -731,12 +775,13 @@ export const SubmitComplaint: React.FC = () => {
                             </FormControl>
                           </Grid>
                           <Grid size={{ xs: 12, sm: 6 }}>
-                            <FormControl fullWidth size="small" disabled={!provId}>
+                            <FormControl fullWidth size="small" disabled={Boolean(registeredMuni) || !provId}>
                               <InputLabel>District</InputLabel>
                               <Select
                                 value={distId}
                                 label="District"
                                 onChange={(e) => {
+                                  if (registeredMuni) return;
                                   setDistId(e.target.value);
                                   setMuniId("");
                                   setWardId("");
@@ -751,12 +796,13 @@ export const SubmitComplaint: React.FC = () => {
                             </FormControl>
                           </Grid>
                           <Grid size={{ xs: 12, sm: 6 }}>
-                            <FormControl fullWidth size="small">
+                            <FormControl fullWidth size="small" disabled={Boolean(registeredMuni)}>
                               <InputLabel>Active Municipality *</InputLabel>
                               <Select
                                 value={muniId}
                                 label="Active Municipality *"
                                 onChange={(e) => {
+                                  if (registeredMuni) return;
                                   const selected = activeMunicipalities.find((m) => m.id === e.target.value);
                                   if (selected) {
                                     setProvId(selected.province_id);

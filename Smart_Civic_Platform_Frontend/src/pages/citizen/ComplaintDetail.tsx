@@ -23,6 +23,7 @@ import {
   Tooltip,
 } from "@mui/material";
 import { useParams, useNavigate } from "react-router-dom";
+import { DetailViewSkeleton } from "../../components/skeletons";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import ReportProblemIcon from "@mui/icons-material/ReportProblem";
@@ -190,11 +191,7 @@ export const CitizenComplaintDetailPage: React.FC = () => {
   };
 
   if (loading) {
-    return (
-      <Box sx={{ display: "flex", justifyContent: "center", py: 10 }}>
-        <CircularProgress />
-      </Box>
-    );
+    return <DetailViewSkeleton />;
   }
 
   if (error || !complaint) {

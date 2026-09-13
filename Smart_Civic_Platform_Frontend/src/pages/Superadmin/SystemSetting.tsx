@@ -64,7 +64,22 @@ export default function SystemSetting() {
       <Paper elevation={3} sx={{ p: 3, mb: 3 }}>
         <Typography variant="h6" sx={{ fontWeight: 600, mb: 2 }}>Feature Flags</Typography>
         {loading ? (
-          <Box>{[...Array(3)].map((_, i) => <Skeleton key={i} variant="rounded" height={56} sx={{ mb: 1 }} />)}</Box>
+          <List>
+            {[...Array(4)].map((_, i) => (
+              <Box key={i}>
+                {i > 0 && <Divider component="li" />}
+                <ListItem sx={{ py: 2 }}>
+                  <ListItemText
+                    primary={<Skeleton animation="wave" variant="text" width="35%" height={24} />}
+                    secondary={<Skeleton animation="wave" variant="text" width="60%" height={18} sx={{ mt: 0.5 }} />}
+                  />
+                  <ListItemSecondaryAction>
+                    <Skeleton animation="wave" variant="rounded" width={42} height={24} sx={{ borderRadius: "12px" }} />
+                  </ListItemSecondaryAction>
+                </ListItem>
+              </Box>
+            ))}
+          </List>
         ) : flags.length === 0 ? (
           <Typography variant="body2" color="text.secondary">No feature flags available.</Typography>
         ) : (

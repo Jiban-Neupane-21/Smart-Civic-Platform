@@ -62,6 +62,7 @@ import { CitizenKycOnboarding } from "../../components/kyc/CitizenKycOnboarding"
 import { KycFilePreviewCard } from "../../components/kyc/KycFilePreviewCard";
 import { profileApi } from "../../api/modules/profile.api";
 import { isAtLeast18, isValidNepalPhone } from "../../validation/kyc.validators";
+import { ProfileSkeleton } from "../../components/skeletons";
 
 interface CitizenDetails {
   first_name: string | null;
@@ -885,11 +886,7 @@ export const Profile: React.FC = () => {
   };
 
   if (loading) {
-    return (
-      <Box display="flex" justifyContent="center" alignItems="center" minHeight="60vh">
-        <CircularProgress />
-      </Box>
-    );
+    return <ProfileSkeleton />;
   }
 
   if (error || !profile) {

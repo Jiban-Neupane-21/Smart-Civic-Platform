@@ -24,13 +24,13 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
-  Skeleton,
 } from "@mui/material";
 import SearchIcon from "@mui/icons-material/Search";
 import AddIcon from "@mui/icons-material/Add";
 import BlockIcon from "@mui/icons-material/Block";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
-import { superadminApi } from "../../api";
+import { TableRowsSkeleton } from "../../components/skeletons";
+import { superadminApi } from "../../api/modules/superadmin.api";
 import type { SuperadminUser } from "../../api/types";
 
 const ROLE_OPTIONS = [
@@ -188,22 +188,30 @@ export default function UserManagement() {
         </FormControl>
       </Box>
 
-      {loading ? (
-        <Box sx={{ p: 3 }}>{[...Array(5)].map((_, i) => <Skeleton key={i} variant="rounded" height={48} sx={{ mb: 1 }} />)}</Box>
-      ) : (
-        <TableContainer component={Paper} elevation={3}>
-          <Table sx={{ minWidth: 800 }}>
-            <TableHead sx={{ bgcolor: "#f5f5f5" }}>
-              <TableRow>
-                <TableCell><strong>Name</strong></TableCell>
-                <TableCell><strong>Email</strong></TableCell>
-                <TableCell><strong>Role</strong></TableCell>
-                <TableCell><strong>Status</strong></TableCell>
-                <TableCell><strong>Actions</strong></TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {paginatedUsers.length === 0 ? (
+      <TableContainer component={Paper} elevation={3}>
+        <Table sx={{ minWidth: 800 }}>
+          <TableHead sx={{ bgcolor: "#f5f5f5" }}>
+            <TableRow>
+              <TableCell><strong>Name</strong></TableCell>
+              <TableCell><strong>Email</strong></TableCell>
+              <TableCell><strong>Role</strong></TableCell>
+              <TableCell><strong>Status</strong></TableCell>
+              <TableCell><strong>Actions</strong></TableCell>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {loading ? (
+              <TableRowsSkeleton
+                rows={rowsPerPage || 5}
+                columns={[
+                  { type: "text", width: 140 },
+                  { type: "text", width: 180 },
+                  { type: "chip", width: 110 },
+                  { type: "chip", width: 90 },
+                  { type: "actions", width: 60, align: "center" },
+                ]}
+              />
+            ) : paginatedUsers.length === 0 ? (
                 <TableRow><TableCell colSpan={5} align="center">No users found</TableCell></TableRow>
               ) : (
                 paginatedUsers.map((user) => (
@@ -248,7 +256,6 @@ export default function UserManagement() {
             rowsPerPageOptions={[10, 25, 50]}
           />
         </TableContainer>
-      )}
 
       {/* Create User Dialog */}
       <Dialog open={createOpen} onClose={() => setCreateOpen(false)} maxWidth="sm" fullWidth>

@@ -49,6 +49,7 @@ import {
 } from "@mui/icons-material";
 import Swal from "sweetalert2";
 import { municipalityApi } from "../../api";
+import { TableRowsSkeleton } from "../../components/skeletons";
 import type { CitizenKycItem } from "../../api/types/municipality.types";
 
 const swalTop = Swal.mixin({
@@ -482,29 +483,36 @@ export default function MunicCitizenKycVerification() {
         </Box>
       </Paper>
 
-      {/* Main Table */}
-      {loading ? (
-        <Box display="flex" justifyContent="center" py={6}>
-          <CircularProgress />
-        </Box>
-      ) : error ? (
-        <Alert severity="error" sx={{ mb: 3 }}>{error}</Alert>
-      ) : (
-        <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: 2 }}>
-          <Table>
-            <TableHead sx={{ bgcolor: "grey.50" }}>
-              <TableRow>
-                <TableCell sx={{ fontWeight: 700 }}>Citizen</TableCell>
-                <TableCell sx={{ fontWeight: 700 }}>Contact & Address</TableCell>
-                <TableCell sx={{ fontWeight: 700 }}>Document Type</TableCell>
-                <TableCell sx={{ fontWeight: 700 }}>Document Number</TableCell>
-                <TableCell sx={{ fontWeight: 700 }}>Status</TableCell>
-                <TableCell sx={{ fontWeight: 700 }}>Submitted Date</TableCell>
-                <TableCell align="center" sx={{ fontWeight: 700 }}>Action</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {filteredCitizens.length === 0 ? (
+      {error && <Alert severity="error" sx={{ mb: 3 }}>{error}</Alert>}
+
+      <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: 2 }}>
+        <Table>
+          <TableHead sx={{ bgcolor: "grey.50" }}>
+            <TableRow>
+              <TableCell sx={{ fontWeight: 700 }}>Citizen</TableCell>
+              <TableCell sx={{ fontWeight: 700 }}>Contact & Address</TableCell>
+              <TableCell sx={{ fontWeight: 700 }}>Document Type</TableCell>
+              <TableCell sx={{ fontWeight: 700 }}>Document Number</TableCell>
+              <TableCell sx={{ fontWeight: 700 }}>Status</TableCell>
+              <TableCell sx={{ fontWeight: 700 }}>Submitted Date</TableCell>
+              <TableCell align="center" sx={{ fontWeight: 700 }}>Action</TableCell>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {loading ? (
+              <TableRowsSkeleton
+                rows={rowsPerPage || 5}
+                columns={[
+                  { type: "avatar" },
+                  { type: "text", width: 150 },
+                  { type: "chip", width: 90 },
+                  { type: "badge", width: 100 },
+                  { type: "chip", width: 85 },
+                  { type: "date", width: 90 },
+                  { type: "actions", width: 90, align: "center" },
+                ]}
+              />
+            ) : filteredCitizens.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={7} align="center" sx={{ py: 6 }}>
                     <Typography variant="body1" color="text.secondary" fontWeight={500} gutterBottom>
@@ -607,7 +615,6 @@ export default function MunicCitizenKycVerification() {
             </TableBody>
           </Table>
         </TableContainer>
-      )}
 
       {/* Comprehensive Inspection & Verification Dialog */}
       {selectedCitizen && (

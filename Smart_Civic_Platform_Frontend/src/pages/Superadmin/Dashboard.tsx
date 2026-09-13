@@ -4,10 +4,10 @@ import {
   Typography,
   Grid,
   Paper,
-  CircularProgress,
   Alert,
   Button,
   Skeleton,
+  Card,
 } from "@mui/material";
 import { FiBriefcase, FiGrid, FiUsers, FiUser, FiAlertTriangle, FiCheckCircle } from "react-icons/fi";
 import { MdOutlinePeople } from "react-icons/md";
@@ -57,11 +57,58 @@ export default function SuperadminDashboard() {
   if (loading && !data) {
     return (
       <Box sx={{ p: 3 }}>
-        <Skeleton variant="text" width={280} height={48} sx={{ mb: 3 }} />
-        <Grid container spacing={3}>
-          {[...Array(8)].map((_, i) => (
+        <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 3 }}>
+          <Skeleton animation="wave" variant="text" width={280} height={48} />
+          <Skeleton animation="wave" variant="rounded" width={100} height={36} sx={{ borderRadius: 2 }} />
+        </Box>
+
+        <Skeleton animation="wave" variant="text" width={180} height={28} sx={{ mb: 2 }} />
+        <Grid container spacing={3} sx={{ mb: 4 }}>
+          {[...Array(4)].map((_, i) => (
             <Grid size={{ xs: 12, sm: 6, md: 3 }} key={i}>
-              <Skeleton variant="rounded" height={100} />
+              <Card sx={{ p: 2.5, borderRadius: 3, boxShadow: 1 }}>
+                <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <Box sx={{ width: "65%" }}>
+                    <Skeleton animation="wave" variant="text" width="60%" height={18} />
+                    <Skeleton animation="wave" variant="text" width="50%" height={38} sx={{ my: 0.5 }} />
+                  </Box>
+                  <Skeleton animation="wave" variant="circular" width={44} height={44} />
+                </Box>
+              </Card>
+            </Grid>
+          ))}
+        </Grid>
+
+        <Skeleton animation="wave" variant="text" width={140} height={28} sx={{ mb: 2 }} />
+        <Grid container spacing={3} sx={{ mb: 4 }}>
+          {[...Array(2)].map((_, i) => (
+            <Grid size={{ xs: 12, sm: 6, md: 3 }} key={i}>
+              <Card sx={{ p: 2.5, borderRadius: 3, boxShadow: 1 }}>
+                <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <Box sx={{ width: "65%" }}>
+                    <Skeleton animation="wave" variant="text" width="60%" height={18} />
+                    <Skeleton animation="wave" variant="text" width="50%" height={38} sx={{ my: 0.5 }} />
+                  </Box>
+                  <Skeleton animation="wave" variant="circular" width={44} height={44} />
+                </Box>
+              </Card>
+            </Grid>
+          ))}
+        </Grid>
+
+        <Skeleton animation="wave" variant="text" width={130} height={28} sx={{ mb: 2 }} />
+        <Grid container spacing={3}>
+          {[...Array(2)].map((_, i) => (
+            <Grid size={{ xs: 12, sm: 6, md: 3 }} key={i}>
+              <Card sx={{ p: 2.5, borderRadius: 3, boxShadow: 1 }}>
+                <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <Box sx={{ width: "65%" }}>
+                    <Skeleton animation="wave" variant="text" width="60%" height={18} />
+                    <Skeleton animation="wave" variant="text" width="50%" height={38} sx={{ my: 0.5 }} />
+                  </Box>
+                  <Skeleton animation="wave" variant="circular" width={44} height={44} />
+                </Box>
+              </Card>
             </Grid>
           ))}
         </Grid>

@@ -50,6 +50,7 @@ import Swal from "sweetalert2";
 import staffApi from "../../api/modules/staff.api";
 import type { StaffTeamMembership } from "../../api/types";
 import { IncidentLocationMap } from "../../components/IncidentLocationMap";
+import { DetailViewSkeleton } from "../../components/skeletons";
 
 export const StaffComplaintDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -313,11 +314,7 @@ export const StaffComplaintDetailPage: React.FC = () => {
   };
 
   if (loading) {
-    return (
-      <Box sx={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: "60vh" }}>
-        <CircularProgress size={48} />
-      </Box>
-    );
+    return <DetailViewSkeleton />;
   }
 
   if (error || !complaint) {

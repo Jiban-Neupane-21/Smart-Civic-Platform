@@ -23,6 +23,7 @@ import {
 } from "@mui/material";
 import { Search, Refresh } from "@mui/icons-material";
 import { FiTrash2, FiEye } from "react-icons/fi";
+import { TableRowsSkeleton } from "../../components/skeletons";
 import { useNavigate } from "react-router-dom";
 import Swal from "sweetalert2";
 import { complaintsApi } from "../../api/modules/complaints.api";
@@ -246,11 +247,18 @@ export const ComplaintReport: React.FC = () => {
           </TableHead>
           <TableBody>
             {loading ? (
-              <TableRow>
-                <TableCell colSpan={7} align="center" sx={{ py: 6 }}>
-                  <CircularProgress />
-                </TableCell>
-              </TableRow>
+              <TableRowsSkeleton
+                rows={rowsPerPage || 5}
+                columns={[
+                  { type: "badge", width: 95 },
+                  { type: "text", width: "80%" },
+                  { type: "text", width: 110 },
+                  { type: "chip", width: 70 },
+                  { type: "date", width: 90 },
+                  { type: "chip", width: 85 },
+                  { type: "actions", width: 60, align: "center" },
+                ]}
+              />
             ) : paginatedComplaints.length > 0 ? (
               paginatedComplaints.map((row) => (
                 <TableRow 

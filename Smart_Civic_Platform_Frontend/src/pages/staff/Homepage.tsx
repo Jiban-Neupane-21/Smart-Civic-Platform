@@ -15,6 +15,7 @@ import {
   Divider,
   IconButton,
   Tooltip,
+  Skeleton,
 } from "@mui/material";
 import { useNavigate } from "react-router-dom";
 import RefreshIcon from "@mui/icons-material/Refresh";
@@ -186,9 +187,38 @@ export const StaffDashboard: React.FC = () => {
       )}
 
       {loading ? (
-        <Box sx={{ display: "flex", justifyContent: "center", py: 8 }}>
-          <CircularProgress />
-        </Box>
+        <Stack spacing={4}>
+          <Grid container spacing={2.5}>
+            {[...Array(4)].map((_, i) => (
+              <Grid item xs={12} sm={6} md={3} key={i}>
+                <Card elevation={0} sx={{ p: 2.5, borderRadius: 3, border: "1px solid", borderColor: "divider" }}>
+                  <Stack direction="row" justifyContent="space-between" alignItems="center">
+                    <Box sx={{ width: "65%" }}>
+                      <Skeleton animation="wave" variant="text" width="60%" height={16} />
+                      <Skeleton animation="wave" variant="text" width="50%" height={40} sx={{ mt: 0.5 }} />
+                    </Box>
+                    <Skeleton animation="wave" variant="circular" width={48} height={48} />
+                  </Stack>
+                </Card>
+              </Grid>
+            ))}
+          </Grid>
+          <Paper elevation={0} sx={{ p: 3, borderRadius: 3, border: "1px solid", borderColor: "divider" }}>
+            <Box sx={{ display: "flex", justifyContent: "space-between", mb: 2.5 }}>
+              <Skeleton animation="wave" variant="text" width={220} height={28} />
+              <Skeleton animation="wave" variant="rounded" width={80} height={28} sx={{ borderRadius: "14px" }} />
+            </Box>
+            {[...Array(3)].map((_, i) => (
+              <Box key={i} sx={{ p: 2, mb: 1.5, borderRadius: 2, border: "1px solid rgba(0,0,0,0.06)" }}>
+                <Box sx={{ display: "flex", justifyContent: "space-between", mb: 1 }}>
+                  <Skeleton animation="wave" variant="text" width="60%" height={22} />
+                  <Skeleton animation="wave" variant="rounded" width={80} height={22} sx={{ borderRadius: "10px" }} />
+                </Box>
+                <Skeleton animation="wave" variant="text" width="40%" height={16} />
+              </Box>
+            ))}
+          </Paper>
+        </Stack>
       ) : (
         <Stack spacing={4}>
           {/* Key Metrics Cards */}

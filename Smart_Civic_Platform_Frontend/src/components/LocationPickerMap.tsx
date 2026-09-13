@@ -67,6 +67,7 @@ export interface LocationPickerMapProps {
   activeMunicipalities?: ActiveMunicipality[];
   onMunicipalityDetect?: (municipality: ActiveMunicipality) => void;
   targetMunicipalityId?: string;
+  restrictedMunicipalityId?: string | null;
 }
 
 // Default center: Nepal (Kathmandu Valley / Lalitpur Metropolitan)
@@ -88,6 +89,7 @@ export const LocationPickerMap: React.FC<LocationPickerMapProps> = ({
   activeMunicipalities: externalActiveMunis,
   onMunicipalityDetect,
   targetMunicipalityId,
+  restrictedMunicipalityId,
 }) => {
   const [internalActiveMunis, setInternalActiveMunis] = useState<ActiveMunicipality[]>([]);
   const [geoLoading, setGeoLoading] = useState(false);
@@ -135,12 +137,23 @@ export const LocationPickerMap: React.FC<LocationPickerMapProps> = ({
       : internalActiveMunis;
   }, [externalActiveMunis, internalActiveMunis]);
 
-  // Compute boundary objects for all active municipalities
+  const restrictedMuni = useMemo(() => {
+    if (!restrictedMunicipalityId || activeMunicipalities.length === 0) return null;
+    return activeMunicipalities.find((m) => m.id === restrictedMunicipalityId) || null;
+  }, [restrictedMunicipalityId, activeMunicipalities]);
+
+  const candidateMunis = useMemo(() => {
+    if (restrictedMuni) return [restrictedMuni];
+    return activeMunicipalities;
+  }, [restrictedMuni, activeMunicipalities]);
+
+  // Compute boundary objects for all active or restricted municipalities
   const activeBoundaries = useMemo<MunicipalityBoundary[]>(() => {
-    if (activeMunicipalities.length === 0) {
+    const listToMap = restrictedMuni ? [restrictedMuni] : activeMunicipalities;
+    if (listToMap.length === 0) {
       return Object.values(ACTIVE_MUNICIPALITY_BOUNDARIES);
     }
-    return activeMunicipalities.map((m) => {
+    return listToMap.map((m) => {
       const key = m.official_name.trim().toLowerCase();
       const existing =
         ACTIVE_MUNICIPALITY_BOUNDARIES[key] ||
@@ -151,9 +164,9 @@ export const LocationPickerMap: React.FC<LocationPickerMapProps> = ({
         return existing;
       }
       // Fallback synthetic boundary if no predefined polygon exists
-      return generateSyntheticBoundary(m.official_name, 27.7, 85.3);
+      return generateSyntheticBoundary(m.official_name, 28.05, 83.65);
     });
-  }, [activeMunicipalities]);
+  }, [restrictedMuni, activeMunicipalities]);
 
   // Reverse geocode using Nominatim OpenStreetMap API
   const fetchAddressFromCoords = useCallback(
@@ -199,14 +212,16 @@ export const LocationPickerMap: React.FC<LocationPickerMapProps> = ({
     (lat: number, lng: number, shouldPan = true, shouldFetchAddress = true, isGps = false) => {
       if (!mapInstanceRef.current) return;
 
-      // Execute Algorithm 6: Jordan Curve Ray-Casting against active boundaries
-      const check = resolveActiveJurisdiction(lat, lng, activeMunicipalities);
+      // Execute Algorithm 6: Jordan Curve Ray-Casting against candidate boundaries
+      const check = resolveActiveJurisdiction(lat, lng, candidateMunis);
 
       if (!check.isInside) {
-        const nearestName = check.nearestBoundary?.name || "Active Partner Municipality";
+        const nearestName = restrictedMuni ? restrictedMuni.official_name : (check.nearestBoundary?.name || "Active Partner Municipality");
         const dist = check.distanceToNearestKm;
         setBoundaryError({
-          message: `Location is outside active partner municipalities. Smart Civic Platform only accepts grievances within active partner boundaries.`,
+          message: restrictedMuni
+            ? `Selected point is outside your registered municipality (${restrictedMuni.official_name}). Grievances are strictly confined to your local municipal jurisdiction.`
+            : `Location is outside active partner municipalities. Smart Civic Platform only accepts grievances within active partner boundaries.`,
           nearest: check.nearestBoundary,
           distanceKm: dist,
         });
@@ -266,7 +281,7 @@ export const LocationPickerMap: React.FC<LocationPickerMapProps> = ({
         fetchAddressFromCoords(lat, lng, isGps);
       }
     },
-    [activeMunicipalities, onMunicipalityDetect, onLocationSelect, fetchAddressFromCoords]
+    [candidateMunis, restrictedMuni, onMunicipalityDetect, onLocationSelect, fetchAddressFromCoords]
   );
 
   // Initialize Map
@@ -347,7 +362,9 @@ export const LocationPickerMap: React.FC<LocationPickerMapProps> = ({
       });
 
       polygon.bindTooltip(
-        `<b>🏛️ ${boundary.name}</b><br/><span style="font-size:11px;color:#0284c7;">Active Partner Service Area</span>`,
+        `<b>🏛️ ${boundary.name}</b><br/><span style="font-size:11px;color:#0284c7;">${
+          restrictedMuni ? "Your Registered Municipal Jurisdiction" : "Active Partner Service Area"
+        }</span>`,
         {
           sticky: true,
           direction: "top",
@@ -368,10 +385,10 @@ export const LocationPickerMap: React.FC<LocationPickerMapProps> = ({
       const allCoords = activeBoundaries.flatMap((b) => b.polygon);
       if (allCoords.length > 0) {
         const bounds = L.latLngBounds(allCoords);
-        mapInstanceRef.current.fitBounds(bounds, { padding: [30, 30], maxZoom: 13 });
+        mapInstanceRef.current.fitBounds(bounds, { padding: [30, 30], maxZoom: restrictedMuni ? 14 : 13 });
       }
     }
-  }, [activeBoundaries, updateMarker, selectedCoords]);
+  }, [activeBoundaries, updateMarker, selectedCoords, restrictedMuni]);
 
   // Fly to target municipality if selected externally (e.g. from dropdown)
   useEffect(() => {
@@ -472,24 +489,43 @@ export const LocationPickerMap: React.FC<LocationPickerMapProps> = ({
     <Box sx={{ mt: 1.5, mb: 1.5, width: "100%" }}>
       {/* Quick Jump Bar: Active Partner Municipalities */}
       <Box sx={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 1, mb: 1.5 }}>
-        <Typography variant="caption" sx={{ fontWeight: 700, color: "text.secondary", display: "flex", alignItems: "center", gap: 0.5 }}>
-          <LocationCityIcon fontSize="inherit" color="primary" /> Active Service Areas:
-        </Typography>
-        {activeBoundaries.map((boundary) => {
-          const isSelected = verifiedMunicipality?.name === boundary.name;
-          return (
+        {restrictedMuni ? (
+          <>
+            <Typography variant="caption" sx={{ fontWeight: 700, color: "primary.main", display: "flex", alignItems: "center", gap: 0.5 }}>
+              <LocationCityIcon fontSize="inherit" color="primary" /> Your Registered Jurisdiction:
+            </Typography>
             <Chip
-              key={boundary.name}
-              label={`🏛️ ${boundary.name}`}
+              label={`🏛️ ${restrictedMuni.official_name} (Jurisdiction Locked)`}
               size="small"
               clickable
-              color={isSelected ? "primary" : "default"}
-              variant={isSelected ? "filled" : "outlined"}
-              onClick={() => handleFlyToBoundary(boundary)}
-              sx={{ fontWeight: 600, fontSize: "0.75rem" }}
+              color="primary"
+              variant="filled"
+              onClick={() => activeBoundaries[0] && handleFlyToBoundary(activeBoundaries[0])}
+              sx={{ fontWeight: 700, fontSize: "0.75rem" }}
             />
-          );
-        })}
+          </>
+        ) : (
+          <>
+            <Typography variant="caption" sx={{ fontWeight: 700, color: "text.secondary", display: "flex", alignItems: "center", gap: 0.5 }}>
+              <LocationCityIcon fontSize="inherit" color="primary" /> Active Service Areas:
+            </Typography>
+            {activeBoundaries.map((boundary) => {
+              const isSelected = verifiedMunicipality?.name === boundary.name;
+              return (
+                <Chip
+                  key={boundary.name}
+                  label={`🏛️ ${boundary.name}`}
+                  size="small"
+                  clickable
+                  color={isSelected ? "primary" : "default"}
+                  variant={isSelected ? "filled" : "outlined"}
+                  onClick={() => handleFlyToBoundary(boundary)}
+                  sx={{ fontWeight: 600, fontSize: "0.75rem" }}
+                />
+              );
+            })}
+          </>
+        )}
       </Box>
 
       {/* Top Controls: "Locate Me" button + Search Bar */}
@@ -523,7 +559,11 @@ export const LocationPickerMap: React.FC<LocationPickerMapProps> = ({
           <TextField
             fullWidth
             size="small"
-            placeholder="Search within active municipalities (e.g. Tokha, Bharatpur)..."
+            placeholder={
+              restrictedMuni
+                ? `Search within ${restrictedMuni.official_name}...`
+                : "Search within active municipalities (e.g. Tokha, Bharatpur, Paiyun)..."
+            }
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             onKeyDown={(e) => {

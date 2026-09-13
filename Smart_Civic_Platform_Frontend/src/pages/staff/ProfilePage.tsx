@@ -49,6 +49,7 @@ import staffApi from "../../api/modules/staff.api";
 import { profileApi } from "../../api/modules/profile.api";
 import { KycUpload, type KycUploadPayload } from "../../components/kyc/KycUpload";
 import { useAuth } from "../../hooks/useAuth";
+import { ProfileSkeleton } from "../../components/skeletons";
 
 function getInitials(name: string): string {
   return name
@@ -214,11 +215,7 @@ export const StaffProfilePage: React.FC = () => {
   };
 
   if (loading) {
-    return (
-      <Box sx={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: "65vh" }}>
-        <CircularProgress size={48} thickness={4} />
-      </Box>
-    );
+    return <ProfileSkeleton />;
   }
 
   const p = profile?.profile;

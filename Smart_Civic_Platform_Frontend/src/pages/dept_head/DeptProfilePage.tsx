@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
+import { ProfileSkeleton } from "../../components/skeletons";
 import {
   Box,
   Typography,
@@ -208,11 +209,7 @@ export default function DeptProfilePage() {
   };
 
   if (loading) {
-    return (
-      <Box sx={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: "65vh" }}>
-        <CircularProgress size={48} thickness={4} />
-      </Box>
-    );
+    return <ProfileSkeleton />;
   }
 
   const deptName = profile?.department_name || "Department Office";

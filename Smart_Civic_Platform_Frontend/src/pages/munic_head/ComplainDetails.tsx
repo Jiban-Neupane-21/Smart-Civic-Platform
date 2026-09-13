@@ -32,6 +32,7 @@ import {
 import { useAuth } from "../../hooks/useAuth";
 import { municipalityApi } from "../../api/modules/municipality.api";
 import { publicApi } from "../../api/modules/public.api";
+import { DashboardSkeleton } from "../../components/skeletons";
 import type { MunicipComplaint } from "../../api/types/municipality.types";
 import { IncidentLocationMap } from "../../components/IncidentLocationMap";
 import { formatDistanceToNow } from "date-fns";
@@ -272,7 +273,7 @@ export default function ComplainDetails() {
   }
   const fullCitizenAddress = citizen?.current_address || citizen?.permanent_address;
 
-  if (loading) return <Box p={4} display="flex" justifyContent="center"><CircularProgress /></Box>;
+  if (loading) return <DashboardSkeleton cardCount={4} layout="split" titleWidth={420} />;
   if (error) return <Box p={4}><Alert severity="error">{error}</Alert></Box>;
 
   return (

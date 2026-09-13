@@ -21,6 +21,7 @@ import {
   TableHead,
   TableRow,
   Button,
+  Skeleton,
 } from "@mui/material";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import GroupsIcon from "@mui/icons-material/Groups";
@@ -135,9 +136,35 @@ export const StaffTeamPage: React.FC = () => {
       )}
 
       {loading ? (
-        <Box sx={{ display: "flex", justifyContent: "center", py: 8 }}>
-          <CircularProgress />
-        </Box>
+        <Stack spacing={3}>
+          <Paper elevation={0} sx={{ p: 3, borderRadius: 3, border: "1px solid", borderColor: "divider" }}>
+            <Stack direction="row" spacing={2} alignItems="center">
+              <Skeleton variant="circular" width={56} height={56} animation="wave" />
+              <Box sx={{ flexGrow: 1 }}>
+                <Skeleton variant="text" width="240px" height={32} animation="wave" />
+                <Skeleton variant="text" width="180px" height={20} animation="wave" />
+              </Box>
+            </Stack>
+          </Paper>
+          <Grid container spacing={3}>
+            {[1, 2].map((i) => (
+              <Grid item xs={12} md={6} key={i}>
+                <Card elevation={0} sx={{ borderRadius: 3, border: "1px solid", borderColor: "divider", p: 2 }}>
+                  <CardContent>
+                    <Stack direction="row" spacing={2} alignItems="center" sx={{ mb: 2 }}>
+                      <Skeleton variant="rounded" width={40} height={40} animation="wave" />
+                      <Box sx={{ flex: 1 }}>
+                        <Skeleton variant="text" width="70%" height={26} animation="wave" />
+                        <Skeleton variant="text" width="40%" height={18} animation="wave" />
+                      </Box>
+                    </Stack>
+                    <Skeleton variant="rectangular" height={100} sx={{ borderRadius: 2 }} animation="wave" />
+                  </CardContent>
+                </Card>
+              </Grid>
+            ))}
+          </Grid>
+        </Stack>
       ) : (
         <Stack spacing={3}>
           {/* Department Info Card */}

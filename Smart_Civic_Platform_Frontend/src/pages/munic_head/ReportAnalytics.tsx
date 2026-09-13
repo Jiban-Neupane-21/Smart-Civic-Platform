@@ -21,6 +21,7 @@ import HourglassEmptyIcon from "@mui/icons-material/HourglassEmpty";
 import BusinessIcon from "@mui/icons-material/Business";
 import { useAuth } from "../../hooks/useAuth";
 import { BASE_URL, fetchWithAuth } from "../../api";
+import { DashboardSkeleton } from "../../components/skeletons";
 
 interface MunicipalityStats {
   totalComplaints: number;
@@ -187,11 +188,7 @@ export default function ReportAnalytics() {
   }
 
   if (loading) {
-    return (
-      <Box sx={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: "60vh" }}>
-        <CircularProgress size={56} />
-      </Box>
-    );
+    return <DashboardSkeleton cardCount={4} layout="analytics" titleWidth={300} />;
   }
 
   const totalComplaints = stats?.totalComplaints ?? 0;

@@ -13,6 +13,7 @@ import { useNotificationPolling } from '../../hooks/useNotificationPolling';
 import { useAuth } from '../../hooks/useAuth';
 import type { NotificationType } from '../../api/types';
 import notificationsApi from '../../api/modules/notifications.api';
+import { NotificationItemsSkeleton } from '../skeletons';
 
 export function NotificationInbox() {
   const theme = useTheme();
@@ -168,9 +169,7 @@ export function NotificationInbox() {
         </Tabs>
 
         {loading ? (
-          <Box p={6} display="flex" justifyContent="center">
-            <CircularProgress />
-          </Box>
+          <NotificationItemsSkeleton count={5} />
         ) : filteredNotifications.length === 0 ? (
           <Box p={6} textAlign="center">
             <FiClock size={48} color={theme.palette.text.disabled} />

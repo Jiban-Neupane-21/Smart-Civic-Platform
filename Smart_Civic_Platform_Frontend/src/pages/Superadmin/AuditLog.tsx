@@ -47,7 +47,8 @@ import LanguageIcon from "@mui/icons-material/Language";
 import DevicesIcon from "@mui/icons-material/Devices";
 import AccessTimeIcon from "@mui/icons-material/AccessTime";
 import PersonIcon from "@mui/icons-material/Person";
-import { superadminApi } from "../../api";
+import { TableRowsSkeleton } from "../../components/skeletons";
+import { superadminApi } from "../../api/modules/superadmin.api";
 import type { AuditLogEntry } from "../../api/types";
 
 // ─── Color & Icon helpers ──────────────────────────────────────────────────────
@@ -744,11 +745,35 @@ export default function AuditLog() {
 
       {/* ── Table ── */}
       {loading && logs.length === 0 ? (
-        <Paper elevation={1} sx={{ p: 3, borderRadius: 3 }}>
-          {[...Array(6)].map((_, i) => (
-            <Skeleton key={i} variant="rounded" height={56} sx={{ mb: 1.5, borderRadius: 2 }} />
-          ))}
-        </Paper>
+        <TableContainer component={Paper} elevation={2} sx={{ borderRadius: 3, overflow: "hidden" }}>
+          <Table sx={{ minWidth: 850 }}>
+            <TableHead sx={{ bgcolor: "#f8fafc" }}>
+              <TableRow>
+                <TableCell sx={{ fontWeight: 700 }}>Action</TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>Severity</TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>Actor</TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>Target / Scope</TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>Resource</TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>Timestamp</TableCell>
+                <TableCell align="center" sx={{ fontWeight: 700 }}>Details</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              <TableRowsSkeleton
+                rows={pageSize || 8}
+                columns={[
+                  { type: "chip", width: 100 },
+                  { type: "chip", width: 75 },
+                  { type: "avatar" },
+                  { type: "text", width: 120 },
+                  { type: "badge", width: 85 },
+                  { type: "date", width: 130 },
+                  { type: "actions", width: 50, align: "center" },
+                ]}
+              />
+            </TableBody>
+          </Table>
+        </TableContainer>
       ) : logs.length === 0 ? (
         <Paper elevation={1} sx={{ p: 8, textAlign: "center", borderRadius: 3 }}>
           <SecurityIcon sx={{ fontSize: 56, color: "text.disabled", mb: 2 }} />

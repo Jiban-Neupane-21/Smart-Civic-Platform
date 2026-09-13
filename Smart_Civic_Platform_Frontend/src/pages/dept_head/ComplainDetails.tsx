@@ -34,6 +34,7 @@ import {
 import { useAuth } from "../../hooks/useAuth";
 import { departmentApi } from "../../api/modules/department.api";
 import { municipalityApi } from "../../api/modules/municipality.api";
+import { DashboardSkeleton } from "../../components/skeletons";
 import type { DeptQueueComplaint, DeptComplaintDetail } from "../../api/types/department.types";
 import { QuickAssignSquadDialog } from "../../components/QuickAssignSquadDialog";
 import { QuickCreateTeamDialog } from "../../components/QuickCreateTeamDialog";
@@ -336,7 +337,7 @@ export default function DeptComplainDetails() {
     }
   };
 
-  if (loading) return <Box p={4} display="flex" justifyContent="center"><CircularProgress /></Box>;
+  if (loading) return <DashboardSkeleton cardCount={4} layout="split" titleWidth={400} />;
   if (error) return <Box p={4}><Alert severity="error">{error}</Alert></Box>;
 
   return (

@@ -164,6 +164,8 @@ export const getMe = async (req: Request, res: Response) => {
             }
           : null,
       });
+    }
+
     if (user.role === "municipality_head" && !user.identity_document_url) {
       const { data: muni } = await supabaseAdmin
         .from("municipalities")
