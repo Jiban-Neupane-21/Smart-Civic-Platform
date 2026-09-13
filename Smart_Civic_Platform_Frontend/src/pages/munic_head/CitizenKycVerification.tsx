@@ -501,7 +501,7 @@ export default function MunicCitizenKycVerification() {
           <TableBody>
             {loading ? (
               <TableRowsSkeleton
-                rows={rowsPerPage || 5}
+                rows={5}
                 columns={[
                   { type: "avatar" },
                   { type: "text", width: 150 },
