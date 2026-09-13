@@ -164,6 +164,18 @@ export const getMe = async (req: Request, res: Response) => {
             }
           : null,
       });
+    if (user.role === "municipality_head" && !user.identity_document_url) {
+      const { data: muni } = await supabaseAdmin
+        .from("municipalities")
+        .select("head_identity_front_url, head_identity_type, head_identity_number, kyc_status")
+        .or(`head_profile_id.eq.${user.id},id.eq.${user.municipality_id || '00000000-0000-0000-0000-000000000000'}`)
+        .maybeSingle();
+
+      if (muni && (muni.head_identity_front_url || muni.kyc_status === "verified")) {
+        user.identity_document_url = muni.head_identity_front_url || "verified";
+        user.identity_type = user.identity_type || muni.head_identity_type;
+        user.identity_number = user.identity_number || muni.head_identity_number;
+      }
     }
 
     return sendSuccess(res, user);

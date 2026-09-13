@@ -1,6 +1,16 @@
 import { SupabaseClient } from "@supabase/supabase-js";
 import { SmsService } from "./sms.service";
 
+export interface NotificationContextOptions {
+  complaintId?: string;
+  municipalityId?: string;
+  departmentId?: string;
+  teamId?: string;
+  wardId?: string;
+  priority?: "normal" | "important" | "emergency";
+  isUrgent?: boolean;
+}
+
 export class NotificationService {
   constructor(private supabaseAdmin: SupabaseClient) {}
 
@@ -172,6 +182,31 @@ export class NotificationService {
   }
 
   /**
+   * Helper to insert notification record with graceful fallback if priority column is not yet migrated
+   */
+  private async insertNotification(payload: any) {
+    let { data, error } = await this.supabaseAdmin
+      .from("notifications")
+      .insert(payload)
+      .select()
+      .single();
+
+    if (error && error.message?.includes("'priority'")) {
+      const fallbackPayload = { ...payload };
+      delete fallbackPayload.priority;
+      const retry = await this.supabaseAdmin
+        .from("notifications")
+        .insert(fallbackPayload)
+        .select()
+        .single();
+      data = retry.data;
+      error = retry.error;
+    }
+
+    return { data, error };
+  }
+
+  /**
    * Send notification to a single profile (In-App + SMS)
    */
   async notifyProfile(
@@ -179,27 +214,33 @@ export class NotificationService {
     title: string,
     body: string,
     senderId = "system",
-    type = "system"
+    type = "system",
+    options?: NotificationContextOptions
   ) {
     const resolvedSenderId = this.isUuid(senderId) ? senderId : (this.isUuid(profileId) ? profileId : await this.getSystemSenderId());
+    const isUrgent = options?.isUrgent ?? (options?.priority === "emergency");
+    const priority = options?.priority || (isUrgent ? "emergency" : "normal");
 
-    const { data: notification, error } = await this.supabaseAdmin
-      .from("notifications")
-      .insert({
-        sender_id: resolvedSenderId,
-        type: type as any,
-        audience: "individual",
-        target_profile_id: profileId,
-        title,
-        body,
-        channels: ["in_app"],
-        sent_at: new Date().toISOString(),
-      })
-      .select()
-      .single();
+    const insertPayload: any = {
+      sender_id: resolvedSenderId,
+      type: type as any,
+      audience: "individual",
+      target_profile_id: profileId,
+      complaint_id: options?.complaintId || null,
+      target_municipality_id: options?.municipalityId || null,
+      target_ward_id: options?.wardId || null,
+      priority,
+      title,
+      body,
+      channels: ["in_app"],
+      is_urgent: isUrgent,
+      sent_at: new Date().toISOString(),
+    };
 
-    if (error) {
-      console.error("[NOTIFICATION-ERROR]", error.message);
+    const { data: notification, error } = await this.insertNotification(insertPayload);
+
+    if (error || !notification) {
+      console.error("[NOTIFICATION-ERROR]", error?.message);
       return null;
     }
 
@@ -230,39 +271,61 @@ export class NotificationService {
   }
 
   /**
-   * Send notification to a department
+   * Send notification to a department (Department Head management triage)
    */
   async notifyDepartment(
     departmentId: string,
     title: string,
     body: string,
     senderId = "system",
-    type = "system"
+    type = "complaint_update",
+    options?: NotificationContextOptions
   ) {
     const resolvedSenderId = this.isUuid(senderId) ? senderId : await this.getSystemSenderId();
+    const isUrgent = options?.isUrgent ?? (options?.priority === "emergency");
+    const priority = options?.priority || (isUrgent ? "emergency" : "normal");
 
-    const { data: notification, error } = await this.supabaseAdmin
-      .from("notifications")
-      .insert({
-        sender_id: resolvedSenderId,
-        type: type as any,
-        audience: "department",
-        target_department_id: departmentId,
-        title,
-        body,
-        channels: ["in_app"],
-        sent_at: new Date().toISOString(),
-      })
-      .select()
-      .single();
+    const insertPayload: any = {
+      sender_id: resolvedSenderId,
+      type: type as any,
+      audience: "department",
+      target_department_id: departmentId,
+      complaint_id: options?.complaintId || null,
+      target_municipality_id: options?.municipalityId || null,
+      priority,
+      title,
+      body,
+      channels: ["in_app"],
+      is_urgent: isUrgent,
+      sent_at: new Date().toISOString(),
+    };
 
-    if (error) {
-      console.error("[NOTIFICATION-DEPT-ERROR]", error.message);
+    const { data: notification, error } = await this.insertNotification(insertPayload);
+
+    if (error || !notification) {
+      console.error("[NOTIFICATION-DEPT-ERROR]", error?.message);
       return null;
     }
 
-    // Resolve staff recipients and pre-seed notification_reads
-    const recipientIds = await this.resolveRecipients("department", { department_id: departmentId });
+    // According to docs/notification.txt Section 2 & 3:
+    // Department-level triage notifications belong to Department Head management, NOT field staff.
+    const recipientSet = new Set<string>();
+
+    const { data: dept } = await this.supabaseAdmin
+      .from("departments")
+      .select("head_profile_id")
+      .eq("id", departmentId)
+      .maybeSingle();
+    if (dept?.head_profile_id) recipientSet.add(dept.head_profile_id);
+
+    const { data: deptHeads } = await this.supabaseAdmin
+      .from("profiles")
+      .select("id")
+      .eq("department_id", departmentId)
+      .eq("role", "department_head");
+    (deptHeads || []).forEach((h) => recipientSet.add(h.id));
+
+    const recipientIds = Array.from(recipientSet);
     if (recipientIds.length > 0) {
       const readRows = recipientIds.map((pid) => ({
         notification_id: notification.id,
@@ -284,27 +347,33 @@ export class NotificationService {
     title: string,
     body: string,
     senderId = "system",
-    type = "team_assignment"
+    type = "team_assignment",
+    options?: NotificationContextOptions
   ) {
     const resolvedSenderId = this.isUuid(senderId) ? senderId : await this.getSystemSenderId();
+    const isUrgent = options?.isUrgent ?? (options?.priority === "emergency");
+    const priority = options?.priority || (isUrgent ? "emergency" : "normal");
 
-    const { data: notification, error } = await this.supabaseAdmin
-      .from("notifications")
-      .insert({
-        sender_id: resolvedSenderId,
-        type: type as any,
-        audience: "team",
-        target_team_id: teamId,
-        title,
-        body,
-        channels: ["in_app"],
-        sent_at: new Date().toISOString(),
-      })
-      .select()
-      .single();
+    const insertPayload: any = {
+      sender_id: resolvedSenderId,
+      type: type as any,
+      audience: "team",
+      target_team_id: teamId,
+      complaint_id: options?.complaintId || null,
+      target_department_id: options?.departmentId || null,
+      target_municipality_id: options?.municipalityId || null,
+      priority,
+      title,
+      body,
+      channels: ["in_app"],
+      is_urgent: isUrgent,
+      sent_at: new Date().toISOString(),
+    };
 
-    if (error) {
-      console.error("[NOTIFICATION-TEAM-ERROR]", error.message);
+    const { data: notification, error } = await this.insertNotification(insertPayload);
+
+    if (error || !notification) {
+      console.error("[NOTIFICATION-TEAM-ERROR]", error?.message);
       return null;
     }
 
@@ -330,42 +399,61 @@ export class NotificationService {
     title: string,
     body: string,
     senderId = "system",
-    type = "system"
+    type = "complaint_update",
+    options?: NotificationContextOptions
   ) {
-    const resolvedSenderId = this.isUuid(senderId) ? senderId : await this.getSystemSenderId();
+    // 1. Fetch Municipality Head profile(s) for this municipality
+    const { data: municHeads } = await this.supabaseAdmin
+      .from("profiles")
+      .select("id, phone")
+      .eq("municipality_id", municipalityId)
+      .eq("role", "municipality_head");
 
-    const { data: notification, error } = await this.supabaseAdmin
-      .from("notifications")
-      .insert({
+    const heads = municHeads || [];
+    let lastNotification: any = null;
+
+    // 2. Dispatch individualized notification directly to each Municipality Head
+    for (const head of heads) {
+      const notif = await this.notifyProfile(
+        head.id,
+        title,
+        body,
+        senderId,
+        type,
+        {
+          ...options,
+          municipalityId,
+        }
+      );
+      if (notif) lastNotification = notif;
+    }
+
+    // 3. Fallback if no specific municipality head profile found yet
+    if (heads.length === 0) {
+      const resolvedSenderId = this.isUuid(senderId) ? senderId : await this.getSystemSenderId();
+      const isUrgent = options?.isUrgent ?? (options?.priority === "emergency");
+      const priority = options?.priority || (isUrgent ? "emergency" : "normal");
+
+      const insertPayload: any = {
         sender_id: resolvedSenderId,
         type: type as any,
-        audience: "all_staff",
+        audience: "individual",
         target_municipality_id: municipalityId,
+        complaint_id: options?.complaintId || null,
+        target_ward_id: options?.wardId || null,
+        priority,
         title,
         body,
         channels: ["in_app"],
+        is_urgent: isUrgent,
         sent_at: new Date().toISOString(),
-      })
-      .select()
-      .single();
+      };
 
-    if (error) {
-      console.error("[NOTIFICATION-MUNIC-ERROR]", error.message);
-      return null;
+      const { data: notification } = await this.insertNotification(insertPayload);
+      lastNotification = notification;
     }
 
-    const recipientIds = await this.resolveRecipients("all_staff", { municipality_id: municipalityId });
-    if (recipientIds.length > 0) {
-      const readRows = recipientIds.map((pid) => ({
-        notification_id: notification.id,
-        profile_id: pid,
-        is_seen: false,
-        is_clicked: false,
-      }));
-      await this.supabaseAdmin.from("notification_reads").upsert(readRows);
-    }
-
-    return notification;
+    return lastNotification;
   }
 }
 

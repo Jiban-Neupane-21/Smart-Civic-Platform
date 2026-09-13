@@ -154,13 +154,61 @@ export const submitComplaint = async (
     );
   }
 
-  // 8. Trigger notification
-  console.log("--> [submitComplaint] Step 8: Trigger notification");
+  // 8. Trigger notifications
+  console.log("--> [submitComplaint] Step 8: Trigger notifications");
   const notifService = new NotificationService(supabaseAdmin);
+  const isUrgent = resolvedSeverity === "urgent";
+  const notifPriority = isUrgent ? "emergency" : (resolvedSeverity === "high" ? "important" : "normal");
+
+  // 8a. Notify Department Head for triage
   await notifService.notifyDepartment(
     routing.lead_department_id,
-    "New Grievance Submitted",
-    `New grievance '${payload.title}' (${trackingId}) assigned to your department.`
+    isUrgent ? `URGENT Grievance Submitted — #${trackingId}` : "New Grievance Submitted",
+    `New grievance '${payload.title}' (${trackingId}) assigned to your department.`,
+    "system",
+    isUrgent ? "sla_warning" : "system",
+    {
+      complaintId: complaint.co_uid,
+      municipalityId: location.municipality_id,
+      departmentId: routing.lead_department_id,
+      wardId: location.ward_number ? String(location.ward_number) : undefined,
+      priority: notifPriority,
+      isUrgent,
+    }
+  );
+
+  // 8b. Immediate submission confirmation to Citizen with tracking ID and direct link
+  await notifService.notifyProfile(
+    citizenId,
+    `Grievance Submitted — #${trackingId}`,
+    `Your grievance '${payload.title}' has been registered successfully. Tracking ID: ${trackingId}.`,
+    "system",
+    "complaint_update",
+    {
+      complaintId: complaint.co_uid,
+      municipalityId: location.municipality_id,
+      priority: notifPriority,
+      isUrgent,
+    }
+  );
+
+  // 8c. Municipal Oversight Notification to Municipality Head
+  await notifService.notifyMunicipality(
+    location.municipality_id,
+    isUrgent ? `URGENT Grievance Reported — #${trackingId}` : `New Grievance Registered — #${trackingId}`,
+    isUrgent
+      ? `Critical emergency '${payload.title}' reported in Ward ${location.ward_number || "N/A"}. Immediate municipal oversight required.`
+      : `New grievance '${payload.title}' registered in Ward ${location.ward_number || "N/A"}. Assigned to department for review.`,
+    "system",
+    isUrgent ? "sla_warning" : "complaint_update",
+    {
+      complaintId: complaint.co_uid,
+      municipalityId: location.municipality_id,
+      departmentId: routing.lead_department_id,
+      wardId: location.ward_number ? String(location.ward_number) : undefined,
+      priority: notifPriority,
+      isUrgent,
+    }
   );
 
   // 9. Process optional media attachments (photos and short video clips)

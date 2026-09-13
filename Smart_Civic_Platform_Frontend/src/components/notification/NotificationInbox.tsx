@@ -75,16 +75,21 @@ export function NotificationInbox() {
       } else if (role === 'staff') {
         navigate(`/staff/complaint/${notif.complaint_id}`);
       } else if (role === 'department_head') {
-        navigate(`/department_head/complaint-queue`);
+        navigate(`/department_head/complaint-queue/${notif.complaint_id}`);
       } else if (role === 'municipality_head') {
-        navigate(`/municipality_head/complaint-detail`);
+        navigate(`/municipality_head/complaint-detail/${notif.complaint_id}`);
       }
     }
   };
 
   const filteredNotifications = notifications.filter(n => {
     if (tab === 1) return !n.read_at;
-    if (tab === 2) return ['complaint_update', 'assignment', 'handoff'].includes(n.type);
+    if (role === 'superadmin') {
+      if (tab === 2) return ['sla_warning', 'sla_escalation'].includes(n.type);
+      if (tab === 3) return n.type === 'system';
+      return true;
+    }
+    if (tab === 2) return ['complaint_update', 'assignment', 'team_assignment', 'complaint_assignment', 'handoff'].includes(n.type);
     if (tab === 3) return ['sla_warning', 'sla_escalation'].includes(n.type);
     if (tab === 4) return n.type === 'broadcast';
     if (tab === 5) return n.type === 'system';
@@ -97,6 +102,8 @@ export function NotificationInbox() {
       case 'sla_escalation':
         return <FiAlertCircle size={22} />;
       case 'assignment':
+      case 'team_assignment':
+      case 'complaint_assignment':
       case 'handoff':
       case 'complaint_update':
         return <FiCheckCircle size={22} />;
@@ -112,6 +119,8 @@ export function NotificationInbox() {
       case 'sla_warning':
       case 'sla_escalation': return theme.palette.error;
       case 'assignment':
+      case 'team_assignment':
+      case 'complaint_assignment':
       case 'handoff':
       case 'complaint_update': return theme.palette.success;
       case 'system':
@@ -152,9 +161,9 @@ export function NotificationInbox() {
         >
           <Tab label="All" />
           <Tab label={`Unread (${unreadCount})`} />
-          <Tab label="Grievances" />
+          {role !== 'superadmin' && <Tab label="Grievances" />}
           <Tab label="Alerts" />
-          <Tab label="Broadcasts" />
+          {role !== 'superadmin' && <Tab label="Broadcasts" />}
           <Tab label="System" />
         </Tabs>
 
@@ -208,9 +217,11 @@ export function NotificationInbox() {
                             <Typography variant="subtitle1" fontWeight={isUnread ? 700 : 500} color={isUnread ? 'text.primary' : 'text.secondary'}>
                               {notif.title}
                             </Typography>
-                            {notif.is_urgent && (
-                              <Chip label="URGENT" size="small" color="error" sx={{ height: 20, fontSize: '0.65rem', fontWeight: 'bold' }} />
-                            )}
+                            {(notif.is_urgent || notif.priority === 'emergency') ? (
+                              <Chip label="EMERGENCY" size="small" color="error" sx={{ height: 20, fontSize: '0.65rem', fontWeight: 'bold' }} />
+                            ) : notif.priority === 'important' ? (
+                              <Chip label="IMPORTANT" size="small" color="warning" sx={{ height: 20, fontSize: '0.65rem', fontWeight: 'bold' }} />
+                            ) : null}
                           </Box>
                           {isUnread && (
                             <Box 
@@ -275,3 +286,5 @@ export function NotificationInbox() {
     </Box>
   );
 }
+
+export default NotificationInbox;

@@ -5,6 +5,8 @@ export type NotificationType =
   | 'sla_escalation'
   | 'handoff'
   | 'assignment'
+  | 'team_assignment'
+  | 'complaint_assignment'
   | 'complaint_update';
 
 export interface NotificationRow {
@@ -14,16 +16,19 @@ export interface NotificationRow {
   target_profile_id?: string | null;
   target_team_id?: string | null;
   target_department_id?: string | null;
+  target_municipality_id?: string | null;
   title: string;
   body: string;
   type: NotificationType;
   channel: string[];            // in_app | push | sms | email
   is_urgent: boolean;
+  priority?: 'normal' | 'important' | 'emergency';
   complaint_id?: string | null;
   ward_id?: string | null;
   created_at: string;
   sent_at?: string | null;
   read_at?: string | null;
+  is_read?: boolean;
 }
 
 export interface NotificationFilter {

@@ -487,7 +487,13 @@ export class DepartmentService {
         `New Field Assignment — Team ${teamName}`,
         `Complaint #${complaintId.slice(0, 8)} has been assigned to your team. ${notes ? `Notes: ${notes}` : ""}`,
         assignedBy,
-        "complaint_assignment"
+        "team_assignment",
+        {
+          complaintId,
+          departmentId,
+          teamId: team.id,
+          priority: "normal",
+        }
       );
     } catch (notifErr: any) {
       console.warn("[ASSIGN-COMPLAINT-NOTIF-WARN]", notifErr.message);

@@ -525,6 +525,7 @@ export type NotificationType =
   | "system"
   | "complaint_update"
   | "team_assignment"
+  | "complaint_assignment"
   | "handoff"
   | "sla_warning"
   | "sla_escalation"
@@ -547,6 +548,7 @@ export interface NotificationRow {
   body: string;
   channels: NotificationChannel[];
   is_urgent: boolean;
+  priority?: "normal" | "important" | "emergency";
   scheduled_for: string | null;
   sent_at: string | null;
   delivery_status: Record<string, unknown> | null;

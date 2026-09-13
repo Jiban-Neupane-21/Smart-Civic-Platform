@@ -122,6 +122,20 @@ export class MunicipalityService {
 
     updateData.updated_at = new Date().toISOString();
 
+    // Check duplicate identity number before proceeding
+    if (userId && payload.head_identity_number) {
+      const { data: existingProfile } = await supabaseAdmin
+        .from("profiles")
+        .select("id")
+        .eq("identity_number", payload.head_identity_number.trim())
+        .neq("id", userId)
+        .maybeSingle();
+
+      if (existingProfile) {
+        throw new Error("This identity number is already registered to another user profile. Please provide your unique identity document number.");
+      }
+    }
+
     // Auto-promote to 'pending' if all required fields are now present
     // First fetch current state to merge
     const { data: current } = await supabaseAdmin
@@ -170,14 +184,18 @@ export class MunicipalityService {
     if (error) throw new Error(`Failed to update municipality profile: ${error.message}`);
 
     // Sync the head's personal profile row so the frontend recognizes their KYC as completed
-    if (userId && (payload.head_identity_type || payload.head_identity_number || updateData.head_identity_front_url)) {
-      const profileUpdate: any = {};
+    const finalFrontUrl = updateData.head_identity_front_url || current?.head_identity_front_url;
+    if (userId && (payload.head_identity_type || payload.head_identity_number || finalFrontUrl)) {
+      const profileUpdate: any = { updated_at: new Date().toISOString() };
       if (payload.head_identity_type) profileUpdate.identity_type = payload.head_identity_type;
       if (payload.head_identity_number) profileUpdate.identity_number = payload.head_identity_number;
-      if (updateData.head_identity_front_url) profileUpdate.identity_document_url = updateData.head_identity_front_url;
+      if (finalFrontUrl) profileUpdate.identity_document_url = finalFrontUrl;
       
       const { error: profileErr } = await supabaseAdmin.from("profiles").update(profileUpdate).eq("id", userId);
-      if (profileErr) console.error("Failed to sync profile identity details:", profileErr);
+      if (profileErr) {
+        console.error("Failed to sync profile identity details:", profileErr);
+        throw new Error(`Failed to sync profile identity details: ${profileErr.message}`);
+      }
     }
 
     return data;
@@ -378,7 +396,40 @@ export class MunicipalityService {
     assignedBy: string,
     notes?: string
   ) {
-    return await this.repo.assignComplaintToTeam(municipalityId, teamId, complaintId, assignedBy, notes);
+    const assignment = await this.repo.assignComplaintToTeam(municipalityId, teamId, complaintId, assignedBy, notes);
+
+    try {
+      const { NotificationService } = require("../../../service/notification.service");
+      const { LifecycleService } = require("../../../service/lifecycle.service");
+      const notifService = new NotificationService((this.repo as any).supabaseAdmin);
+      const lifecycle = new LifecycleService((this.repo as any).supabaseAdmin);
+
+      await lifecycle.transition(
+        complaintId,
+        "assigned",
+        assignedBy,
+        "municipality_head",
+        notes || "Assigned to team by Municipality Head."
+      );
+
+      await notifService.notifyTeam(
+        teamId,
+        "New Field Assignment — Assigned by Municipality",
+        `Complaint #${complaintId.slice(0, 8)} has been assigned to your team. ${notes ? `Notes: ${notes}` : ""}`,
+        assignedBy,
+        "team_assignment",
+        {
+          complaintId,
+          municipalityId,
+          teamId,
+          priority: "important",
+        }
+      );
+    } catch (notifErr: any) {
+      console.warn("[MUNIC-ASSIGN-COMPLAINT-NOTIF-WARN]", notifErr.message);
+    }
+
+    return assignment;
   }
 
   async getTeamComplaints(municipalityId: string, teamId: string) {

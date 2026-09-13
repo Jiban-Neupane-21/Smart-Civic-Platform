@@ -1239,7 +1239,7 @@ export const SubmitComplaint: React.FC = () => {
                       {mapCoords && (
                         <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.3 }}>
                           GPS Coordinates: {mapCoords.lat.toFixed(5)}, {mapCoords.lng.toFixed(5)}
-                          {municipalities.find(m => m.id === muniId)?.official_name ? ` • ${municipalities.find(m => m.id === muniId)?.official_name}` : ''}
+                          {activeMunicipalities.find(m => m.id === muniId)?.official_name ? ` • ${activeMunicipalities.find(m => m.id === muniId)?.official_name}` : ''}
                           {wards.find(w => w.id === wardId) ? ` • Ward ${wards.find(w => w.id === wardId)?.ward_no}` : ''}
                         </Typography>
                       )}

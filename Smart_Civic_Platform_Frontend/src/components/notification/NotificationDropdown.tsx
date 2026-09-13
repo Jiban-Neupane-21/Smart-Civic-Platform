@@ -51,9 +51,9 @@ export function NotificationDropdown({ role }: NotificationDropdownProps) {
       } else if (role === 'staff') {
         navigate(`/staff/complaint/${notif.complaint_id}`);
       } else if (role === 'department_head') {
-        navigate(`/department_head/complaint-queue`);
+        navigate(`/department_head/complaint-queue/${notif.complaint_id}`);
       } else if (role === 'municipality_head') {
-        navigate(`/municipality_head/complaint-detail`);
+        navigate(`/municipality_head/complaint-detail/${notif.complaint_id}`);
       }
     }
   };
@@ -64,6 +64,8 @@ export function NotificationDropdown({ role }: NotificationDropdownProps) {
       case 'sla_escalation':
         return <FiAlertCircle color={theme.palette.error.main} size={20} />;
       case 'assignment':
+      case 'team_assignment':
+      case 'complaint_assignment':
       case 'handoff':
       case 'complaint_update':
         return <FiCheckCircle color={theme.palette.success.main} size={20} />;

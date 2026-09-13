@@ -333,6 +333,21 @@ export const loginService = async (
     console.error("[loginService] Failed to record login audit:", auditErr);
   });
 
+  // For municipality head, ensure identity document fields are populated from bound municipality if missing in profile
+  if (profile.role === "municipality_head" && !profile.identity_document_url) {
+    const { data: muni } = await supabaseAdmin
+      .from("municipalities")
+      .select("head_identity_front_url, head_identity_type, head_identity_number, kyc_status")
+      .or(`head_profile_id.eq.${profile.id},id.eq.${profile.municipality_id || '00000000-0000-0000-0000-000000000000'}`)
+      .maybeSingle();
+
+    if (muni && (muni.head_identity_front_url || muni.kyc_status === "verified")) {
+      profile.identity_document_url = muni.head_identity_front_url || "verified";
+      profile.identity_type = profile.identity_type || muni.head_identity_type;
+      profile.identity_number = profile.identity_number || muni.head_identity_number;
+    }
+  }
+
   return {
     access_token: data.session.access_token,
     refresh_token: data.session.refresh_token,

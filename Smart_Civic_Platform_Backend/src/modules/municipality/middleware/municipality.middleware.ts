@@ -58,24 +58,27 @@ export const verifyMunicipalityHeadContext = (supabase: SupabaseClient) => {
 
       // Find the specific municipality managed by this user (check head_profile_id or profile.municipality_id)
       let municipalityId: string | null = null;
+      let muniData: any = null;
 
       const { data: muniByHead } = await supabase
         .from("municipalities")
-        .select("id")
+        .select("id, head_identity_front_url, head_identity_type, head_identity_number, kyc_status")
         .eq("head_profile_id", userId)
         .maybeSingle();
 
       if (muniByHead) {
         municipalityId = muniByHead.id;
+        muniData = muniByHead;
       } else if (profile.municipality_id) {
         const { data: muniById } = await supabase
           .from("municipalities")
-          .select("id")
+          .select("id, head_identity_front_url, head_identity_type, head_identity_number, kyc_status")
           .eq("id", profile.municipality_id)
           .maybeSingle();
 
         if (muniById) {
           municipalityId = muniById.id;
+          muniData = muniById;
           // Heal head_profile_id link if it wasn't set
           await supabase
             .from("municipalities")
@@ -91,6 +94,13 @@ export const verifyMunicipalityHeadContext = (supabase: SupabaseClient) => {
           error: "No active municipality configuration bound to this profile.",
         });
         return;
+      }
+
+      // If head profile was missing identity document, heal/populate from the municipality record
+      if (!req.user.identity_document_url && (muniData?.head_identity_front_url || muniData?.kyc_status === "verified")) {
+        req.user.identity_document_url = muniData.head_identity_front_url || "verified";
+        req.user.identity_type = req.user.identity_type || muniData.head_identity_type;
+        req.user.identity_number = req.user.identity_number || muniData.head_identity_number;
       }
 
       // Append the verified municipality ID directly to the request object

@@ -66,7 +66,7 @@ export class LifecycleService {
     // 1. Fetch current complaint status
     const { data: complaint, error: fetchErr } = await this.supabaseAdmin
       .from("complaints")
-      .select("co_uid, tracking_id, status, citizen_id, assigned_department_id, municipality_id, title")
+      .select("co_uid, tracking_id, status, citizen_id, assigned_department_id, current_team_id, municipality_id, ward_number, title")
       .eq("co_uid", complaintId)
       .single();
 
@@ -79,21 +79,22 @@ export class LifecycleService {
       throw new Error(`Invalid transition from '${currentStatus}' to '${targetStatus}'.`);
     }
 
-    const nowIso = new Date().toISOString();
-    const updatePayload: Record<string, any> = {
+    // 3. Apply state update
+    const updatePayload: any = {
       status: targetStatus,
-      updated_at: nowIso,
+      updated_at: new Date().toISOString(),
     };
 
     if (targetStatus === "resolved") {
-      updatePayload.resolution_date = nowIso;
-      if (note) updatePayload.resolution_note = note;
+      updatePayload.resolution_date = new Date().toISOString();
+      updatePayload.resolution_note = note || null;
+    } else if (targetStatus === "rejected") {
+      updatePayload.rejection_reason = note || null;
     } else if (targetStatus === "escalated") {
       updatePayload.escalated_to_munic_head = true;
-      updatePayload.escalated_at = nowIso;
+      updatePayload.escalated_at = new Date().toISOString();
     }
 
-    // 3. Update complaints table
     const { data: updatedComplaint, error: updateErr } = await this.supabaseAdmin
       .from("complaints")
       .update(updatePayload)
@@ -126,6 +127,13 @@ export class LifecycleService {
 
     // 5. Trigger notifications based on transition
     const notifService = new NotificationService(this.supabaseAdmin);
+    const complaintOpts = {
+      complaintId: complaint.co_uid,
+      municipalityId: complaint.municipality_id,
+      departmentId: complaint.assigned_department_id || undefined,
+      teamId: complaint.current_team_id || undefined,
+      wardId: complaint.ward_number ? String(complaint.ward_number) : undefined,
+    };
 
     // Notify Citizen on key status changes
     if (complaint.citizen_id) {
@@ -135,7 +143,8 @@ export class LifecycleService {
           `Grievance Resolved — ${complaint.tracking_id}`,
           `Your complaint '${complaint.title}' has been marked resolved. ${note ? `Note: ${note}` : "Please review and confirm resolution."}`,
           actorId,
-          "complaint_update"
+          "complaint_update",
+          { ...complaintOpts, priority: "normal" }
         );
       } else if (targetStatus === "in_progress") {
         await notifService.notifyProfile(
@@ -143,7 +152,8 @@ export class LifecycleService {
           `Work In Progress — ${complaint.tracking_id}`,
           `Field work has started on your complaint '${complaint.title}'.`,
           actorId,
-          "complaint_update"
+          "complaint_update",
+          { ...complaintOpts, priority: "normal" }
         );
       } else if (targetStatus === "assigned") {
         await notifService.notifyProfile(
@@ -151,7 +161,8 @@ export class LifecycleService {
           `Grievance Assigned — ${complaint.tracking_id}`,
           `Your complaint '${complaint.title}' has been assigned to an operational team.`,
           actorId,
-          "complaint_update"
+          "complaint_update",
+          { ...complaintOpts, priority: "normal" }
         );
       } else if (targetStatus === "closed") {
         await notifService.notifyProfile(
@@ -159,7 +170,8 @@ export class LifecycleService {
           `Grievance Closed — ${complaint.tracking_id}`,
           `Your complaint '${complaint.title}' has been verified and closed. Thank you for your feedback.`,
           actorId,
-          "complaint_update"
+          "complaint_update",
+          { ...complaintOpts, priority: "normal" }
         );
       } else if (targetStatus === "rejected") {
         await notifService.notifyProfile(
@@ -167,12 +179,22 @@ export class LifecycleService {
           `Grievance Update — ${complaint.tracking_id}`,
           `Your complaint '${complaint.title}' was reviewed. Reason: ${note || "Does not meet resolution criteria."}`,
           actorId,
-          "complaint_update"
+          "complaint_update",
+          { ...complaintOpts, priority: "important" }
+        );
+      } else if (targetStatus === "reopened") {
+        await notifService.notifyProfile(
+          complaint.citizen_id,
+          `Reopen Request Logged — ${complaint.tracking_id}`,
+          `Your grievance '${complaint.title}' has been reopened and returned to the department for further resolution.`,
+          actorId,
+          "complaint_update",
+          { ...complaintOpts, priority: "important" }
         );
       }
     }
 
-    // Notify Department Head when staff transitions complaint or citizen reopens
+    // Notify Department Head and assigned team when status changes
     if (complaint.assigned_department_id) {
       if (targetStatus === "reopened") {
         await notifService.notifyDepartment(
@@ -180,23 +202,48 @@ export class LifecycleService {
           `Citizen Reopened Grievance — ${complaint.tracking_id}`,
           `Citizen reopened complaint '${complaint.title}'. Feedback: ${note || "Needs further resolution."}`,
           actorId,
-          "complaint_update"
+          "complaint_update",
+          { ...complaintOpts, priority: "important" }
         );
+
+        if (complaint.current_team_id) {
+          await notifService.notifyTeam(
+            complaint.current_team_id,
+            `Reopened: Citizen Unsatisfied — ${complaint.tracking_id}`,
+            `Citizen reopened grievance '${complaint.title}'. Reason/Feedback: ${note || "Needs further resolution."}`,
+            actorId,
+            "complaint_update",
+            { ...complaintOpts, priority: "important" }
+          );
+        }
       } else if (targetStatus === "escalated") {
         await notifService.notifyDepartment(
           complaint.assigned_department_id,
           `SLA ESCALATION — ${complaint.tracking_id}`,
-          `Complaint '${complaint.title}' has been escalated to Municipality Head for review.`,
+          `Complaint '${complaint.title}' has breached SLA and is escalated to Municipality Head for intervention.`,
           actorId,
-          "sla_escalation"
+          "sla_escalation",
+          { ...complaintOpts, priority: "emergency", isUrgent: true }
         );
+
+        if (complaint.municipality_id) {
+          await notifService.notifyMunicipality(
+            complaint.municipality_id,
+            `SLA ESCALATION — ${complaint.tracking_id}`,
+            `Complaint '${complaint.title}' in Ward ${complaint.ward_number || "N/A"} has breached SLA and requires municipal intervention.`,
+            actorId,
+            "sla_escalation",
+            { ...complaintOpts, priority: "emergency", isUrgent: true }
+          );
+        }
       } else if (actorRole === "staff") {
         await notifService.notifyDepartment(
           complaint.assigned_department_id,
           `Staff Status Update — ${complaint.tracking_id}`,
           `Field team updated '${complaint.title}' to '${targetStatus}'. ${note ? `Note: ${note}` : ""}`,
           actorId,
-          "complaint_update"
+          "complaint_update",
+          { ...complaintOpts, priority: "normal" }
         );
       }
     }

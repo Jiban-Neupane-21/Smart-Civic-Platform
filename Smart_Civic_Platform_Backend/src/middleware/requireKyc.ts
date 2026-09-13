@@ -12,8 +12,8 @@ export const requireKyc = (
     return next();
   }
 
-  // If the user already has KYC completed (has an identity document)
-  if (user.identity_document_url) {
+  // If the user already has KYC completed (has an identity document or verified identity details)
+  if (user.identity_document_url || (user.identity_type && user.identity_number)) {
     return next();
   }
 
