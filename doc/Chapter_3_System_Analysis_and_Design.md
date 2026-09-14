@@ -594,14 +594,14 @@ deploymentdiagram
 
 ## 3.3 / 8.3 Algorithm Details
 
-The platform integrates four core algorithms to deliver automated civic intelligence:
+The platform integrates four core algorithms to deliver automated civic intelligence. Each algorithm is fully specified with mathematical proofs, edge cases, and code implementations in dedicated documentation files under [`docs/`](file:///d:/Smart-Civic-Platform/docs/):
 
 ---
 
 ### Algorithm 1: Spatiotemporal Near-Duplicate Complaint Detection & Upvoting
 
 * **Problem Formulation:** When a major civic issue occurs (e.g., a burst water main), multiple citizens submit redundant complaints. Duplicate tickets choke department queues and divide citizen engagement.
-* **Mechanism:** Evaluates geographic distance using the **Haversine Formula** combined with **Word N-Gram Cosine Similarity** within a sliding temporal window of $T = 72\text{ hours}$.
+* **Mechanism:** Evaluates geographic distance using the **Haversine Formula** combined with **Word N-Gram Cosine Similarity** and Jaccard token overlap within a sliding temporal window of $T = 72\text{ hours}$. Detailed technical specification: [`ALGORITHM_1_SPATIOTEMPORAL_DUPLICATE_DETECTION.md`](file:///d:/Smart-Civic-Platform/docs/ALGORITHM_1_SPATIOTEMPORAL_DUPLICATE_DETECTION.md).
 
 ```text
 Algorithm 1: Spatiotemporal Deduplication
@@ -632,29 +632,37 @@ Output: Candidate Duplicate List D_candidates
 
 ---
 
-### Algorithm 2: Point-in-Polygon (Ray-Casting) Ward Jurisdiction Resolver
+### Algorithm 2: Point-in-Polygon (Ray-Casting) Ward & Municipal Jurisdiction Resolver
 
-* **Problem Formulation:** Citizens often do not know which administrative ward boundary their current physical location falls under, leading to incorrect manual ward selection.
-* **Mechanism:** Uses the **Jordan Curve Theorem (Ray-Casting)** to mathematically determine whether a coordinate $P(x, y)$ resides inside a closed ward polygon boundary.
+* **Problem Formulation:** Citizens pinning grievances on an interactive map frequently place pins outside active municipal jurisdictions or in incorrect administrative wards, leading to cross-boundary disputes and rejected tickets.
+* **Mechanism:** Employs the **Jordan Curve Theorem (Ray-Casting Algorithm)** in tandem with the **Haversine Geodesic Formula** to evaluate boundary confinement and calculate proximity to neighboring municipal polygons. Detailed technical specification: [`ALGORITHM_2_POINT_IN_POLYGON_JURISDICTION.md`](file:///d:/Smart-Civic-Platform/docs/ALGORITHM_2_POINT_IN_POLYGON_JURISDICTION.md) (and comprehensive map algorithms in [`SUBMIT_COMPLAINT_MAP_ALGORITHM.md`](file:///d:/Smart-Civic-Platform/docs/SUBMIT_COMPLAINT_MAP_ALGORITHM.md)).
 
 ```text
-Algorithm 2: Ray-Casting Ward Resolver
-Input:  Coordinate Point P(lat, lng), Ward Polygon Vertices V = [(x_1, y_1), ..., (x_n, y_n)]
-Output: Boolean (True if P is inside the Ward, False otherwise)
+Algorithm 2: Ray-Casting Municipal & Ward Jurisdiction Resolver
+Input:  Coordinate Point P(lat, lng), Polygon Vertices V = [(lat_1, lng_1), ..., (lat_n, lng_n)]
+Output: Boolean (True if P is inside the Polygon, False otherwise)
 
 1. is_inside = False
 2. n = Length(V)
 3. j = n - 1
 
 4. FOR i = 0 TO n - 1 DO:
-       IF ((V[i].lat > P.lat) != (V[j].lat > P.lat)) AND
-          (P.lng < (V[j].lng - V[i].lng) * (P.lat - V[i].lat) / (V[j].lat - V[i].lat) + V[i].lng) THEN:
+       // Verify if horizontal ray intersects the edge segment (V[i], V[j])
+       IF ((V[i].lng > P.lng) != (V[j].lng > P.lng)) AND
+          (P.lat < (V[j].lat - V[i].lat) * (P.lng - V[i].lng) / (V[j].lng - V[i].lng) + V[i].lat) THEN:
            is_inside = NOT is_inside
        END IF
        j = i
    END FOR
 
-5. RETURN is_inside
+5. IF NOT is_inside THEN:
+       // Out-of-bounds guidance: compute nearest boundary using Haversine distance
+       nearest_muni = FindNearestCentroid(P, ActiveMunicipalities)
+       distance_km = CalculateHaversineDistance(P, nearest_muni.center)
+       PromptUser("Location outside jurisdiction. Nearest active partner: " + nearest_muni.name + " (" + distance_km + " km away)")
+   END IF
+
+6. RETURN is_inside
 ```
 
 ---
@@ -662,7 +670,7 @@ Output: Boolean (True if P is inside the Ward, False otherwise)
 ### Algorithm 3: Automated Complaint Severity & SLA Due-Time Calculator
 
 * **Problem Formulation:** Subjective priority assignment by citizens leads to either under-prioritizing critical hazards or marking every minor inconvenience as "Urgent."
-* **Mechanism:** Computes a composite severity score based on infrastructural safety keywords, category weight, and community upvote velocity, and dynamically assigns statutory SLA deadlines:
+* **Mechanism:** Computes a composite severity score based on infrastructural safety keywords, negation scope scanning, category weight, and community upvote velocity, and dynamically assigns statutory SLA deadlines. Detailed technical specification: [`ALGORITHM_3_SEVERITY_AND_SLA_CALCULATION.md`](file:///d:/Smart-Civic-Platform/docs/ALGORITHM_3_SEVERITY_AND_SLA_CALCULATION.md).
 
 ```text
 Algorithm 3: Severity Scoring and SLA Assignment
@@ -709,7 +717,7 @@ Output: Severity Priority Enum (Urgent, High, Medium, Low), SLA Due Timestamp
 ### Algorithm 4: Multi-Criteria Workload-Balanced Staff Dispatch Optimization
 
 * **Problem Formulation:** Department heads manually assigning work orders frequently overload specific technicians while others remain idle, increasing response times and travel costs.
-* **Mechanism:** Ranks available technicians using a multi-criteria weighted utility function balancing current backlog, Euclidean distance, and category specialization.
+* **Mechanism:** Ranks available technicians using a multi-criteria weighted utility function balancing current backlog ($45\%$), Haversine distance ($35\%$), and category specialization ($20\%$). Detailed technical specification: [`ALGORITHM_4_WORKLOAD_BALANCED_STAFF_DISPATCH.md`](file:///d:/Smart-Civic-Platform/docs/ALGORITHM_4_WORKLOAD_BALANCED_STAFF_DISPATCH.md).
 
 ```text
 Algorithm 4: Workload-Balanced Staff Dispatch
