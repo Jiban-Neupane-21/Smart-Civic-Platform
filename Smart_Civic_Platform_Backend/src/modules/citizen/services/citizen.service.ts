@@ -10,6 +10,7 @@ import { CollaborationService } from "../../../service/collaboration.service";
 import { NotificationService } from "../../../service/notification.service";
 import { SeverityDetectorService } from "../../../service/severity-detector.service";
 import { DuplicateDetectorService, type DuplicateCheckInput } from "../../../service/duplicate-detector.service";
+import { LifecycleService } from "../../../service/lifecycle.service";
 
 type CitizenSupabaseClient = {
   from: <TableName extends keyof Database["public"]["Tables"]>(
@@ -608,6 +609,21 @@ export const submitFeedback = async (
     .single();
 
   if (error) throw new Error(error.message);
+
+  // Transition complaint from 'resolved' to 'closed'
+  try {
+    const lifecycle = new LifecycleService(supabaseAdmin);
+    await lifecycle.transition(
+      complaintId,
+      "closed",
+      citizenId,
+      "citizen",
+      `Resolution confirmed and verified by citizen. Rating: ${body.rating}/5${body.comment ? ` - "${body.comment}"` : ""}`
+    );
+  } catch (transitionErr: any) {
+    console.error(`[submitFeedback] Warning: Failed to transition complaint ${complaintId} to closed:`, transitionErr.message);
+  }
+
   return data;
 };
 
@@ -626,7 +642,7 @@ export const getDashboardData = async (
   if (complaintsError) throw new Error("Failed to fetch complaints data");
 
   const totalComplaints = complaints.length;
-  const resolvedComplaints = complaints.filter((c: any) => c.status === "resolved").length;
+  const resolvedComplaints = complaints.filter((c: any) => ["resolved", "closed"].includes(c.status)).length;
   const pendingComplaints = complaints.filter((c: any) => c.status === "pending").length;
 
   const recentComplaints = complaints.slice(0, 5).map((c: any) => ({

@@ -36,9 +36,9 @@ const STATUS_OPTIONS = [
   { value: "assigned", label: "👤 Assigned" },
   { value: "under_review", label: "🔍 Under Review" },
   { value: "in_progress", label: "🛠 In Progress" },
-  { value: "resolved", label: "✅ Resolved" },
+  { value: "resolved", label: "✅ Completed (Resolved)" },
+  { value: "closed", label: "🔒 Verified & Closed" },
   { value: "rejected", label: "❌ Rejected" },
-  { value: "closed", label: "🔒 Closed" },
   { value: "escalated", label: "🚨 Escalated" },
   { value: "reopened", label: "🔄 Reopened" },
   { value: "cross_dept_pending", label: "🤝 Multi-Department" },
@@ -92,9 +92,9 @@ export const ComplaintReport: React.FC = () => {
       case "assigned": return { color: "info", label: "Assigned" };
       case "under_review": return { color: "info", label: "Under Review", sx: { bgcolor: "info.light" } };
       case "in_progress": return { color: "primary", label: "In Progress" };
-      case "resolved": return { color: "success", label: "Resolved" };
+      case "resolved": return { color: "success", label: "Completed (Pending Review)", sx: { fontWeight: 700 } };
+      case "closed": return { color: "default", label: "Verified & Closed", sx: { fontWeight: 700 } };
       case "rejected": return { color: "error", label: "Rejected" };
-      case "closed": return { color: "default", label: "Closed" };
       case "escalated": return { color: "error", label: "Escalated", sx: { bgcolor: "error.dark", color: "white" } };
       case "reopened": return { color: "warning", label: "Reopened" };
       case "cross_dept_pending": return { color: "secondary", label: "Multi-Dept", sx: { bgcolor: "secondary.main", color: "white" } };
@@ -293,10 +293,20 @@ export const ComplaintReport: React.FC = () => {
                     {isOverdue(row.submitted_date, row.status) && (
                       <Chip label="⏰ Overdue" color="error" size="small" sx={{ mt: 0.5, height: 20, fontSize: "0.65rem" }} />
                     )}
-                    {["resolved", "closed"].includes(row.status) && row.resolution_date && (
-                      <Typography variant="caption" display="block" color="success.main">
-                        Resolved: {new Date(row.resolution_date).toLocaleDateString()}
-                      </Typography>
+                    {["resolved", "closed"].includes(row.status) && (
+                      <Stack direction="row" spacing={0.5} alignItems="center" sx={{ mt: 0.5 }}>
+                        <Typography variant="caption" color="success.main" fontWeight={700}>
+                          {row.status === "closed" ? "Closed: " : "Completed: "}
+                          {row.resolution_date ? new Date(row.resolution_date).toLocaleDateString() : "Done"}
+                        </Typography>
+                        {row.resolution_note && (
+                          <Tooltip title={`Staff Resolution: ${row.resolution_note}`} arrow>
+                            <Box component="span" sx={{ fontSize: "0.75rem", cursor: "pointer", color: "success.dark" }}>
+                              💬
+                            </Box>
+                          </Tooltip>
+                        )}
+                      </Stack>
                     )}
                   </TableCell>
                   <TableCell>

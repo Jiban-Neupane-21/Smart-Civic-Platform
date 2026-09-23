@@ -182,6 +182,7 @@ app.use("/api/public", publicRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/onboarding", onboardingRouter);
 app.use("/api/superadmin", superadminRouter);
+app.use("/api/v1/superadmin", superadminRouter);
 app.use("/api/municipality", municipalityRouter);
 app.use("/api/department", departmentRouter);
 app.use("/api/staff", staffRouter);
@@ -211,4 +212,5 @@ app.listen(PORT, () => {
   console.log(`Swagger paths loaded: ${pathCount}`);
 });
 
+// Trigger reload
 export default app;

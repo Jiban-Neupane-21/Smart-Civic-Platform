@@ -91,15 +91,26 @@ export const StaffComplaintDetailPage: React.FC = () => {
       if (compRes.status === "fulfilled" && compRes.value?.success && compRes.value.data) {
         setComplaint(compRes.value.data);
       } else {
-        throw new Error("Could not load grievance details");
+        const errorReason = compRes.status === "rejected" ? (compRes as PromiseRejectedResult).reason : null;
+        console.error("Failed to load staff complaint detail:", errorReason || compRes);
+        const serverError =
+          errorReason?.response?.data?.error ||
+          errorReason?.response?.data?.message ||
+          errorReason?.message ||
+          "Could not load grievance details";
+        throw new Error(serverError);
       }
 
       if (updRes.status === "fulfilled" && updRes.value?.success && Array.isArray(updRes.value.data)) {
         setUpdates(updRes.value.data);
+      } else if (updRes.status === "rejected") {
+        console.warn("Could not load timeline updates:", (updRes as PromiseRejectedResult).reason);
       }
 
       if (teamsRes.status === "fulfilled" && teamsRes.value?.success && Array.isArray(teamsRes.value.data)) {
         setMyTeams(teamsRes.value.data);
+      } else if (teamsRes.status === "rejected") {
+        console.warn("Could not load staff team memberships:", (teamsRes as PromiseRejectedResult).reason);
       }
     } catch (err: any) {
       setError(
@@ -288,9 +299,9 @@ export const StaffComplaintDetailPage: React.FC = () => {
       case "in_progress":
         return <Chip label="In Progress" color="primary" sx={{ fontWeight: 700 }} />;
       case "resolved":
-        return <Chip label="Resolved" color="success" sx={{ fontWeight: 700 }} />;
+        return <Chip label="Completed & Resolved" color="success" sx={{ fontWeight: 700 }} />;
       case "closed":
-        return <Chip label="Closed" color="default" sx={{ fontWeight: 700 }} />;
+        return <Chip label="Verified & Closed by Citizen" color="default" sx={{ fontWeight: 700 }} />;
       case "reopened":
         return <Chip label="Reopened by Citizen" color="error" sx={{ fontWeight: 700 }} />;
       default:
@@ -464,6 +475,24 @@ export const StaffComplaintDetailPage: React.FC = () => {
               >
                 Start Field Work
               </Button>
+            )}
+
+            {/* Resolved / Closed Status Badges */}
+            {currentStatus === "resolved" && (
+              <Chip
+                icon={<CheckCircleIcon />}
+                label="Task Completed & Resolved (Awaiting Citizen Confirmation)"
+                color="success"
+                sx={{ fontWeight: 700, py: 2, px: 1 }}
+              />
+            )}
+            {currentStatus === "closed" && (
+              <Chip
+                icon={<CheckCircleIcon />}
+                label="Verified & Closed by Citizen"
+                color="default"
+                sx={{ fontWeight: 700, py: 2, px: 1 }}
+              />
             )}
 
             {/* Complete & Resolve Button */}

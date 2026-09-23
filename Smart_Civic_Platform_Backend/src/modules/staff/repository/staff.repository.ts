@@ -373,7 +373,7 @@ export class StaffRepository {
   async getComplaintDetail(identifier: string): Promise<any> {
     const complaintSelect = `
       co_uid, tracking_id, title, description, status, priority, severity_level,
-      ticket_type, ward_number, ward_id, location_source, latitude, longitude,
+      ticket_type, ward_number, location_source, latitude, longitude,
       submitted_date, resolution_date, resolution_note, rejection_reason,
       sla_due_at, sla_breached, sla_breached_at, current_team_id,
       citizen:citizens!citizen_id(
@@ -389,11 +389,15 @@ export class StaffRepository {
     `;
 
     // 1. Direct query by complaint co_uid or tracking_id
-    const { data: comp } = await this.supabaseAdmin
+    const { data: comp, error: compErr } = await this.supabaseAdmin
       .from('complaints')
       .select(complaintSelect)
       .or(`co_uid.eq.${identifier},tracking_id.eq.${identifier}`)
       .maybeSingle();
+
+    if (compErr) {
+      console.error('[StaffRepository] getComplaintDetail direct query error:', compErr.message);
+    }
 
     let resolvedComplaint: any = comp;
     let assignmentId: string | null = null;
@@ -401,7 +405,7 @@ export class StaffRepository {
 
     // 2. If not found, check if identifier is a complaint_assignment id
     if (!resolvedComplaint) {
-      const { data: assignData } = await this.supabaseAdmin
+      const { data: assignData, error: assignErr } = await this.supabaseAdmin
         .from('complaint_assignments')
         .select(`
           id, team_id, complaint_id,
@@ -411,6 +415,10 @@ export class StaffRepository {
         `)
         .eq('id', identifier)
         .maybeSingle();
+
+      if (assignErr) {
+        console.error('[StaffRepository] complaint_assignment query error:', assignErr.message);
+      }
 
       if (assignData?.complaint) {
         resolvedComplaint = assignData.complaint;
@@ -502,17 +510,25 @@ export class StaffRepository {
       console.warn('Could not load media attachments for complaint:', mediaErr.message);
     }
 
-    // 6. Resolve Ward number if missing from ward_id
+    // 6. Resolve Ward number if missing from complaint record
     let resolvedWardNumber = resolvedComplaint.ward_number;
-    if (!resolvedWardNumber && resolvedComplaint.ward_id) {
+    const citizenData = resolvedComplaint.citizen || {};
+    const citizenWardId = citizenData.current_ward_id || citizenData.permanent_ward_id;
+
+    if (!resolvedWardNumber && citizenWardId) {
       const { data: wardRow } = await this.supabaseAdmin
         .from('wards')
         .select('ward_no')
-        .eq('id', resolvedComplaint.ward_id)
+        .eq('id', citizenWardId)
         .maybeSingle();
       if (wardRow?.ward_no) {
         resolvedWardNumber = wardRow.ward_no;
       }
+    }
+
+    if (!resolvedWardNumber && citizenData.current_address) {
+      const m = citizenData.current_address.match(/ward\s*(\d+)/i);
+      if (m) resolvedWardNumber = parseInt(m[1], 10);
     }
 
     // 7. Extract landmark or location note from description if present
@@ -536,7 +552,7 @@ export class StaffRepository {
       longitude: resolvedComplaint.longitude != null ? Number(resolvedComplaint.longitude) : null,
       has_coordinates: !!(resolvedComplaint.latitude != null && resolvedComplaint.longitude != null),
       ward_number: resolvedWardNumber,
-      ward_id: resolvedComplaint.ward_id,
+      ward_id: citizenWardId || null,
       municipality_name: muniName,
       landmark: landmarkNote,
       display_address: displayAddress,
@@ -546,7 +562,6 @@ export class StaffRepository {
     };
 
     // 9. Build Complainant Details (Citizen Contact & Registered Residence)
-    const citizenData = resolvedComplaint.citizen || {};
     const citizenProfile = citizenData.profile || {};
     const citizenFullName = citizenProfile.full_name || [citizenData.first_name, citizenData.middle_name, citizenData.last_name].filter(Boolean).join(' ') || 'Citizen';
     const citizenPhone = citizenProfile.phone || citizenData.contact_number || '';

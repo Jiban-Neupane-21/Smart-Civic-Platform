@@ -170,23 +170,23 @@ export const CitizenComplaintDetailPage: React.FC = () => {
   const getStatusChip = (status: string) => {
     switch (status) {
       case "pending":
-        return <Chip label="Pending Triage" color="warning" />;
+        return <Chip label="Pending Triage" color="warning" sx={{ fontWeight: 700 }} />;
       case "assigned":
-        return <Chip label="Assigned to Field Team" color="info" />;
+        return <Chip label="Assigned to Field Team" color="info" sx={{ fontWeight: 700 }} />;
       case "in_progress":
-        return <Chip label="Work In Progress" color="primary" />;
+        return <Chip label="Work In Progress" color="primary" sx={{ fontWeight: 700 }} />;
       case "resolved":
-        return <Chip label="Resolved (Awaiting Confirmation)" color="success" />;
+        return <Chip label="Work Completed (Pending Confirmation)" color="success" sx={{ fontWeight: 700 }} />;
       case "closed":
-        return <Chip label="Verified & Closed" color="default" />;
+        return <Chip label="Verified & Closed" color="default" sx={{ fontWeight: 700 }} />;
       case "reopened":
-        return <Chip label="Reopened / Under Review" color="error" />;
+        return <Chip label="Reopened / Under Review" color="error" sx={{ fontWeight: 700 }} />;
       case "escalated":
-        return <Chip label="Escalated to Municipality" color="error" sx={{ bgcolor: "error.dark", color: "white" }} />;
+        return <Chip label="Escalated to Municipality" color="error" sx={{ bgcolor: "error.dark", color: "white", fontWeight: 700 }} />;
       case "rejected":
-        return <Chip label="Rejected" color="error" />;
+        return <Chip label="Rejected" color="error" sx={{ fontWeight: 700 }} />;
       default:
-        return <Chip label={status} />;
+        return <Chip label={status} sx={{ fontWeight: 700 }} />;
     }
   };
 
@@ -292,8 +292,19 @@ export const CitizenComplaintDetailPage: React.FC = () => {
                 </Typography>
               </Stack>
               <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-                {complaint.resolution_note ? `Note: "${complaint.resolution_note}"` : "Please review the completed work. You can confirm and close this ticket, or dispute and escalate to Higher Authority."}
+                {complaint.resolution_note ? (
+                  <span>
+                    <b>Staff Resolution Note:</b> "{complaint.resolution_note}"
+                  </span>
+                ) : (
+                  "Please review the completed work. You can confirm and close this ticket, or dispute and escalate to Higher Authority."
+                )}
               </Typography>
+              {complaint.resolution_date && (
+                <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.5 }}>
+                  Completed on: {formatDate(complaint.resolution_date)}
+                </Typography>
+              )}
             </Box>
 
             <Stack direction="row" spacing={1.5}>
@@ -302,6 +313,7 @@ export const CitizenComplaintDetailPage: React.FC = () => {
                 color="success"
                 startIcon={<ThumbUpIcon />}
                 onClick={() => setOpenFeedbackModal(true)}
+                sx={{ fontWeight: 700 }}
               >
                 Confirm & Close
               </Button>
@@ -310,10 +322,43 @@ export const CitizenComplaintDetailPage: React.FC = () => {
                 color="error"
                 startIcon={<GavelIcon />}
                 onClick={() => setOpenReopenModal(true)}
+                sx={{ fontWeight: 700 }}
               >
                 Dispute & Escalate
               </Button>
             </Stack>
+          </Stack>
+        </Paper>
+      )}
+
+      {/* Information Banner for Closed Grievance */}
+      {complaint.status === "closed" && (
+        <Paper
+          elevation={0}
+          sx={{
+            p: 2.5,
+            mb: 4,
+            borderRadius: 3,
+            bgcolor: "grey.50",
+            border: "1px solid",
+            borderColor: "success.light",
+          }}
+        >
+          <Stack direction="row" spacing={1.5} alignItems="center">
+            <CheckCircleIcon color="success" />
+            <Box>
+              <Typography variant="subtitle1" fontWeight={700} color="success.dark">
+                Grievance Completed, Verified & Closed
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                {complaint.resolution_note ? `Final Resolution: "${complaint.resolution_note}"` : "This grievance has been resolved by field staff and verified."}
+              </Typography>
+              {complaint.resolution_date && (
+                <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.3 }}>
+                  Resolved on: {formatDate(complaint.resolution_date)}
+                </Typography>
+              )}
+            </Box>
           </Stack>
         </Paper>
       )}

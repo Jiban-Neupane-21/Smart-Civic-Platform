@@ -215,6 +215,7 @@ export class StaffController {
       const data = await this.service.fetchComplaintDetail(id);
       res.status(200).json({ success: true, data });
     } catch (error: any) {
+      console.error(`[StaffController] getComplaintDetail error for ${req.params?.id}:`, error.message);
       res.status(404).json({ success: false, error: error.message });
     }
   };
@@ -225,6 +226,7 @@ export class StaffController {
       const data = await this.service.fetchComplaintTimeline(id);
       res.status(200).json({ success: true, data });
     } catch (error: any) {
+      console.error(`[StaffController] getComplaintUpdates error for ${req.params?.id}:`, error.message);
       res.status(500).json({ success: false, error: error.message });
     }
   };

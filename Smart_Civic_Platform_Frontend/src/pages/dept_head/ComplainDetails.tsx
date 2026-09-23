@@ -816,6 +816,22 @@ export default function DeptComplainDetails() {
                   {selected.description || "No description provided."}
                 </Typography>
 
+                {(detailData?.resolution_note || (selected as any)?.resolution_note) && (
+                  <Alert severity="success" sx={{ mt: 2, borderRadius: 2 }}>
+                    <Typography variant="subtitle2" fontWeight={700}>
+                      Field Crew Resolution Note:
+                    </Typography>
+                    <Typography variant="body2" sx={{ mt: 0.5, whiteSpace: "pre-line" }}>
+                      {detailData?.resolution_note || (selected as any)?.resolution_note}
+                    </Typography>
+                    {(detailData?.resolution_date || (selected as any)?.resolution_date) && (
+                      <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.5 }}>
+                        Work completed on: {new Date(detailData?.resolution_date || (selected as any)?.resolution_date).toLocaleString()}
+                      </Typography>
+                    )}
+                  </Alert>
+                )}
+
                 <Stack direction="row" spacing={1} mt={2} flexWrap="wrap">
                   {(selected.complaint_categories?.category_name || (detailData as any)?.category?.category_name) && (
                     <Chip 

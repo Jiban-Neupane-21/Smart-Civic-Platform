@@ -1,0 +1,3796 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "Smart Civic Platform API",
+    "version": "1.0.0",
+    "description": "Citizen complaint portal By Jiban Neupane — superadmin → municipality → department → staff → citizen"
+  },
+  "servers": [
+    {
+      "url": "http://localhost:3000",
+      "description": "Development"
+    }
+  ],
+  "tags": [
+    {
+      "name": "Health",
+      "description": "Server health"
+    },
+    {
+      "name": "Public API",
+      "description": "Public location cascade, grievance tracking & role invite acceptance"
+    },
+    {
+      "name": "Auth",
+      "description": "Registration, login, OTP, mobile auth, tokens, profiles"
+    },
+    {
+      "name": "Onboarding API",
+      "description": "First-login activation wizard"
+    },
+    {
+      "name": "Superadmin API",
+      "description": "Platform-wide administration"
+    },
+    {
+      "name": "Municipality API",
+      "description": "Municipality head operations & cross-department teams"
+    },
+    {
+      "name": "Department API",
+      "description": "Department head operations, queue & sign-offs"
+    },
+    {
+      "name": "Staff API",
+      "description": "Staff complaint handling, schedule & handoffs"
+    },
+    {
+      "name": "Citizen API",
+      "description": "Citizen complaints, structured address & feedback"
+    },
+    {
+      "name": "Notifications API",
+      "description": "Inbound notification feed & targeted broadcasts"
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "BearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      }
+    },
+    "schemas": {
+      "SuccessResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "example": true
+          },
+          "message": {
+            "type": "string",
+            "example": "Success"
+          },
+          "data": {
+            "type": "object",
+            "nullable": true
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "example": false
+          },
+          "message": {
+            "type": "string",
+            "example": "Something went wrong"
+          }
+        }
+      },
+      "LoginRequest": {
+        "type": "object",
+        "required": [
+          "email",
+          "password"
+        ],
+        "properties": {
+          "email": {
+            "type": "string",
+            "format": "email"
+          },
+          "password": {
+            "type": "string"
+          }
+        }
+      },
+      "SendOtpRequest": {
+        "type": "object",
+        "required": [
+          "phone"
+        ],
+        "properties": {
+          "phone": {
+            "type": "string",
+            "example": "+9779800000000"
+          },
+          "purpose": {
+            "type": "string",
+            "enum": [
+              "login",
+              "register",
+              "password_reset"
+            ],
+            "default": "login"
+          }
+        }
+      },
+      "VerifyOtpRequest": {
+        "type": "object",
+        "required": [
+          "phone",
+          "otp"
+        ],
+        "properties": {
+          "phone": {
+            "type": "string",
+            "example": "+9779800000000"
+          },
+          "otp": {
+            "type": "string",
+            "example": "123456"
+          }
+        }
+      },
+      "MobileLoginRequest": {
+        "type": "object",
+        "required": [
+          "phone",
+          "otp"
+        ],
+        "properties": {
+          "phone": {
+            "type": "string",
+            "example": "+9779800000000"
+          },
+          "otp": {
+            "type": "string",
+            "example": "123456"
+          }
+        }
+      },
+      "RoleInviteAcceptanceRequest": {
+        "type": "object",
+        "required": [
+          "token",
+          "password",
+          "full_name"
+        ],
+        "properties": {
+          "token": {
+            "type": "string"
+          },
+          "password": {
+            "type": "string",
+            "minLength": 8
+          },
+          "full_name": {
+            "type": "string"
+          },
+          "phone": {
+            "type": "string"
+          }
+        }
+      },
+      "OnboardingStep1Request": {
+        "type": "object",
+        "properties": {
+          "password": {
+            "type": "string"
+          },
+          "mfa_enabled": {
+            "type": "boolean"
+          }
+        }
+      },
+      "OnboardingStep2Request": {
+        "type": "object",
+        "properties": {
+          "alternate_phone": {
+            "type": "string"
+          },
+          "designation": {
+            "type": "string"
+          },
+          "employee_id": {
+            "type": "string"
+          }
+        }
+      },
+      "OnboardingStep3Request": {
+        "type": "object",
+        "required": [
+          "identity_type",
+          "identity_number"
+        ],
+        "properties": {
+          "identity_type": {
+            "type": "string",
+            "enum": [
+              "citizenship",
+              "national_id",
+              "official_id",
+              "staff_badge"
+            ]
+          },
+          "identity_number": {
+            "type": "string"
+          },
+          "identity_document_url": {
+            "type": "string"
+          }
+        }
+      },
+      "CreateCrossDeptTeamRequest": {
+        "type": "object",
+        "required": [
+          "team_name",
+          "start_date",
+          "end_date"
+        ],
+        "properties": {
+          "team_name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "start_date": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "end_date": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "member_staff_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "leader_staff_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "is_emergency_override": {
+            "type": "boolean",
+            "default": false
+          },
+          "override_reason": {
+            "type": "string"
+          }
+        }
+      },
+      "InterveneComplaintRequest": {
+        "type": "object",
+        "required": [
+          "action"
+        ],
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "reassign",
+              "resolve",
+              "reject"
+            ]
+          },
+          "note": {
+            "type": "string"
+          }
+        }
+      },
+      "KycReviewRequest": {
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "verified",
+              "rejected"
+            ]
+          },
+          "rejection_reason": {
+            "type": "string"
+          }
+        }
+      },
+      "AssignComplaintToTeamRequest": {
+        "type": "object",
+        "required": [
+          "complaint_id"
+        ],
+        "properties": {
+          "complaint_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "notes": {
+            "type": "string"
+          }
+        }
+      },
+      "DepartmentCollaborationRequest": {
+        "type": "object",
+        "required": [
+          "supporting_dept_id",
+          "inspection_note"
+        ],
+        "properties": {
+          "supporting_dept_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "inspection_note": {
+            "type": "string"
+          }
+        }
+      },
+      "DepartmentSignOffRequest": {
+        "type": "object",
+        "required": [
+          "decision"
+        ],
+        "properties": {
+          "decision": {
+            "type": "string",
+            "enum": [
+              "approved",
+              "rejected"
+            ]
+          },
+          "note": {
+            "type": "string"
+          }
+        }
+      },
+      "TransferAssignmentRequest": {
+        "type": "object",
+        "required": [
+          "to_staff_id",
+          "reason"
+        ],
+        "properties": {
+          "to_staff_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "note": {
+            "type": "string"
+          }
+        }
+      },
+      "ReturnAssignmentRequest": {
+        "type": "object",
+        "required": [
+          "reason"
+        ],
+        "properties": {
+          "reason": {
+            "type": "string"
+          },
+          "note": {
+            "type": "string"
+          }
+        }
+      },
+      "RegisterRequest": {
+        "type": "object",
+        "required": [
+          "first_name",
+          "last_name",
+          "email",
+          "password"
+        ],
+        "properties": {
+          "first_name": {
+            "type": "string"
+          },
+          "last_name": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string",
+            "format": "email"
+          },
+          "password": {
+            "type": "string",
+            "minLength": 8
+          },
+          "phone": {
+            "type": "string"
+          },
+          "full_address": {
+            "type": "string"
+          }
+        }
+      },
+      "RefreshRequest": {
+        "type": "object",
+        "required": [
+          "refresh_token"
+        ],
+        "properties": {
+          "refresh_token": {
+            "type": "string"
+          }
+        }
+      },
+      "ProvisionMunicipalityRequest": {
+        "type": "object",
+        "required": [
+          "official_name",
+          "official_email",
+          "head_name",
+          "head_email",
+          "municipality_type"
+        ],
+        "properties": {
+          "official_name": {
+            "type": "string"
+          },
+          "official_email": {
+            "type": "string",
+            "format": "email"
+          },
+          "head_name": {
+            "type": "string"
+          },
+          "head_email": {
+            "type": "string",
+            "format": "email"
+          },
+          "municipality_type": {
+            "type": "string",
+            "enum": [
+              "metropolitan",
+              "sub_metropolitan",
+              "urban_municipality",
+              "rural_municipality"
+            ]
+          },
+          "total_wards": {
+            "type": "integer"
+          },
+          "province": {
+            "type": "string"
+          },
+          "district": {
+            "type": "string"
+          }
+        }
+      },
+      "AssignRoleRequest": {
+        "type": "object",
+        "required": [
+          "targetUserId",
+          "newRole"
+        ],
+        "properties": {
+          "targetUserId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "newRole": {
+            "type": "string",
+            "enum": [
+              "superadmin",
+              "municipality_head",
+              "department_head",
+              "staff",
+              "citizen"
+            ]
+          }
+        }
+      },
+      "ManageStatusRequest": {
+        "type": "object",
+        "required": [
+          "targetUserId",
+          "status"
+        ],
+        "properties": {
+          "targetUserId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "inactive",
+              "suspended"
+            ]
+          }
+        }
+      },
+      "CreateUserRequest": {
+        "type": "object",
+        "required": [
+          "email",
+          "password",
+          "full_name",
+          "role"
+        ],
+        "properties": {
+          "email": {
+            "type": "string",
+            "format": "email"
+          },
+          "password": {
+            "type": "string",
+            "minLength": 8
+          },
+          "full_name": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "municipality_head",
+              "department_head",
+              "staff"
+            ]
+          },
+          "municipality_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "department_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "phone": {
+            "type": "string"
+          }
+        }
+      },
+      "ProvisionDepartmentRequest": {
+        "type": "object",
+        "required": [
+          "department_name",
+          "official_email",
+          "head_name",
+          "head_email"
+        ],
+        "properties": {
+          "department_name": {
+            "type": "string"
+          },
+          "official_email": {
+            "type": "string",
+            "format": "email"
+          },
+          "head_name": {
+            "type": "string"
+          },
+          "head_email": {
+            "type": "string",
+            "format": "email"
+          },
+          "head_profile_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      },
+      "OnboardStaffRequest": {
+        "type": "object",
+        "required": [
+          "profile_id",
+          "primary_department_id",
+          "employee_id",
+          "expertise"
+        ],
+        "properties": {
+          "profile_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "primary_department_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "employee_id": {
+            "type": "string"
+          },
+          "expertise": {
+            "type": "string"
+          },
+          "contact_number": {
+            "type": "string"
+          },
+          "gender": {
+            "type": "string",
+            "enum": [
+              "male",
+              "female",
+              "other",
+              "prefer_not_to_say"
+            ]
+          }
+        }
+      },
+      "CreateTeamRequest": {
+        "type": "object",
+        "required": [
+          "team_name",
+          "complaint_id"
+        ],
+        "properties": {
+          "team_name": {
+            "type": "string"
+          },
+          "complaint_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      },
+      "AssignTeamMemberRequest": {
+        "type": "object",
+        "required": [
+          "team_id",
+          "staff_id"
+        ],
+        "properties": {
+          "team_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "staff_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "is_leader": {
+            "type": "boolean",
+            "default": false
+          }
+        }
+      },
+      "UpdateComplaintStateRequest": {
+        "type": "object",
+        "required": [
+          "action"
+        ],
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "ongoing",
+              "resolved",
+              "rejected"
+            ]
+          },
+          "resolution_note": {
+            "type": "string"
+          },
+          "rejection_reason": {
+            "type": "string"
+          }
+        }
+      },
+      "BroadcastNotificationRequest": {
+        "type": "object",
+        "required": [
+          "audience_type",
+          "title",
+          "body"
+        ],
+        "properties": {
+          "audience_type": {
+            "type": "string",
+            "enum": [
+              "all_departments",
+              "all_staff",
+              "particular_department",
+              "particular_staff",
+              "department_internal_staff"
+            ]
+          },
+          "target_municipality_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "target_department_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "target_staff_profile_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "title": {
+            "type": "string"
+          },
+          "body": {
+            "type": "string"
+          }
+        }
+      },
+      "ForgotPasswordRequest": {
+        "type": "object",
+        "required": [
+          "email"
+        ],
+        "properties": {
+          "email": {
+            "type": "string",
+            "format": "email"
+          }
+        }
+      },
+      "SubmitComplaintRequest": {
+        "type": "object",
+        "required": [
+          "municipality_id",
+          "title",
+          "description"
+        ],
+        "properties": {
+          "municipality_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "category_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "priority": {
+            "type": "string",
+            "enum": [
+              "low",
+              "medium",
+              "high",
+              "urgent"
+            ]
+          },
+          "address_hint": {
+            "type": "string"
+          },
+          "latitude": {
+            "type": "number"
+          },
+          "longitude": {
+            "type": "number"
+          },
+          "is_anonymous": {
+            "type": "boolean"
+          }
+        }
+      },
+      "SubmitFeedbackRequest": {
+        "type": "object",
+        "required": [
+          "rating"
+        ],
+        "properties": {
+          "rating": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 5
+          },
+          "comment": {
+            "type": "string"
+          },
+          "is_anonymous": {
+            "type": "boolean"
+          }
+        }
+      },
+      "CitizenDetails": {
+        "type": "object",
+        "description": "Extra citizen-specific data (only present when role = citizen)",
+        "properties": {
+          "first_name": {
+            "type": "string"
+          },
+          "middle_name": {
+            "type": "string",
+            "nullable": true
+          },
+          "last_name": {
+            "type": "string"
+          },
+          "date_of_birth": {
+            "type": "string",
+            "format": "date",
+            "nullable": true
+          },
+          "gender": {
+            "type": "string",
+            "enum": [
+              "male",
+              "female",
+              "other",
+              "prefer_not_to_say"
+            ],
+            "nullable": true
+          },
+          "home_address": {
+            "type": "string",
+            "nullable": true,
+            "example": "Kathmandu, Ward 5"
+          },
+          "permanent_address": {
+            "type": "string",
+            "nullable": true,
+            "example": "Pokhara, Ward 3"
+          },
+          "ward_number": {
+            "type": "string",
+            "nullable": true
+          },
+          "notification_pref": {
+            "type": "string",
+            "enum": [
+              "email",
+              "sms",
+              "both",
+              "none"
+            ]
+          }
+        }
+      },
+      "MeResponse": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "full_name": {
+            "type": "string",
+            "example": "John Doe"
+          },
+          "email": {
+            "type": "string",
+            "format": "email"
+          },
+          "phone": {
+            "type": "string",
+            "nullable": true
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "superadmin",
+              "municipality_head",
+              "department_head",
+              "staff",
+              "citizen"
+            ]
+          },
+          "account_status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "inactive",
+              "suspended"
+            ]
+          },
+          "municipality_id": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "department_id": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "citizen_details": {
+            "nullable": true,
+            "description": "Only present when role = citizen",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CitizenDetails"
+              }
+            ]
+          }
+        }
+      }
+    },
+    "responses": {
+      "Unauthorized": {
+        "description": "Missing or invalid token",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      }
+    }
+  },
+  "paths": {
+    "/api/auth/register": {
+      "post": {
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Citizen self-registration",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Registered successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation or duplicate error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/login": {
+      "post": {
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Login — returns access + refresh tokens",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Login successful",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/send-otp": {
+      "post": {
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Send OTP code via SMS for mobile authentication or password reset",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SendOtpRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OTP code generated and dispatched cleanly."
+          },
+          "400": {
+            "description": "Validation error or phone format failure."
+          }
+        }
+      }
+    },
+    "/api/auth/verify-otp": {
+      "post": {
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Verify SMS OTP code",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VerifyOtpRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OTP code verified successfully."
+          },
+          "400": {
+            "description": "Invalid or expired OTP code."
+          }
+        }
+      }
+    },
+    "/api/auth/login-mobile": {
+      "post": {
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Mobile phone OTP passwordless login",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MobileLoginRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Mobile login successful. Access & refresh tokens generated."
+          },
+          "400": {
+            "description": "OTP verification failure or user record absent."
+          }
+        }
+      }
+    },
+    "/api/auth/refresh": {
+      "post": {
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Refresh access token",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RefreshRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Token refreshed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid refresh token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/logout": {
+      "post": {
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Logout — revokes refresh token",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RefreshRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Logged out",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/me": {
+      "get": {
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Get current user profile (includes address for citizens)",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Current user profile. For citizens, includes `citizen_details` with `home_address`, `permanent_address`, and other citizen fields. For staff/admin roles, only profile data is returned.\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/MeResponse"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/auth/change-password": {
+      "patch": {
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Change password (requires current password)",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChangePasswordRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Password changed"
+          },
+          "400": {
+            "description": "Current password incorrect or validation error"
+          }
+        }
+      }
+    },
+    "/api/auth/forgot-password": {
+      "post": {
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Send password reset email",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ForgotPasswordRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Reset email sent (if account exists)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/citizen/provinces": {
+      "get": {
+        "summary": "Public province reference list",
+        "tags": [
+          "Citizen API"
+        ],
+        "responses": {
+          "200": {
+            "description": "Province list retrieved."
+          }
+        }
+      }
+    },
+    "/api/citizen/districts": {
+      "get": {
+        "summary": "Public district reference list",
+        "tags": [
+          "Citizen API"
+        ],
+        "responses": {
+          "200": {
+            "description": "District list retrieved."
+          }
+        }
+      }
+    },
+    "/api/citizen/municipalities": {
+      "get": {
+        "summary": "Public municipality reference list",
+        "tags": [
+          "Citizen API"
+        ],
+        "responses": {
+          "200": {
+            "description": "Municipality list retrieved."
+          }
+        }
+      }
+    },
+    "/api/citizen/wards": {
+      "get": {
+        "summary": "Public ward reference list",
+        "tags": [
+          "Citizen API"
+        ],
+        "responses": {
+          "200": {
+            "description": "Ward list retrieved."
+          }
+        }
+      }
+    },
+    "/api/citizen/municipalities/{municipalityId}/categories": {
+      "get": {
+        "summary": "Get complaint categories available in municipality",
+        "tags": [
+          "Citizen API"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "municipalityId",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Complaint categories list."
+          }
+        }
+      }
+    },
+    "/api/citizen/dashboard": {
+      "get": {
+        "summary": "Get citizen dashboard statistics and recent complaints",
+        "tags": [
+          "Citizen API"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Dashboard payload loaded."
+          }
+        }
+      }
+    },
+    "/api/citizen/complaints": {
+      "post": {
+        "summary": "Submit a new grievance ticket with 4-step structured address and auto-routing",
+        "tags": [
+          "Citizen API"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubmitComplaintRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Complaint created cleanly. Standardized tracking ID assigned."
+          }
+        }
+      },
+      "get": {
+        "summary": "List my submitted grievances",
+        "tags": [
+          "Citizen API"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "My complaints list retrieved."
+          }
+        }
+      }
+    },
+    "/api/citizen/complaints/{id}": {
+      "get": {
+        "summary": "Get complaint detail by UUID",
+        "tags": [
+          "Citizen API"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Complaint detail loaded."
+          }
+        }
+      }
+    },
+    "/api/citizen/complaints/{id}/history": {
+      "get": {
+        "summary": "Get complaint timeline history with citizen-friendly messages",
+        "tags": [
+          "Citizen API"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Timeline history retrieved."
+          }
+        }
+      }
+    },
+    "/api/citizen/complaints/{id}/reopen": {
+      "post": {
+        "summary": "Reopen a resolved complaint within 7 days (max 2 reopens allowed)",
+        "tags": [
+          "Citizen API"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Complaint status changed to reopened."
+          }
+        }
+      }
+    },
+    "/api/citizen/complaints/{id}/updates": {
+      "post": {
+        "summary": "Add public note / comment to complaint",
+        "tags": [
+          "Citizen API"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Note appended."
+          }
+        }
+      },
+      "get": {
+        "summary": "List public notes for complaint",
+        "tags": [
+          "Citizen API"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Notes list."
+          }
+        }
+      }
+    },
+    "/api/citizen/complaints/{id}/media": {
+      "post": {
+        "summary": "Upload media evidence (photos/videos) to complaint",
+        "tags": [
+          "Citizen API"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Media attached."
+          }
+        }
+      }
+    },
+    "/api/citizen/complaints/{id}/feedback": {
+      "post": {
+        "summary": "Submit resolution satisfaction rating and feedback",
+        "tags": [
+          "Citizen API"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubmitFeedbackRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Feedback recorded."
+          }
+        }
+      }
+    },
+    "/api/citizen/address": {
+      "post": {
+        "summary": "Update structured permanent & current address",
+        "tags": [
+          "Citizen API"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Address updated."
+          }
+        }
+      }
+    },
+    "/api/citizen/identity": {
+      "post": {
+        "summary": "Upload identity verification (KYC) document images",
+        "tags": [
+          "Citizen API"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Identity documents submitted for review."
+          }
+        }
+      }
+    },
+    "/api/citizen/profile": {
+      "put": {
+        "summary": "Update citizen profile details",
+        "tags": [
+          "Citizen API"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Profile updated."
+          }
+        }
+      }
+    },
+    "/api/citizen/account": {
+      "delete": {
+        "summary": "Permanently delete citizen account and all associated data",
+        "tags": [
+          "Citizen API"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "password"
+                ],
+                "properties": {
+                  "password": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Citizen account deleted cleanly."
+          },
+          "401": {
+            "description": "Invalid password."
+          }
+        }
+      }
+    },
+    "/api/complaints/submit": {
+      "post": {
+        "summary": "Lodge a new citizen complaint entry",
+        "tags": [
+          "Citizen API"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubmitComplaintRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Complaint submitted successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/complaints/my-history": {
+      "get": {
+        "summary": "Get my complaint history",
+        "tags": [
+          "Citizen API"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of complaints",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/complaints/categories": {
+      "get": {
+        "summary": "List complaint categories",
+        "tags": [
+          "Citizen API"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of categories",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/department/dashboard": {
+      "get": {
+        "summary": "Department Operational Dashboard KPI Metrics",
+        "tags": [
+          "Department API"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Metrics loaded."
+          }
+        }
+      }
+    },
+    "/api/department/logo": {
+      "put": {
+        "summary": "Update department logo",
+        "tags": [
+          "Department API"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Logo updated successfully."
+          }
+        }
+      }
+    },
+    "/api/department/queue": {
+      "get": {
+        "summary": "Department complaint triage queue",
+        "tags": [
+          "Department API"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Queue items."
+          }
+        }
+      }
+    },
+    "/api/department/collaborations": {
+      "get": {
+        "summary": "List cross-department collaboration requests",
+        "tags": [
+          "Department API"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Collaborations list."
+          }
+        }
+      }
+    },
+    "/api/department/complaints/export": {
+      "get": {
+        "summary": "Export department complaints as CSV dataset",
+        "tags": [
+          "Department API"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "CSV file generated."
+          }
+        }
+      }
+    },
+    "/api/department/complaints/{complaintId}/collaborate": {
+      "post": {
+        "summary": "Initiate cross-department collaboration request",
+        "tags": [
+          "Department API"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "complaintId",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DepartmentCollaborationRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Collaboration requested."
+          }
+        }
+      }
+    },
+    "/api/department/complaints/{complaintId}/sign-off": {
+      "post": {
+        "summary": "Submit supporting department inspection sign-off decision",
+        "tags": [
+          "Department API"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "complaintId",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DepartmentSignOffRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Sign-off recorded."
+          }
+        }
+      }
+    },
+    "/api/department/teams/create": {
+      "post": {
+        "summary": "Provision internal operational team",
+        "tags": [
+          "Department API"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateTeamRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Team created."
+          }
+        }
+      }
+    },
+    "/api/department/teams": {
+      "get": {
+        "summary": "List department operational teams",
+        "tags": [
+          "Department API"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Teams list."
+          }
+        }
+      }
+    },
+    "/api/department/teams/{teamName}/assign-complaint": {
+      "post": {
+        "summary": "Assign complaint ticket to an operational team",
+        "tags": [
+          "Department API"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "teamName",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssignComplaintToTeamRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Ticket assigned to team."
+          }
+        }
+      }
+    },
+    "/api/department/complaints/{complaintId}/state": {
+      "patch": {
+        "summary": "Process complaint status transition (under_review, assigned, rejected)",
+        "tags": [
+          "Department API"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "complaintId",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Status updated."
+          }
+        }
+      }
+    },
+    "/api/department/staff-roster": {
+      "get": {
+        "summary": "List department staff roster",
+        "tags": [
+          "Department API"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Staff roster."
+          }
+        }
+      }
+    },
+    "/api/department/staff/create": {
+      "post": {
+        "summary": "Dispatch staff invitation token",
+        "tags": [
+          "Department API"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Staff invite dispatched."
+          }
+        }
+      }
+    },
+    "/api/municipality/departments/categories": {
+      "get": {
+        "summary": "List system department categories",
+        "tags": [
+          "Municipality API"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Department categories list."
+          }
+        }
+      }
+    },
+    "/api/municipality/profile": {
+      "get": {
+        "summary": "Get municipality's own full profile including KYC status",
+        "tags": [
+          "Municipality API"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Municipality profile data."
+          }
+        }
+      },
+      "patch": {
+        "summary": "Update municipality profile and submit KYC documents",
+        "tags": [
+          "Municipality API"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Profile updated."
+          }
+        }
+      }
+    },
+    "/api/municipality/analytics": {
+      "get": {
+        "summary": "Municipality operational analytics dashboard metrics",
+        "tags": [
+          "Municipality API"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Analytics summary loaded."
+          }
+        }
+      }
+    },
+    "/api/municipality/logo": {
+      "put": {
+        "summary": "Update municipality logo",
+        "tags": [
+          "Municipality API"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Logo updated successfully."
+          }
+        }
+      }
+    },
+    "/api/municipality/departments": {
+      "get": {
+        "summary": "List departments in municipality",
+        "tags": [
+          "Municipality API"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Departments list."
+          }
+        }
+      },
+      "post": {
+        "summary": "Provision a new department and generate department head invite",
+        "tags": [
+          "Municipality API"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProvisionDepartmentRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Department provisioned and invite generated."
+          }
+        }
+      }
+    },
+    "/api/municipality/departments/{id}": {
+      "get": {
+        "summary": "Get department details",
+        "tags": [
+          "Municipality API"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Department details."
+          }
+        }
+      },
+      "patch": {
+        "summary": "Update department configuration",
+        "tags": [
+          "Municipality API"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Department updated."
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete department",
+        "tags": [
+          "Municipality API"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Department deleted."
+          }
+        }
+      }
+    },
+    "/api/municipality/staff": {
+      "get": {
+        "summary": "List staff profiles in municipality",
+        "tags": [
+          "Municipality API"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Staff list."
+          }
+        }
+      },
+      "post": {
+        "summary": "Dispatch staff role invitation",
+        "tags": [
+          "Municipality API"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Invitation created."
+          }
+        }
+      }
+    },
+    "/api/municipality/complaints": {
+      "get": {
+        "summary": "Get all complaints for the municipality",
+        "tags": [
+          "Municipality API"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Complaints list."
+          }
+        }
+      }
+    },
+    "/api/municipality/kyc-pending": {
+      "get": {
+        "summary": "List citizens awaiting identity verification (KYC review)",
+        "tags": [
+          "Municipality API"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Pending KYC list."
+          }
+        }
+      }
+    },
+    "/api/municipality/kyc-pending/{citizenId}": {
+      "patch": {
+        "summary": "Review citizen KYC application (verify or reject)",
+        "tags": [
+          "Municipality API"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "citizenId",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/KycReviewRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "KYC status updated."
+          }
+        }
+      }
+    },
+    "/api/municipality/teams": {
+      "get": {
+        "summary": "List cross-department emergency task force teams",
+        "tags": [
+          "Municipality API"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Teams list."
+          }
+        }
+      },
+      "post": {
+        "summary": "Provision a cross-department emergency task force team",
+        "tags": [
+          "Municipality API"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateCrossDeptTeamRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Cross-dept team created."
+          }
+        }
+      }
+    },
+    "/api/municipality/complaints/escalated": {
+      "get": {
+        "summary": "Get SLA Level 2 escalated grievances feed",
+        "tags": [
+          "Municipality API"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Escalated complaints feed."
+          }
+        }
+      }
+    },
+    "/api/municipality/complaints/{id}/intervene": {
+      "post": {
+        "summary": "Municipality Head administrative intervention on escalated complaint",
+        "tags": [
+          "Municipality API"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InterveneComplaintRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Intervention executed."
+          }
+        }
+      }
+    },
+    "/api/municipality/notices": {
+      "get": {
+        "summary": "List public notices for municipality",
+        "tags": [
+          "Municipality API"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "category",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of municipality notices."
+          }
+        }
+      },
+      "post": {
+        "summary": "Post and broadcast a new public notice",
+        "tags": [
+          "Municipality API"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "title",
+                  "body"
+                ],
+                "properties": {
+                  "title": {
+                    "type": "string"
+                  },
+                  "body": {
+                    "type": "string"
+                  },
+                  "category": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Notice posted and broadcasted successfully."
+          }
+        }
+      }
+    },
+    "/api/notifications": {
+      "get": {
+        "summary": "Fetch my notification feed",
+        "tags": [
+          "Notifications API"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Notification feed list."
+          }
+        }
+      }
+    },
+    "/api/notifications/unread-count": {
+      "get": {
+        "summary": "Get unread notification count badge",
+        "tags": [
+          "Notifications API"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Unread count retrieved."
+          }
+        }
+      }
+    },
+    "/api/notifications/read-all": {
+      "patch": {
+        "summary": "Mark all notifications as read",
+        "tags": [
+          "Notifications API"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "All notifications marked read."
+          }
+        }
+      }
+    },
+    "/api/notifications/{id}/read": {
+      "patch": {
+        "summary": "Mark single notification as read",
+        "tags": [
+          "Notifications API"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Notification marked read."
+          }
+        }
+      }
+    },
+    "/api/notifications/broadcast": {
+      "post": {
+        "summary": "Dispatch targeted broadcast notification to specific audience",
+        "tags": [
+          "Notifications API"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BroadcastNotificationRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Broadcast notification dispatched."
+          }
+        }
+      }
+    },
+    "/api/onboarding/status": {
+      "get": {
+        "summary": "Fetch current first-login onboarding wizard progress for profile",
+        "tags": [
+          "Onboarding API"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Current wizard step and completion flags retrieved.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/onboarding/step1": {
+      "post": {
+        "summary": "Complete Step 1 — Credentials setup & MFA enrollment",
+        "tags": [
+          "Onboarding API"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OnboardingStep1Request"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Step 1 completed. Advanced to Step 2."
+          }
+        }
+      }
+    },
+    "/api/onboarding/step2": {
+      "post": {
+        "summary": "Complete Step 2 — Personal details, designation & emergency contact",
+        "tags": [
+          "Onboarding API"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OnboardingStep2Request"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Step 2 completed. Advanced to Step 3."
+          }
+        }
+      }
+    },
+    "/api/onboarding/step3": {
+      "post": {
+        "summary": "Complete Step 3 — Staff identity document upload & verification details",
+        "tags": [
+          "Onboarding API"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OnboardingStep3Request"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Step 3 completed. Advanced to Step 4."
+          }
+        }
+      }
+    },
+    "/api/onboarding/step4": {
+      "post": {
+        "summary": "Complete Step 4 — Finalize onboarding & activate profile to active status",
+        "tags": [
+          "Onboarding API"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Profile activated successfully. Full access granted."
+          }
+        }
+      }
+    },
+    "/api/profile/identity": {
+      "put": {
+        "summary": "Update user identity documents",
+        "tags": [
+          "Profile API"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Identity updated successfully"
+          }
+        }
+      }
+    },
+    "/api/profile/picture": {
+      "put": {
+        "summary": "Update user profile picture",
+        "tags": [
+          "Profile API"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Profile picture updated successfully"
+          }
+        }
+      }
+    },
+    "/api/public/provinces": {
+      "get": {
+        "summary": "List active provinces for location cascade dropdown",
+        "tags": [
+          "Public API"
+        ],
+        "responses": {
+          "200": {
+            "description": "Active provinces list retrieved successfully.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/public/districts": {
+      "get": {
+        "summary": "List active districts filtered by province",
+        "tags": [
+          "Public API"
+        ],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "province_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Filter districts by province ID"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Districts list retrieved successfully.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/public/municipalities": {
+      "get": {
+        "summary": "List active municipalities filtered by district",
+        "tags": [
+          "Public API"
+        ],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "district_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Filter municipalities by district ID"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Municipalities list retrieved successfully.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/public/active-municipalities": {
+      "get": {
+        "summary": "List onboarded active municipalities with joined province and district info",
+        "tags": [
+          "Public API"
+        ],
+        "responses": {
+          "200": {
+            "description": "Active municipalities list retrieved successfully.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/public/wards": {
+      "get": {
+        "summary": "List wards for a municipality",
+        "tags": [
+          "Public API"
+        ],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "municipality_id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Municipality ID"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Wards list retrieved successfully.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/public/complaints/track/{trackingId}": {
+      "get": {
+        "summary": "Public grievance ticket status lookup by tracking ID",
+        "tags": [
+          "Public API"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "trackingId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "KTM-WARD4-SWM-2026-000001",
+            "description": "Standardized ticket tracking code"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Grievance details retrieved cleanly.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Ticket not found."
+          }
+        }
+      }
+    },
+    "/api/public/invite/validate": {
+      "get": {
+        "summary": "Validate role invitation token",
+        "tags": [
+          "Public API"
+        ],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Role invitation token"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Invitation token is valid."
+          },
+          "400": {
+            "description": "Invalid, expired, or consumed invitation token."
+          }
+        }
+      }
+    },
+    "/api/public/invite/accept": {
+      "post": {
+        "summary": "Accept role invite, create authentication credentials, and initialize onboarding wizard",
+        "tags": [
+          "Public API"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RoleInviteAcceptanceRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Invitation accepted successfully. Profile set to pending_onboarding."
+          },
+          "400": {
+            "description": "Validation or account creation failure."
+          }
+        }
+      }
+    },
+    "/api/staff/kyc": {
+      "get": {
+        "summary": "Fetch my staff KYC details & verification status",
+        "tags": [
+          "Staff API"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "KYC details loaded."
+          }
+        }
+      },
+      "put": {
+        "summary": "Submit or update my staff KYC onboarding documents",
+        "tags": [
+          "Staff API"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "KYC submitted successfully."
+          }
+        }
+      }
+    },
+    "/api/staff/profile": {
+      "get": {
+        "summary": "Fetch my staff employment profile & department metadata",
+        "tags": [
+          "Staff API"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Profile loaded."
+          }
+        }
+      },
+      "patch": {
+        "summary": "Update my contact number or expertise",
+        "tags": [
+          "Staff API"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Profile updated."
+          }
+        }
+      }
+    },
+    "/api/staff/my-department": {
+      "get": {
+        "summary": "Fetch my primary department details",
+        "tags": [
+          "Staff API"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Department details."
+          }
+        }
+      }
+    },
+    "/api/staff/my-assignments": {
+      "get": {
+        "summary": "List operational team assignments bound to staff profile",
+        "tags": [
+          "Staff API"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Assignments list."
+          }
+        }
+      }
+    },
+    "/api/staff/schedule": {
+      "get": {
+        "summary": "Get my field work schedule calendar and task timeline",
+        "tags": [
+          "Staff API"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Schedule items."
+          }
+        }
+      }
+    },
+    "/api/staff/department-queue": {
+      "get": {
+        "summary": "View department complaint queue",
+        "tags": [
+          "Staff API"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Department queue."
+          }
+        }
+      }
+    },
+    "/api/staff/assignments/{assignmentId}/acknowledge": {
+      "patch": {
+        "summary": "Acknowledge assignment receipt",
+        "tags": [
+          "Staff API"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "assignmentId",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Acknowledged."
+          }
+        }
+      }
+    },
+    "/api/staff/assignments/{assignmentId}/accept": {
+      "post": {
+        "summary": "Step 1 of assignment flow — Accept ticket assignment",
+        "tags": [
+          "Staff API"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "assignmentId",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Accepted. Status set to assigned."
+          }
+        }
+      }
+    },
+    "/api/staff/assignments/{assignmentId}/start": {
+      "post": {
+        "summary": "Step 2 of assignment flow — Start active field work",
+        "tags": [
+          "Staff API"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "assignmentId",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Field work started. Status set to in_progress."
+          }
+        }
+      }
+    },
+    "/api/staff/assignments/{assignmentId}/complete": {
+      "post": {
+        "summary": "Step 3 of assignment flow — Complete resolution work",
+        "tags": [
+          "Staff API"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "assignmentId",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Work completed. Status set to resolved."
+          }
+        }
+      }
+    },
+    "/api/staff/assignments/{id}/transfer": {
+      "post": {
+        "summary": "Peer-to-peer staff handoff — Transfer complaint to colleague",
+        "tags": [
+          "Staff API"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TransferAssignmentRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Complaint transferred cleanly to peer."
+          }
+        }
+      }
+    },
+    "/api/staff/assignments/{id}/return-to-dept": {
+      "post": {
+        "summary": "Return complaint to Department Head for reassignment",
+        "tags": [
+          "Staff API"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReturnAssignmentRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Complaint returned to Department Head. Status set to under_review."
+          }
+        }
+      }
+    },
+    "/api/v1/superadmin/analytics": {
+      "get": {
+        "summary": "Fetch system-wide macro metrics",
+        "tags": [
+          "Superadmin API"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Macro metrics loaded successfully."
+          }
+        }
+      }
+    },
+    "/api/v1/superadmin/provinces": {
+      "get": {
+        "summary": "Fetch all provinces",
+        "tags": [
+          "Superadmin Reference Data"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of provinces retrieved successfully."
+          }
+        }
+      }
+    },
+    "/api/v1/superadmin/districts": {
+      "get": {
+        "summary": "Fetch districts (optionally filtered by province_id)",
+        "tags": [
+          "Superadmin Reference Data"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "province_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of districts."
+          }
+        }
+      }
+    },
+    "/api/v1/superadmin/municipalities/reference": {
+      "get": {
+        "summary": "Fetch reference municipalities for cascading dropdowns",
+        "tags": [
+          "Superadmin Reference Data"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "district_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "in": "query",
+            "name": "is_active",
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Reference municipalities list."
+          }
+        }
+      }
+    },
+    "/api/v1/superadmin/municipalities/{id}/detail": {
+      "get": {
+        "summary": "Fetch full municipality detail",
+        "tags": [
+          "Superadmin Reference Data"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Full municipality detail with province & district names."
+          }
+        }
+      }
+    },
+    "/api/v1/superadmin/wards/{municipality_id}": {
+      "get": {
+        "summary": "Fetch wards for a municipality",
+        "tags": [
+          "Superadmin Reference Data"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "municipality_id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of wards."
+          }
+        }
+      }
+    },
+    "/api/v1/superadmin/municipalities/provision": {
+      "post": {
+        "summary": "Provision and activate pre-seeded municipality entity",
+        "tags": [
+          "Superadmin API"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "municipality_id",
+                  "head_name",
+                  "head_email"
+                ],
+                "properties": {
+                  "municipality_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "head_name": {
+                    "type": "string"
+                  },
+                  "head_email": {
+                    "type": "string"
+                  },
+                  "head_password": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Municipality infrastructure successfully provisioned."
+          }
+        }
+      }
+    },
+    "/api/v1/superadmin/users/assign-role": {
+      "patch": {
+        "summary": "Elevate or alter systemic authorization roles",
+        "tags": [
+          "Superadmin API"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Core account role elevated."
+          }
+        }
+      }
+    },
+    "/api/v1/superadmin/users/manage-status": {
+      "patch": {
+        "summary": "Enforce account lifecycle status transitions",
+        "tags": [
+          "Superadmin API"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Profile status updated."
+          }
+        }
+      }
+    },
+    "/api/v1/superadmin/audit-logs": {
+      "get": {
+        "summary": "Query the system immutable audit logging stream",
+        "tags": [
+          "Superadmin API"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Audit records retrieved."
+          }
+        }
+      }
+    },
+    "/api/superadmin/users/create": {
+      "post": {
+        "summary": "Create a municipality head user account",
+        "tags": [
+          "Superadmin API"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "User account created."
+          }
+        }
+      }
+    },
+    "/api/v1/superadmin/municipalities": {
+      "get": {
+        "summary": "Fetch all active municipalities with joined province & district details",
+        "tags": [
+          "Superadmin API"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Active municipalities retrieved successfully."
+          }
+        }
+      }
+    },
+    "/api/v1/superadmin/municipalities/{id}": {
+      "put": {
+        "summary": "Update a municipality",
+        "tags": [
+          "Superadmin API"
+        ]
+      },
+      "delete": {
+        "summary": "Delete a municipality",
+        "tags": [
+          "Superadmin API"
+        ]
+      }
+    },
+    "/api/v1/superadmin/municipalities/{id}/kyc": {
+      "patch": {
+        "summary": "Review and update a municipality's KYC status",
+        "tags": [
+          "Superadmin API"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/health": {
+      "get": {
+        "tags": [
+          "Health"
+        ],
+        "summary": "Health check",
+        "responses": {
+          "200": {
+            "description": "Server is running",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "example": "ok"
+                    },
+                    "timestamp": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
